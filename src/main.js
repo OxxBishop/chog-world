@@ -110,7 +110,11 @@ async function init() {
     time.hour = parseFloat(params.get('hour'));
     $('btn-live').classList.remove('active');
   }
-  if (VIEWS[params.get('view')]) rig.jump(params.get('view'));
+  if (VIEWS[params.get('view')]) {
+    rig.jump(params.get('view'));
+    // Highlight the view it opened on, not Overview.
+    document.querySelectorAll('[data-view]').forEach((o) => o.classList.toggle('active', o.dataset.view === params.get('view')));
+  }
   renderer.setAnimationLoop(loop);
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
   if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf };
