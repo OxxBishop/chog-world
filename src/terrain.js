@@ -107,6 +107,7 @@ const PAL = {
   grove: C('#3f8a4a'),
   soil: C('#6e4b33'),
 };
+const TIP = C('#2a1b4b');
 const STRATA = [C('#6e4b33'), C('#8a7a86'), C('#6d5e72'), C('#9b8a7c'), C('#75657e'), C('#5a4b62'), C('#3d3249')];
 
 // Painterly detail: soft mottling plus little strokes, tileable, multiplied over vertex colours.
@@ -246,6 +247,8 @@ function undersideGeometry(isl) {
       const band = clamp(Math.floor(t * (STRATA.length - 1) + (noise2(a * 5, t * 20) - 0.5) * 1.2), 0, STRATA.length - 1);
       c.copy(STRATA[band]).lerp(STRATA[Math.min(STRATA.length - 1, band + 1)], noise2(a * 13, t * 31) * 0.4);
       if (t < 0.04) c.copy(PAL.soil);
+      // Deepening to dusky violet toward the tip.
+      c.lerp(TIP, smoothstep(0.25, 1.0, t) * 0.65);
       col.push(c.r, c.g, c.b);
     }
   }
@@ -269,6 +272,24 @@ export function buildTerrain(scene) {
   const detail = detailTexture();
   const topMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: detail });
   const rockMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: detail });
+  // A soft rim of light along the rock edges, strongest on the side facing a low sun.
+  const rim = { value: new THREE.Color(0, 0, 0) };
+  const sunView = { value: new THREE.Vector3(0, 1, 0) };
+  rockMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uRim = rim;
+    sh.uniforms.uSunView = sunView;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uRim;\nuniform vec3 uSunView;').replace(
+      '#include <opaque_fragment>',
+      `{
+        vec3 nv = normalize(normal);
+        float fres = pow(1.0 - clamp(dot(nv, normalize(vViewPosition)), 0.0, 1.0), 3.0);
+        float facing = 0.3 + 0.7 * clamp(dot(nv, uSunView) * 0.5 + 0.5, 0.0, 1.0);
+        outgoingLight += uRim * fres * facing;
+      }
+      #include <opaque_fragment>`,
+    );
+  };
+  rockMat.customProgramCacheKey = () => 'island-rock';
   const meshes = [];
   const tops = [];
   for (const isl of ISLANDS) {
@@ -314,7 +335,19 @@ export function buildTerrain(scene) {
     for (const m of tops) m.geometry.attributes.color.needsUpdate = true;
   }
 
-  return { meshes, tops, shade, edgeR };
+  const lilac = new THREE.Color('#7c5cff');
+  return {
+    meshes,
+    tops,
+    shade,
+    edgeR,
+    update(env, sky, camera) {
+      const su = sky.uniforms;
+      const low = 1 - smoothstep(0.02, 0.4, env.sunElev);
+      rim.value.copy(su.uSunColor.value).multiplyScalar(low * (1 - env.night) * 0.9).add(lilac.clone().multiplyScalar(0.12 * env.night));
+      sunView.value.copy(env.sunElev > -0.04 ? su.uSunDir.value : su.uMoonDir.value).transformDirection(camera.matrixWorldInverse);
+    },
+  };
 }
 
 export { edgeR };

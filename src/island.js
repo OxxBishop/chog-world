@@ -251,6 +251,7 @@ export function buildIsland(scene, rng, renderer, sky) {
       skyRocks.update(t);
       falls.update(env, t);
       hub.setNight(env.night);
+      terrain.update(env, sky, camera);
       undersides.update(env);
       landmarks.update(env, t, dt);
       forest.setLight(env);
