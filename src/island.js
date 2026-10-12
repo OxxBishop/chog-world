@@ -90,7 +90,7 @@ export function buildIsland(scene, rng, renderer, sky) {
   // Forest: jittered grid kept where a noise field says "woods", thinner in the built-up middle.
   const trees = [];
   const STEP = 7.5;
-  const R = 270;
+  const R = 330;
   for (let gx = -R; gx <= R; gx += STEP) {
     for (let gz = -R; gz <= R; gz += STEP) {
       const x = gx + rng.range(-2.5, 2.5), z = gz + rng.range(-2.5, 2.5);
@@ -99,6 +99,8 @@ export function buildIsland(scene, rng, renderer, sky) {
       // Woods thicken toward each island's rim, framing the edge.
       const woods = fbm(x * 0.014 + 40, z * 0.014 - 20, 4) + (hit.k > 0.65 ? 0.12 : 0);
       if (woods < 0.5) continue;
+      // On the neighbourhoods, trees gather in groves with open clearings between them.
+      if (hit.isl.id !== 'downtown' && fbm(x * 0.022 + 7, z * 0.022 - 3, 3) < 0.47) continue;
       if (built(x, z, 4)) continue;
       const y = heightAt(x, z);
       const isPine = y > 9 ? rng() < 0.65 : rng() < 0.28;
@@ -117,6 +119,7 @@ export function buildIsland(scene, rng, renderer, sky) {
     const rd = roadDistance(x, z);
     if (rd < 2.2 || rd > 4.5 || !onLand(x, z) || nearDome(x, z, 3) || downtownDist(x, z) < DOWNTOWN.r + 3) continue;
     if (noise2(x * 0.08, z * 0.08) < 0.68) continue;
+    if (islandAt(x, z)?.isl.id !== 'downtown' && rng() < 0.45) continue;
     const scale = rng.range(0.7, 0.95);
     forest.add(rng.pick(MODELS.common), x, heightAt(x, z) - 0.1, z, { scale, rotY: rng() * Math.PI * 2, tint: rng() < 0.55 ? rng.pick(BLOSSOM) : rng.pick(GREENS) });
     shadeSpots.push([x, z, 2.6 * scale, 0.3]);
