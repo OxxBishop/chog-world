@@ -91,8 +91,9 @@ void main() {
   if (h < 0.0) {
     float t = (uCamPos.y + 1800.0) / max(-h, 1e-4);
     vec2 sp = uCamPos.xz + d.xz * t;
-    vec2 q = sp / 700.0 + vec2(uTime * 0.0015, uTime * 0.001);
-    vec2 q2 = q * 3.7 + vec2(-uTime * 0.002, uTime * 0.0012);
+    // Two wave trains rolling different ways, quick enough to see from up here.
+    vec2 q = sp / 700.0 + vec2(uTime * 0.012, uTime * 0.007);
+    vec2 q2 = q * 3.7 + vec2(-uTime * 0.03, uTime * 0.018);
     float e = 0.004;
     vec2 slope = vec2(tn(q) - tn(q + vec2(e, 0.0)), tn(q) - tn(q + vec2(0.0, e))) * 30.0
       + vec2(tg(q2) - tg(q2 + vec2(e, 0.0)), tg(q2) - tg(q2 + vec2(0.0, e))) * 18.0;
@@ -102,8 +103,10 @@ void main() {
     float fres = 0.02 + 0.98 * pow(1.0 - max(dot(-d, n), 0.0), 5.0);
     vec3 deep = mix(vec3(0.012, 0.06, 0.2), vec3(0.003, 0.006, 0.025), uNight);
     vec3 sea = mix(deep, sky, fres);
-    sea += uSunColor * pow(max(dot(r, uSunDir), 0.0), 300.0) * 3.0 * (1.0 - uNight);
-    sea += vec3(0.6, 0.55, 0.9) * pow(max(dot(r, uMoonDir), 0.0), 400.0) * 1.5 * uNight;
+    // Glints twinkle as the waves turn.
+    float twinkle = 0.45 + 0.55 * sin(uTime * 2.6 + tb(q2 * 5.0) * 40.0);
+    sea += uSunColor * pow(max(dot(r, uSunDir), 0.0), 300.0) * 3.4 * twinkle * (1.0 - uNight);
+    sea += vec3(0.6, 0.55, 0.9) * pow(max(dot(r, uMoonDir), 0.0), 400.0) * 1.7 * twinkle * uNight;
     col = mix(sea, col, 1.0 - exp(-t / 12000.0));
   }
 
