@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chog World</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Figtree:wght@400;500;600&display=swap" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="loading">
+      <div class="mark">Chog World</div>
+      <div class="sub">Waking the island...</div>
+    </div>
+
+    <div class="hud top-left">
+      <div class="mark">Chog World</div>
+      <div class="tag">prototype · <span id="fps">-- fps</span></div>
+    </div>
+
+    <div class="hud top-right">
+      <button data-view="overview" class="active">Overview</button>
+      <button data-view="below">Below</button>
+      <button data-view="downtown">Chog Hub</button>
+      <button data-view="neighbourhood">Neighbourhood</button>
+      <button data-view="dome">Dome</button>
+      <button data-view="inside">Inside</button>
+      <button data-view="ground">Ground</button>
+      <button data-view="sky">Sky</button>
+    </div>
+
+    <div id="nav-hint" class="nav-hint">Drag to look around · WASD to fly · Space up, C down · Shift for speed · Scroll to glide · Double-click to fly to a spot</div>
+
+    <div class="hud bottom">
+      <div class="clock">
+        <span id="clock-time">--:--</span>
+        <span id="clock-phase">Day</span>
+      </div>
+      <input id="time-slider" type="range" min="0" max="24" step="0.05" value="12" aria-label="Time of day" />
+      <button id="btn-live" class="active">Live</button>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
