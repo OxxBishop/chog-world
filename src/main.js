@@ -3,6 +3,7 @@ import { loadAll } from './assets.js';
 import { Sky } from './sky.js';
 import { createVolumetricClouds } from './volclouds.js';
 import { Post } from './post.js';
+import { createDebug } from './debug.js';
 import { buildIsland } from './island.js';
 import { CameraRig } from './camera.js';
 import { wind } from './foliage.js';
@@ -50,6 +51,7 @@ const post = new Post(renderer, scene, camera);
 
 let island;
 let clouds;
+let debug = null;
 
 // Time of day: live local clock, or a scrubbed hour from the slider.
 const time = { live: true, hour: 12 };
@@ -103,6 +105,7 @@ async function init() {
   }
   if (VIEWS[params.get('view')]) rig.jump(params.get('view'));
   renderer.setAnimationLoop(frame);
+  if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
   if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf };
 }
 
@@ -227,6 +230,8 @@ let lastClock = '';
 const lastShadow = { focus: new THREE.Vector3(1e9, 0, 0), hour: -1, r: 0, frames: 0 };
 
 function frame() {
+  const cpu0 = performance.now();
+  debug?.begin();
   timer.update();
   const realDt = timer.getDelta();
   const dt = Math.min(realDt, 0.05);
@@ -264,8 +269,10 @@ function frame() {
   }
 
   post.setNight(env.night);
-  post.render(dt);
+  if (debug && !debug.state.post) renderer.render(scene, camera);
+  else post.render(dt);
   tunePerf(realDt * 1000, realDt);
+  debug?.end(realDt, performance.now() - cpu0);
 }
 
 init().catch((err) => {
