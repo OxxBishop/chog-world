@@ -52,7 +52,28 @@ Tasks:
          nrm.f32 and normal.png.
   dot    the plain body's yellow dot on its forehead painted out and its bump flattened (the user, 10-18: "the
          yellow dot on the chogs face, was it in the 2d image? i don't think so. that's a flaw"). Before face.
-Writes <out dir>/base.png (when a texture task ran) and joints.f32 / weights.f32 (rigid) for patch.mjs.
+  shirt  Toasty's shirt all the way round (the user, 10-18: "his shirt is scuffed at the sides and at the
+         back, for the umpteenth time"): Tripo painted clean flames only on the front; the sides were
+         smeared and the back (the old `back` task) a flat band with hard edges. The front's flame hem
+         (45 degrees either side of the middle) is cloned round the body, mirrored so it runs on without a
+         seam and meets itself at the back, its height following the shorts' top all round; above it, shirt
+         red up to the collar. Replaces `back`.
+  torso  the torso held as one round body (the user, 10-18, Toasty: "why is his back rectangular instead of
+         round ... his side also sunk in ... the hem overextends at his back ... his torso is supposed to be
+         round all the way through"): Tripo gave the front and back to the spine, the sides to the hips and
+         (up to 85%) the arms, so a lean, a twist or the arms coming down pulled them apart. Each height
+         of the torso, under the arms, is held by the same blend of hips, spine and chest all round (the
+         front's and back's own blend at that height), eased back to its own weights under the armpit.
+  round  the torso's shape made round (Toasty: Tripo made it a box, straight down the sides, one side
+         flatter than the other, the back of the shirt a ledge over the shorts): each slice of it pushed out
+         to the rounder of its two sides (mirrored), and the shirt's bottom drawn in to sit on the shorts,
+         so it curves in at the hem all round. Writes pos.f32 and nrm.f32.
+  arms   Toasty's arms (the user, 10-18: "what are those on toasty's arms?"): the holes 10-17's cord cut left
+         on top of each elbow closed with new skin-coloured triangles, the skin round them let go by the head
+         (it creased into a dark gash as the arm came down), and marks on the arms painted the sleeve's red
+         or the skin round them. Writes index.u32 and append_*.f32 (patch.mjs --index, --append).
+Writes <out dir>/base.png (when a texture task ran) and joints.f32 / weights.f32 (rigid) for patch.mjs;
+pos.f32 / nrm.f32 when a task moved the surface.
 """
 import colorsys
 import os
@@ -500,6 +521,530 @@ def blush(m, img, face, colour=(0.95, 0.62, 0.66), at=((0.25, 0.46), (0.75, 0.46
     return out, int((a > 0.05).sum())
 
 
+def torso_round(m, joints, weights):
+    x, y, z = m.pos.T
+    arm = [m.bones.index(b) for b in m.bones if 'Arm' in b or 'Hand' in b]
+    trunk = [m.bones.index(b) for b in ('Hips', 'Spine', 'Chest') if b in m.bones]
+    aw = np.where(np.isin(joints, arm), weights, 0).sum(1)
+    hw = m.bone_weight(['Head', 'Neck'])
+    hips_y = m.joint_pos('Hips')[1]
+    sh = [m.joint_pos('UpperArmL'), m.joint_pos('UpperArmR')]
+    sh_x = min(abs(sh[0][0]), abs(sh[1][0]))
+    sh_y = min(sh[0][1], sh[1][1])
+    # The bottom of the arms in the bind pose: the torso's own is everything under it.
+    out = (np.abs(x) > sh_x + 0.1) & (aw > 0.9)
+    arm_bottom = np.percentile(y[out], 2) if out.any() else sh_y - 0.15
+    zc = torso_centre(m)
+    th = np.arctan2(x, z - zc)
+    fb = ((np.abs(th) < np.radians(40)) | (np.abs(th) > np.radians(140))) & (aw < 0.05) & (hw < 0.05)
+    # The front's and back's blend of the trunk's bones at each height (1 cm bins), smoothed.
+    lo, hi = hips_y + 0.03, arm_bottom + 0.06
+    bins = np.arange(lo, hi + 0.01, 0.01)
+    tw = np.zeros((len(bins), len(trunk)))
+    for i, b in enumerate(bins):
+        sel = fb & (np.abs(y - b) < 0.015)
+        if sel.sum() < 4:
+            tw[i] = np.nan
+            continue
+        for t, j in enumerate(trunk):
+            tw[i, t] = np.where(joints[sel] == j, weights[sel], 0).sum(1).mean()
+    ok = ~np.isnan(tw[:, 0])
+    for t in range(len(trunk)):
+        tw[:, t] = np.interp(bins, bins[ok], tw[ok, t])
+        tw[:, t] = ndimage.uniform_filter1d(tw[:, t], 5, mode='nearest')
+    tw /= np.maximum(tw.sum(1, keepdims=True), 1e-6)
+    # How much each vertex takes it: all of it from the hips to under the arms, easing out to the armpit,
+    # none out on the arm itself or on the head.
+    f = smooth01((arm_bottom - 0.02 - y) / 0.1) * smooth01((y - (hips_y - 0.02)) / 0.05)
+    f *= 1 - smooth01((np.abs(x) - (sh_x - 0.02)) / 0.12) * (y > arm_bottom - 0.12)
+    f *= hw < 0.3
+    f *= np.isin(joints, trunk + arm).any(1)
+    idx = np.clip(np.round((y - lo) / 0.01).astype(int), 0, len(bins) - 1)
+    changed = 0
+    for vi in np.nonzero(f > 1e-3)[0]:
+        mix = {}
+        for kk in range(4):
+            j, wv = int(joints[vi, kk]), float(weights[vi, kk])
+            if wv > 0:
+                mix[j] = mix.get(j, 0) + wv * (1 - f[vi])
+        for t, j in enumerate(trunk):
+            mix[j] = mix.get(j, 0) + tw[idx[vi], t] * f[vi]
+        set_mix(joints, weights, vi, mix)
+        changed += 1
+    print(f'  torso: {changed} vertices held round (hips {hips_y:.2f}, arms from {arm_bottom:.2f} up)')
+
+
+def torso_centre(m, pos=None):
+    """The torso's middle front to back: halfway between its front and its back, over the belly's height."""
+    P = m.pos if pos is None else pos
+    x, y, z = P.T
+    hips_y, sh_y = m.joint_pos('Hips')[1], m.joint_pos('UpperArmL')[1]
+    band = (y > hips_y + 0.25 * (sh_y - hips_y)) & (y < hips_y + 0.65 * (sh_y - hips_y)) & (np.abs(x) < 0.25) & (m.bone_weight(['Head', 'Neck']) < 0.3)
+    return 0.5 * (np.percentile(z[band], 99) + np.percentile(z[band], 1))
+
+
+def torso_shape(m, img, joints, weights):
+    x, y, z = m.pos.T.astype(np.float64)
+    n = img.shape[0]
+    px = np.clip((m.uv * n).astype(int), 0, n - 1)
+    c = img[px[:, 1], px[:, 0]]
+    h, s, v = hsv(c[None])
+    h, s, v = h[0] * 360, s[0], v[0]
+    shirt = ((((h < 14) | (h > 340)) & (s > 0.5)) | ((h >= 18) & (h < 60) & (s > 0.5) & (v > 0.6)))
+    shorts = (s < 0.25) & (v < 0.42)
+    aw = np.where(np.isin(joints, [m.bones.index(b) for b in m.bones if 'Arm' in b or 'Hand' in b]), weights, 0).sum(1)
+    hw = m.bone_weight(['Head', 'Neck'])
+    hips_y = m.joint_pos('Hips')[1]
+    sh = m.joint_pos('UpperArmL')
+    body = (aw < 0.5) & (hw < 0.3) & (y > hips_y - 0.1) & (y < sh[1] - 0.1)
+    zc = torso_centre(m)
+    th = np.arctan2(x, z - zc)
+    r = np.hypot(x, z - zc)
+    disp = np.zeros((len(x), 3))
+    # The shirt's bottom: its ledge over the shorts (faces turned down, round the waist), level all round.
+    nn = m.nrm / np.maximum(np.linalg.norm(m.nrm, axis=1, keepdims=True), 1e-9)
+    lg = (nn[:, 1] < -0.5) & (y > hips_y + 0.05) & (y < sh[1] - 0.2) & (np.abs(x) < 0.62) & (hw < 0.3)
+    # (The seat's underside faces down too, lower down: the ledge is the busiest height.)
+    hist, edges = np.histogram(y[lg], bins=np.arange(hips_y + 0.05, sh[1] - 0.2, 0.01))
+    ledge = float(edges[np.argmax(hist)] + 0.005)
+    m.ledge = ledge
+    trunk = (hw < 0.3) & (np.abs(x) < 0.62) & (y > hips_y) & (y < sh[1] - 0.14)
+    shirt_v = trunk & (y > ledge - 0.005)
+    r0 = np.hypot(x, z - zc)
+    # The shorts' reach just under the ledge, round the waist (18 bins), for the shirt to come in onto.
+    nb = 18
+    tb = np.clip(((th + np.pi) / (2 * np.pi) * nb).astype(int), 0, nb - 1)
+    rs = np.full(nb, np.nan)
+    for b_ in range(nb):
+        sel = trunk & (tb == b_) & (y < ledge - 0.015) & (y > ledge - 0.06)
+        if sel.sum() > 3:
+            rs[b_] = np.percentile(r0[sel], 95)
+    ok = ~np.isnan(rs)
+    rs = ndimage.uniform_filter1d(np.interp(np.arange(nb), np.nonzero(ok)[0], rs[ok], period=nb), 3, mode='wrap')
+    rs_at = np.interp((th + np.pi) / (2 * np.pi) * nb - 0.5, np.arange(nb), rs, period=nb)
+    # 1. The hem drawn in onto the shorts and the shirt bowing out above it: the shirt's slices scaled about
+    # its upright, from the shorts' reach (plus 1.5 cm) at the ledge to its own 12 cm up.
+    hem_r = np.full(nb, np.nan)
+    for b_ in range(nb):
+        sel = shirt_v & (tb == b_) & (y < ledge + 0.03)
+        if sel.sum() > 3:
+            hem_r[b_] = np.percentile(r0[sel], 95)
+    ok = ~np.isnan(hem_r)
+    hem_r = ndimage.uniform_filter1d(np.interp(np.arange(nb), np.nonzero(ok)[0], hem_r[ok], period=nb), 3, mode='wrap')
+    hem_at = np.interp((th + np.pi) / (2 * np.pi) * nb - 0.5, np.arange(nb), hem_r, period=nb)
+    k0 = np.clip((rs_at + 0.015) / np.maximum(hem_at, 1e-3), 0.8, 1.0)
+    t_ = np.clip((y - ledge) / 0.12, 0, 1)
+    f = 1 - (1 - k0) * (1 - t_ * t_ * (3 - 2 * t_))
+    sel = shirt_v
+    disp[sel, 0] += x[sel] * (f[sel] - 1)
+    disp[sel, 2] += (z[sel] - zc) * (f[sel] - 1)
+    # 2. Each slice's corners rounded (the back met the sides in an edge): what stands outside the slice's
+    # ellipse (its half width, front and back reach) is drawn most of the way onto it.
+    xs = x + disp[:, 0]
+    zs = z + disp[:, 2]
+    for yy in np.arange(ledge + 0.01, sh[1] - 0.14, 0.02):
+        sel = shirt_v & (np.abs(y - yy) < 0.011)
+        if sel.sum() < 30:
+            continue
+        a_ = np.percentile(np.abs(xs[sel]), 99)
+        zf = np.percentile(zs[sel], 99) - zc
+        zb = zc - np.percentile(zs[sel], 1)
+        vs = np.nonzero(sel)[0]
+        u = xs[vs] / a_
+        v = np.where(zs[vs] > zc, (zs[vs] - zc) / zf, (zs[vs] - zc) / zb)
+        rad = np.hypot(u, v)
+        pull = np.where(rad > 1, (1 + (rad - 1) * 0.3) / rad, 1.0)
+        disp[vs, 0] += xs[vs] * (pull - 1)
+        disp[vs, 2] += (zs[vs] - zc) * (pull - 1)
+    w_top = float(k0.min())
+    y_top = ledge
+    # Smoothed over the surface, so no slice shows.
+    wid, A = welded(m)
+    nw = A.shape[0]
+    deg = np.maximum(np.asarray(A.sum(1)).ravel(), 1)
+    D = np.zeros((nw, 3))
+    np.add.at(D, wid, disp)
+    cnt = np.zeros(nw)
+    np.add.at(cnt, wid, 1)
+    D /= np.maximum(cnt, 1)[:, None]
+    region = np.zeros(nw, bool)
+    region[wid[trunk]] = True
+    for _ in range(8):
+        D = np.where(region[:, None], 0.5 * D + 0.5 * (A @ D) / deg[:, None], D)
+    moved = np.linalg.norm(D[wid], axis=1) > 1e-4
+    m.pos = (m.pos + D[wid]).astype(np.float32)
+    ring = np.zeros(nw, bool)
+    ring[wid[moved]] = True
+    ring = ring | ((A @ ring.astype(float)) > 0)
+    nv = vertex_normals(m)
+    m.nrm = m.nrm.copy()
+    m.nrm[ring[wid]] = nv[ring[wid]]
+    m.geom_changed = True
+    print(f'  round: {int(moved.sum())} vertices moved, up to {np.linalg.norm(D, axis=1).max() * 100:.1f} cm; the shirt ends at {ledge:.2f}, its hem drawn in up to {(1 - w_top) * 100:.0f}%')
+
+
+def shirt_round(m, img):
+    n = img.shape[0]
+    x, y, z = m.pos.T
+    arm = m.bone_weight([b for b in m.bones if 'Arm' in b or 'Hand' in b])
+    head = m.bone_weight(['Head'])
+    h, s, v = hsv(img)
+    hue = h * 360
+    red = ((hue < 14) | (hue > 340)) & (s > 0.55) & (v > 0.35)
+    flame = (hue >= 18) & (hue < 60) & (s > 0.5) & (v > 0.6)
+    shorts = (s < 0.25) & (v < 0.42)
+    # The torso round its upright: angle (0 the front) and height, for every texel of it.
+    zc = torso_centre(m)
+    th = np.arctan2(x, z - zc)
+    # (Not the arms: out past the shoulders along them, they are the arms task's.)
+    along = np.zeros(len(m.pos), bool)
+    for sd in 'LR':
+        sj, ej = m.joint_pos(f'UpperArm{sd}'), m.joint_pos(f'ForeArm{sd}')
+        ax = (ej - sj) / np.linalg.norm(ej - sj)
+        along |= ((m.pos - sj) @ ax > 0.0) & (arm > 0.3)
+    keep = (arm < 0.85) & ~along & (head < 0.5) & (y > 0.15) & (y < 1.1)
+    tris = m.index[keep[m.index].all(1)]
+    tris = tris[np.ptp(th[tris], 1) < 1.0]
+    tid, val = raster(m.uv * n, tris, values=np.c_[th, y].astype(np.float32), size=n)
+    on = tid >= 0
+    T, Y = val[..., 0], val[..., 1]
+    # Tripo's flames are clean round the front, to 77 degrees either side of its middle; the back half
+    # is the smear.
+    TF = np.radians(77)
+    # The shorts' top at each angle (the hem's foot), all round, smoothed; the front's for the source.
+    bins = 48
+    tb = np.clip(((T + np.pi) / (2 * np.pi) * bins).astype(int), 0, bins - 1)
+    foot = np.full(bins, np.nan)
+    for b in range(bins):
+        sel = on & (tb == b) & shorts
+        if sel.sum() > 30:
+            foot[b] = np.percentile(Y[sel], 97)
+    ok = ~np.isnan(foot)
+    idx = np.arange(bins)
+    foot = np.interp(idx, idx[ok], foot[ok], period=bins)
+    foot = ndimage.uniform_filter1d(foot, 5, mode='wrap')
+    footAt = lambda t: np.interp((t + np.pi) / (2 * np.pi) * bins - 0.5, idx, foot, period=bins)
+    # The shirt's own bottom edge (its ledge, level all round; see 'round') where it was found: the hem
+    # paints from there, and anything shirt-coloured under it is the shorts' (the back's flames ran down
+    # onto them: the user, 10-18, "the hem overextends at his back").
+    if getattr(m, 'ledge', None) is not None:
+        footAt = lambda t: np.full(np.shape(t), m.ledge)
+    # The collar at each angle: the top of the shirt's red there.
+    top = np.full(bins, np.nan)
+    for b in range(bins):
+        sel = on & (tb == b) & red
+        if sel.sum() > 30:
+            top[b] = np.percentile(Y[sel], 99)
+    ok = ~np.isnan(top)
+    top = np.interp(idx, idx[ok], top[ok], period=bins)
+    top = ndimage.uniform_filter1d(top, 3, mode='wrap')
+    topAt = lambda t: np.interp((t + np.pi) / (2 * np.pi) * bins - 0.5, idx, top, period=bins)
+    # Each texel round the back takes the front's own (its flames, curls and all, texel for texel), its
+    # angle mirrored back into the front's: from each edge of the clean front round to the back's middle,
+    # that side's half of the front reversed, so both sides meet on the front's middle; its height kept.
+    from scipy.spatial import cKDTree
+    R0 = 0.5
+    fr = on & (np.abs(T) < TF) & (Y > footAt(T) - 0.01)
+    fy_, fx_ = np.nonzero(fr)
+    tree = cKDTree(np.c_[T[fr] * R0, Y[fr]])
+    a_ = np.abs(T)
+    r_ = TF - np.clip((a_ - TF) / (np.pi - TF), 0, 1) * TF
+    Ts = np.where(a_ <= TF, T, np.sign(T) * r_)
+    q = on & (a_ > TF - 0.05)
+    _, k = tree.query(np.c_[Ts[q] * R0, Y[q]])
+    src = img.copy()
+    src[q] = img[fy_[k], fx_[k]]
+    # What the front has there that isn't the shirt (skin over its collar) is the shirt's red.
+    sh_, ss_, sv_ = hsv(src)
+    shue = sh_ * 360
+    src_ok = (((shue < 14) | (shue > 340)) & (ss_ > 0.5) & (sv_ > 0.3)) | ((shue >= 18) & (shue < 60) & (ss_ > 0.5) & (sv_ > 0.6))
+    red_col = np.median(img[fr & red], 0)
+    src = np.where(src_ok[..., None], src, red_col)
+    # Only the shirt (above the shorts, below the collar), and away from the front, eased in.
+    w = np.clip((np.abs(T) - TF + 0.02) / 0.08, 0, 1) * on
+    w *= (Y > footAt(T) - 0.004) & (Y < topAt(T) + 0.01)
+    # Just under the hem, bits of red or orange smeared onto the shorts: the shorts' grey.
+    under = on & (Y < footAt(T) - 0.004) & (Y > footAt(T) - 0.14) & (red | flame | ((s > 0.35) & (hue > 15) & (hue < 60) & (v > 0.5)))
+    grey = np.median(img[on & shorts], 0)
+    src = np.where(under[..., None], grey, src)
+    w = np.maximum(w, under)
+    # Marks on the shirt anywhere above the flames (the cords' brown, scratches): its red.
+    flame_top = Y > np.percentile(Y[fr & flame], 99.5) + 0.02
+    mark = on & flame_top & (Y < topAt(T) - 0.03) & ~red & (np.abs(T) <= TF + 0.1)
+    mark = ndimage.binary_dilation(mark, iterations=2) & on & flame_top & (Y < topAt(T) - 0.03)
+    src = np.where(mark[..., None], red_col, src)
+    w = np.maximum(w, mark)
+    w = ndimage.gaussian_filter(w.astype(np.float32), 1.0) * on
+    out = img * (1 - w[..., None]) + src * w[..., None]
+    print(f'  shirt: {int((w > 0.5).sum())} texels repainted from the front, {int(under.sum())} on the shorts (shorts top {foot.min():.2f} to {foot.max():.2f})')
+    return out, int((w > 0.5).sum())
+
+
+def arms_clean(m, img, extra=None):
+    """Each arm's texels (upper arm and forearm, not the hand): the sleeve's red and the skin kept as they
+    are (the cuff's edge stays crisp); anything else on them (the cord stubs' cut faces, dark streaks) takes
+    the colour of the nearest red or skin round it."""
+    n = img.shape[0]
+    arm = m.bone_weight([b for b in m.bones if 'UpperArm' in b or 'ForeArm' in b])
+    hand = m.bone_weight([b for b in m.bones if 'Hand' in b])
+    out = np.zeros(len(m.pos), bool)
+    for side in 'LR':
+        sh, el = m.joint_pos(f'UpperArm{side}'), m.joint_pos(f'ForeArm{side}')
+        ax = (el - sh) / np.linalg.norm(el - sh)
+        out |= (m.pos - sh) @ ax > 0.08
+    keep = (arm[m.index].min(1) > 0.5) & (hand[m.index].max(1) < 0.3) & out[m.index].all(1)
+    if extra is not None:
+        keep |= extra[m.index].any(1)
+    tid, _ = raster(m.uv * n, m.index[keep], size=n)
+    on = tid >= 0
+    h, s, v = hsv(img)
+    hue = h * 360
+    red0 = on & ((hue < 12) | (hue > 340)) & (s > 0.6) & (v > 0.3)
+    skin0 = on & (hue >= 10) & (hue < 40) & (s > 0.25) & (s < 0.8) & (v > 0.3) & (v < 0.85)
+    red_c, skin_c = np.median(img[red0], 0), np.median(img[skin0], 0)
+    dist = lambda c: np.abs(img - c).max(2)
+    is_red = on & (dist(red_c) < 0.16)
+    is_skin = on & (dist(skin_c) < 0.13)
+    # Red among skin or skin among red (the stubs' cut faces), or neither: a mark. At the cuff, where both
+    # meet, each keeps its own.
+    soft = ndimage.gaussian_filter(is_red.astype(np.float32), 4) / np.maximum(ndimage.gaussian_filter((is_red | is_skin).astype(np.float32), 4), 1e-3)
+    bad = on & (~(is_red | is_skin) | (is_red & (soft < 0.3)) | (is_skin & (soft > 0.7)))
+
+    # Small specks of "bad" between good texels are just shading; the marks are clumps.
+    bad = ndimage.binary_opening(bad, iterations=1)
+    bad = ndimage.binary_dilation(bad, iterations=2) & on
+
+    good = on & ~bad
+    _, (iy, ix) = ndimage.distance_transform_edt(~good, return_indices=True)
+    fill = img[iy, ix]
+    fill = np.stack([ndimage.gaussian_filter(fill[..., c], 1.2) for c in range(3)], -1)
+    a = ndimage.gaussian_filter(bad.astype(np.float32), 0.8)
+    a = np.clip(a * 1.6, 0, 1) * on
+    img = img * (1 - a[..., None]) + fill * a[..., None]
+    print(f'  arms: {int(bad.sum())} texels of marks painted out')
+    return img, int(bad.sum())
+
+
+def _loops(m, wid, tris):
+    """Holes: closed loops of one-sided edges in the welded mesh, each as [(welded id, original id), ...] in
+    the order the rim runs."""
+    from collections import defaultdict
+    t = wid[tris]
+    cnt = defaultdict(int)
+    for a_, b_, c_ in t:
+        for u, v in ((a_, b_), (b_, c_), (c_, a_)):
+            cnt[(min(u, v), max(u, v))] += 1
+    nxt, corner = {}, {}
+    for (oa, ob, oc) in tris:
+        for u, v in ((oa, ob), (ob, oc), (oc, oa)):
+            wu, wv = wid[u], wid[v]
+            if cnt[(min(wu, wv), max(wu, wv))] == 1:
+                nxt[wv] = wu
+                corner[wu], corner[wv] = u, v
+    seen, loops = set(), []
+    for start in list(nxt):
+        if start in seen:
+            continue
+        loop, cur = [], start
+        while cur in nxt and cur not in seen:
+            seen.add(cur)
+            loop.append(cur)
+            cur = nxt[cur]
+        if cur == start and len(loop) >= 3:
+            loops.append([(w, corner[w]) for w in loop])
+    return loops
+
+
+def _clip(q2):
+    """Ear clipping of a simple polygon (2D points in order): triangles as index triples."""
+    area2 = np.sum(q2[:, 0] * np.roll(q2[:, 1], -1) - np.roll(q2[:, 0], -1) * q2[:, 1])
+    sgn = 1 if area2 > 0 else -1
+    order = list(range(len(q2)))
+    out = []
+    guard = 0
+    while len(order) > 3 and guard < 20000:
+        guard += 1
+        clipped = False
+        for k in range(len(order)):
+            i0, i1, i2 = order[k - 1], order[k], order[(k + 1) % len(order)]
+            a2, b2, c2 = q2[i0], q2[i1], q2[i2]
+            if ((b2[0] - a2[0]) * (c2[1] - a2[1]) - (b2[1] - a2[1]) * (c2[0] - a2[0])) * sgn <= 0:
+                continue
+            ok = True
+            for j in order:
+                if j in (i0, i1, i2):
+                    continue
+                pt = q2[j]
+                d1 = (b2[0] - a2[0]) * (pt[1] - a2[1]) - (b2[1] - a2[1]) * (pt[0] - a2[0])
+                d2 = (c2[0] - b2[0]) * (pt[1] - b2[1]) - (c2[1] - b2[1]) * (pt[0] - b2[0])
+                d3 = (a2[0] - c2[0]) * (pt[1] - c2[1]) - (a2[1] - c2[1]) * (pt[0] - c2[0])
+                if d1 * sgn > 0 and d2 * sgn > 0 and d3 * sgn > 0:
+                    ok = False
+                    break
+            if not ok:
+                continue
+            out.append((i0, i1, i2))
+            order.pop(k)
+            clipped = True
+            break
+        if not clipped:
+            # A rim that folds over itself: fan the rest from its first corner.
+            for k in range(1, len(order) - 1):
+                out.append((order[0], order[k], order[k + 1]))
+            return out
+    if len(order) == 3:
+        out.append(tuple(order))
+    return out
+
+
+def elbow_stubs(m, joints=None, weights=None):
+    """
+    The cords' stubs on the arms (the user, 10-18: "what are those on toasty's arms?"): 10-17 cut Toasty's
+    hat cords where they met his sleeves and left their bases, thin spikes standing out of the top of each
+    upper arm and elbow, with open holes, and the arm's skin round them held partly by the head (the cords
+    hung from the hat), so as the arm came down it creased into a dark gash. Out past the hat's ear flaps
+    (which hang over the shoulders and stay as they are), the head lets go of that skin, and every hole
+    along the arms is closed with new skin-coloured triangles.
+    """
+    from scipy.sparse.csgraph import connected_components
+    from scipy.sparse import coo_matrix
+    from scipy.spatial import cKDTree
+    wid, A = welded(m)
+    nw = A.shape[0]
+    P = np.zeros((nw, 3))
+    P[wid] = m.pos
+    arm = m.bone_weight([b for b in m.bones if 'Arm' in b])
+    aw = np.zeros(nw)
+    np.maximum.at(aw, wid, arm)
+    along_ok = np.zeros(nw, bool)
+    for s in 'LR':
+        sh, el = m.joint_pos(f'UpperArm{s}'), m.joint_pos(f'ForeArm{s}')
+        axis = (el - sh) / np.linalg.norm(el - sh)
+        L = np.linalg.norm(el - sh)
+        along = (P - sh) @ axis
+        along_ok |= (along > 0.12) & (along < L + 0.12)
+    # The arm's own holes (rims the arm holds): where the cords met it.
+    first = [l for l in _loops(m, wid, m.index) if along_ok[[w for w, _ in l]].all() and (aw[[w for w, _ in l]] > 0.2).mean() > 0.5]
+    rim0 = np.zeros(nw, bool)
+    for l in first:
+        rim0[[w for w, _ in l]] = True
+    drop = np.zeros(len(m.index), bool)
+    m.index = m.index[~drop]
+    # Spikes the arm holds (over half: the hat's ear flaps are the head's) standing out of the top of the
+    # upper arm and elbow: laid back onto the arm's tube where they are.
+    laid = 0
+    for s_ in 'LR':
+        sh, el = m.joint_pos(f'UpperArm{s_}'), m.joint_pos(f'ForeArm{s_}')
+        axis = (el - sh) / np.linalg.norm(el - sh)
+        L = np.linalg.norm(el - sh)
+        along = (P - sh) @ axis
+        perp = (P - sh) - np.outer(along, axis)
+        rad = np.linalg.norm(perp, axis=1)
+        for a0 in np.arange(0.05, L + 0.1, 0.02):
+            band = (along >= a0) & (along < a0 + 0.02) & (aw > 0.6)
+            if band.sum() < 8:
+                continue
+            r0 = np.percentile(rad[band], 60)
+            out = band & (rad > r0 + 0.012) & (perp[:, 1] > 0)
+            if out.sum() > band.sum() * 0.25:
+                continue
+            P[out] = sh + np.outer(along[out], axis) + perp[out] / rad[out, None] * r0
+            laid += int(out.sum())
+    if laid:
+        m.pos = P[wid].astype(np.float32)
+        m.nrm = vertex_normals(m).astype(np.float32) * 0 + m.nrm
+        m.geom_changed = True
+    # Every hole along the arms now: closed with new vertices (copies of its rim's) at a texel of skin.
+    # (Those the arm holds, and any right by them.)
+    near0 = np.zeros(nw, bool)
+    if rim0.any():
+        near0 = cKDTree(P[rim0]).query(P)[0] < 0.07
+    loops = [l for l in _loops(m, wid, m.index) if along_ok[[w for w, _ in l]].all() and ((aw[[w for w, _ in l]] > 0.2).mean() > 0.5 or near0[[w for w, _ in l]].all())]
+    arm_v = np.nonzero(arm > 0.8)[0]
+    skin_uv = m.uv[arm_v[0]]
+    img_ = getattr(m, 'img', None)
+    if img_ is not None:
+        N = img_.shape[0]
+        pxl = np.clip((m.uv[arm_v] * N).astype(int), 0, N - 1)
+        cc = img_[pxl[:, 1], pxl[:, 0]]
+        hh, ss, vv = hsv(cc[None])
+        hh, ss, vv = hh[0] * 360, ss[0], vv[0]
+        sk = (hh >= 10) & (hh < 40) & (ss > 0.25) & (ss < 0.8) & (vv > 0.3) & (vv < 0.85)
+        if sk.any():
+            med = np.median(cc[sk], 0)
+            skin_uv = m.uv[arm_v[np.argmin(np.abs(cc - med).max(1) + 10 * ~sk)]]
+    base = len(m.pos)
+    add_i, idx, rim_w, add_n = [], [], np.zeros(nw, bool), []
+    for l in loops:
+        ws = np.array([w for w, _ in l])
+        os_ = [o for _, o in l]
+        rim_w[ws] = True
+        cen = P[ws].mean(0)
+        _, _, vt = np.linalg.svd(P[ws] - cen)
+        q2 = np.c_[(P[ws] - cen) @ vt[0], (P[ws] - cen) @ vt[1]]
+        o0 = base + len(add_i)
+        add_i.extend(os_)
+        # One normal for the whole fill (its rim's, averaged), so it shades as one smooth patch.
+        hn = m.nrm[os_].sum(0)
+        add_n.extend([hn / max(np.linalg.norm(hn), 1e-9)] * len(os_))
+        for i0, i1, i2 in _clip(q2):
+            pa, pb, pc = P[ws[i0]], P[ws[i1]], P[ws[i2]]
+            n_ = np.cross(pb - pa, pc - pa)
+            out_ = m.nrm[os_[i0]] + m.nrm[os_[i1]] + m.nrm[os_[i2]]
+            # (Away from the arm's axis: the rim's own normals lean every way at a cut.)
+            ctr = P[ws].mean(0)
+            ax_pt = None
+            for s_ in 'LR':
+                sh_, el_ = m.joint_pos(f'UpperArm{s_}'), m.joint_pos(f'ForeArm{s_}')
+                if np.sign(sh_[0]) == np.sign(ctr[0]):
+                    ax_ = (el_ - sh_) / np.linalg.norm(el_ - sh_)
+                    ax_pt = sh_ + ax_ * ((ctr - sh_) @ ax_)
+            out_ = ctr - ax_pt if ax_pt is not None else out_
+            idx.append((o0 + i0, o0 + i1, o0 + i2) if n_ @ out_ > 0 else (o0 + i0, o0 + i2, o0 + i1))
+    # The arm's skin round the holes and where the stubs stood: the head lets go of it (not the ear flaps,
+    # which the arm holds none of).
+    fixv = []
+    if joints is not None and rim_w.any():
+        d8, _ = cKDTree(P[rim_w]).query(m.pos)
+        Hh = m.bones.index('Head')
+        arm_ids = [m.bones.index(b) for b in m.bones if 'Arm' in b]
+        aw_v = np.where(np.isin(joints, arm_ids), weights, 0).sum(1)
+        sh_x = abs(m.joint_pos('UpperArmL')[0])
+        el_x = abs(m.joint_pos('ForeArmL')[0])
+        past = np.abs(m.pos[:, 0]) > sh_x + 0.8 * (el_x - sh_x)
+        fixv = np.nonzero((d8 < 0.08) & (aw_v > 0.33) & (joints == Hh).any(1) & past)[0]
+        for vi in fixv:
+            mix = {}
+            for kk in range(4):
+                j_, w_ = int(joints[vi, kk]), float(weights[vi, kk])
+                if w_ > 0 and j_ != Hh:
+                    mix[j_] = mix.get(j_, 0) + w_
+            set_mix(joints, weights, vi, mix)
+    if add_i:
+        add_i = np.array(add_i)
+        J_ = joints if joints is not None else m.joints
+        W_ = weights if weights is not None else m.weights
+        m.append = dict(pos=m.pos[add_i], nrm=np.array(add_n, np.float32), uv=np.tile(skin_uv, (len(add_i), 1)), joints=J_[add_i].astype(np.float32), weights=W_[add_i])
+        m.append_idx = np.array(idx, dtype=np.int64)
+        m.append_src = add_i
+    m.index_changed = True
+    print(f"  arms: {laid} spike vertices laid flat, {len(loops)} holes closed with {len(idx)} triangles, {len(fixv)} vertices round them let go by the head")
+    return np.zeros(len(m.pos), bool), np.zeros(len(m.pos), bool)
+
+
+def vertex_normals(m):
+    wid, _ = welded(m)
+    tri = wid[m.index]
+    P = np.zeros((wid.max() + 1, 3))
+    P[wid] = m.pos
+    fn = np.cross(P[tri[:, 1]] - P[tri[:, 0]], P[tri[:, 2]] - P[tri[:, 0]])
+    vn = np.zeros_like(P)
+    for k in range(3):
+        np.add.at(vn, tri[:, k], fn)
+    vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-12)
+    return vn[wid]
+
+
 def welded(m):
     """Neighbours across the mesh, seams closed: (vertex -> welded id, sparse adjacency over welded ids)."""
     from scipy.sparse import coo_matrix
@@ -767,8 +1312,9 @@ def face_smooth(m, joints, weights, out_dir, iters=40, extra=None):
     t = np.clip(ww[wid] * 1.5, 0, 1)[:, None]
     nrm = old * (1 - t) + vn[wid] * t
     nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-12)
-    pos.tofile(os.path.join(out_dir, 'pos.f32'))
-    nrm.astype(np.float32).tofile(os.path.join(out_dir, 'nrm.f32'))
+    m.pos = pos
+    m.nrm = nrm.astype(np.float32)
+    m.geom_changed = True
     # The normal map flat there too.
     npath = os.path.join(m.d, 'normal.png')
     if os.path.exists(npath):
@@ -887,7 +1433,25 @@ def main():
     skin_changed = False
     for t in tasks:
         print(t)
-        if t == 'hands':
+        if t == 'round':
+            torso_shape(m, img, joints, weights)
+        elif t == 'torso':
+            torso_round(m, joints, weights)
+            skin_changed = True
+        elif t == 'shirt':
+            img, c = shirt_round(m, img)
+            painted |= c > 0
+        elif t == 'arms':
+            m.img = img
+            moved, stub = elbow_stubs(m, joints, weights)
+            skin_changed = True
+            img, c = arms_clean(m, img, stub)
+            painted |= c > 0
+            if moved.any():
+                m.nrm = m.nrm.copy()
+                m.nrm[moved] = vertex_normals(m)[moved]
+                m.geom_changed = True
+        elif t == 'hands':
             img, c = hands(m, img)
             painted |= c > 0
         elif t == 'back':
@@ -937,6 +1501,15 @@ def main():
             name = os.path.basename(os.path.normpath(d))
             img, c = blush(m, img, faces[name], **BLUSH.get(name, {}))
             painted |= c > 0
+    if getattr(m, 'append', None) is not None:
+        for k_, v_ in m.append.items():
+            np.asarray(v_, np.float32).tofile(os.path.join(out_dir, f'append_{k_}.f32'))
+        np.vstack([m.index, m.append_idx]).astype(np.uint32).tofile(os.path.join(out_dir, 'index.u32'))
+    elif getattr(m, 'index_changed', False):
+        m.index.astype(np.uint32).tofile(os.path.join(out_dir, 'index.u32'))
+    if getattr(m, 'geom_changed', False):
+        m.pos.astype(np.float32).tofile(os.path.join(out_dir, 'pos.f32'))
+        m.nrm.astype(np.float32).tofile(os.path.join(out_dir, 'nrm.f32'))
     if skin_changed:
         weights = np.clip(weights, 0, 1)
         weights /= np.maximum(weights.sum(1, keepdims=True), 1e-6)

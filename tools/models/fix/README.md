@@ -77,6 +77,10 @@ Since 10-16 (A13, A14):
   chog-1151 `head sides hips hands face`; chog-66 `head sides hips hands duck face`; chog-56
   `head sides hips spill blush face`; chog-409 `head sides hips robe shoulders face sleeves`; the rest
   `head sides hips face` (chog-52 and chog-56 keep their colour maps painted earlier that day).
+- **10-18, Toasty** (chog-52): `head sides hips torso round shirt arms face`, from the shipped file of 10-17.
+  `arms` adds vertices (the holes' fills): `patch.mjs ... --index <out>/index.u32 --append <out>` takes them.
+  Checks: `tools/models/posedump.html` (a model's vertices as the world poses them) and `pick.html` (which
+  vertices show inside a box of pose.html's picture).
 - **Picker portraits**: `tools/models/portraits.html` renders each Chog's loop (one clip length at 20 fps) as
   JPEG frames; pack them with Pillow into animated WebP (`save_all`, `duration=50`, `loop=0`, `quality=65`,
   `method=6`), 320 px, into `public/faces/portraits/<id>.webp`.

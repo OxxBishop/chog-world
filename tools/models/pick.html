@@ -1,0 +1,43 @@
+<!doctype html><meta charset="utf-8"><title>Pick</title>
+<pre id="log"></pre>
+<script type="module">
+// Which of a model's vertices show inside a box of pose.html's picture (same camera: m, move, t, v, size,
+// focus, zoom; box=x0,y0,x1,y1 in that picture's pixels). window.__json: { verts: [index, ...] }, nearest
+// the camera first.
+import * as THREE from 'three';
+import { makeChog, setChogRenderer, CHOG_HEIGHT } from '/src/chog.js';
+const q = new URLSearchParams(location.search);
+setChogRenderer(new THREE.WebGLRenderer());
+const c = await makeChog({ model: `models/npcs/${q.get('m') || 'plain'}.glb` });
+await new Promise((r) => setTimeout(r, 300));
+c.play('idle');
+for (let k = 0; k < 30; k++) c.update(1 / 30, null);
+c.play(q.get('move') || 'idle');
+for (let k = 0; k < Math.round(+(q.get('t') || 0.4) * 60); k++) c.update(1 / 60, null);
+c.root.updateMatrixWorld(true);
+const S = +(q.get('size') || 220), zoom = +(q.get('zoom') || 1), focus = +(q.get('focus') ?? 0.5);
+const H = CHOG_HEIGHT;
+const a = { front: 0, threeq: Math.PI / 4, side: Math.PI / 2, back: Math.PI, lthreeq: -Math.PI / 4, lside: -Math.PI / 2 }[q.get('v') || 'front'];
+const cam = new THREE.PerspectiveCamera(30, 1, 0.05, 60);
+const look = new THREE.Vector3(0, H * focus, 0);
+cam.position.set(Math.sin(a), 0.25, Math.cos(a)).normalize().multiplyScalar((H * 2.3) / zoom).add(look);
+cam.lookAt(look);
+cam.updateMatrixWorld(true);
+const [x0, y0, x1, y1] = q.get('box').split(',').map(Number);
+const { skin } = c.debug();
+skin.skeleton.update();
+const v = new THREE.Vector3();
+const hits = [];
+for (let i = 0; i < skin.geometry.attributes.position.count; i++) {
+  skin.getVertexPosition(i, v);
+  v.applyMatrix4(skin.matrixWorld);
+  const d = v.distanceTo(cam.position);
+  v.project(cam);
+  const px = (v.x + 1) / 2 * S, py = (1 - v.y) / 2 * S;
+  if (px >= x0 && px <= x1 && py >= y0 && py <= y1) hits.push([i, d]);
+}
+hits.sort((p, r) => p[1] - r[1]);
+window.__json = JSON.stringify({ verts: hits.map((h) => h[0]), dist: hits.map((h) => +h[1].toFixed(3)) });
+document.getElementById('log').textContent = `${hits.length} vertices`;
+window.__done = true;
+</script>

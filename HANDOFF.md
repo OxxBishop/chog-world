@@ -27,6 +27,23 @@ are real but free.
 
 ## Log
 
+### 2026-10-18 · A · Toasty: a round torso, flames all the way round, his arms cleaned
+- **The shape** (the user: "why is his back rectangular instead of round ... his side also sunk in ... his torso
+  is supposed to be round all the way through"): Tripo built him as a box with a ledge where the shirt's back
+  overhung the shorts. `cleanup.py round` rounds each slice's corners and draws the hem in onto the shorts;
+  `torso` holds every height of the torso with the same blend of hips, spine and chest all round (the sides
+  were the hips' and up to 85% the arms', so they sank in as the arms moved).
+- **The shirt** ("scuffed at the sides and at the back, for the umpteenth time"; "the hem overextends at his
+  back"): Tripo's flames are clean round the front to 77 degrees either side; `shirt` mirrors them texel for
+  texel round the back, so both sides meet on the middle of his back, the hem level all round at the shirt's
+  own edge, and the red and orange that ran down onto his shorts back to grey. Replaces `back`.
+- **His arms** ("what are those on toasty's arms?"): 10-17 cut his hat cords at the sleeves and left their
+  holes, and the skin round them was partly the head's, so it creased into a dark gash as his arms came down.
+  `arms` closes the holes with new skin-coloured triangles (`patch.mjs --append`), lets the head go of that
+  skin, lays spikes the arm holds back onto it and paints marks out. A faint mark is left at each elbow from
+  close up; the hat's ear flaps keep their fringe.
+- Checked at phone size: walk 1.9 and run 4.2 m/s, the stick, feet on the ground, no T-poses, no errors.
+  Portrait rendered again.
 ### 2026-10-19 · B · Things are solid now, hoverboards glide clean, fewer birds, and zero g is a swim
 - **Collision** (the user: "the chog and the hoverboard kept phasing through everything"). `src/travel.js` `collide`/`pushOut` now also keeps your Chog out of a new list of props (`props`, binned like the obstacles):
   - the street lamps (`island.lamps`, from `src/roads.js` via a one-line export in `src/island.js`, A's file);
