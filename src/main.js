@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { loadAll } from './assets.js';
+import { loadClouds } from './clouds.js';
 import { Sky } from './sky.js';
 import { Post } from './post.js';
 import { buildIsland } from './island.js';
@@ -33,7 +34,7 @@ const fwd = (d, k) => new THREE.Vector3(d.x + Math.sin(d.facing) * k, 0, d.z + M
 const hood = HOODS[0];
 const VIEWS = {
   overview: { pos: new THREE.Vector3(205, 120, 250), target: new THREE.Vector3(0, L - 10, 30) },
-  below: { pos: new THREE.Vector3(230, -150, 260), target: new THREE.Vector3(0, -20, 0) },
+  cloudline: { pos: new THREE.Vector3(150, 2, 215), target: new THREE.Vector3(0, 4, 0) },
   downtown: { pos: new THREE.Vector3(14, L + 10, 26), target: new THREE.Vector3(0, L + 2.5, CAFE.z) },
   neighbourhood: { pos: new THREE.Vector3(hood.x + 40, L + 38, hood.z - 70), target: new THREE.Vector3(hood.x, L + 2, hood.z + 10) },
   dome: { pos: fwd(home, DOME_R + 18).setY(L + 5), target: new THREE.Vector3(home.x, L + 6, home.z) },
@@ -63,8 +64,10 @@ function phaseName(h, night) {
 
 async function init() {
   await loadAll((p) => ($('loading').querySelector('.sub').textContent = `Waking the island... ${Math.round(p * 100)}%`));
+  $('loading').querySelector('.sub').textContent = 'Gathering clouds...';
+  const cloudModels = await loadClouds();
   await document.fonts.load('600 120px Fredoka').catch(() => {});
-  island = buildIsland(scene, makeRng(1969), renderer, sky);
+  island = buildIsland(scene, makeRng(1969), renderer, sky, cloudModels);
   island.setQuality(perf.quality);
   buildPickables();
   // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.

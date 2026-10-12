@@ -2,7 +2,7 @@
 // a neighbourhood of domes on each surrounding island, bridges between them.
 export const WORLD = {
   landH: 2.2,
-  cloudSeaY: -320,
+  cloudSeaY: -30,
 };
 
 export const DOWNTOWN = { x: 0, z: 0, r: 24 };

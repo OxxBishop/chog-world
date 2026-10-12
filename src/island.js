@@ -5,7 +5,8 @@ import { Forest } from './trees.js';
 import { buildTerrain, heightAt, islandAt } from './terrain.js';
 import { buildRoads } from './roads.js';
 import { makeCafe } from './cafe.js';
-import { buildCloudSea, buildBridges, buildSkyRocks, buildWaterfalls, buildCloudPuffs } from './skyfx.js';
+import { buildBridges, buildSkyRocks, buildWaterfalls } from './skyfx.js';
+import { buildCloudWorld } from './clouds.js';
 import { WORLD, ISLANDS, DOWNTOWN, DOMES, DOME_R, CAFE, roadDistance, nearDome } from './layout.js';
 import { fbm, noise2 } from './util.js';
 
@@ -50,15 +51,14 @@ function randomOnIslands(rng) {
   return [isl.x + Math.cos(a) * r, isl.z + Math.sin(a) * r];
 }
 
-export function buildIsland(scene, rng, renderer, sky) {
+export function buildIsland(scene, rng, renderer, sky, cloudModels) {
   const noise = sky.uniforms.uNoise.value;
   const terrain = buildTerrain(scene);
-  const cloudSea = buildCloudSea(scene, noise);
+  const clouds = buildCloudWorld(scene, rng, cloudModels, noise);
   const roads = buildRoads(scene);
   const bridges = buildBridges(scene);
   const skyRocks = buildSkyRocks(scene, rng, MODELS);
   const falls = buildWaterfalls(scene, rng, noise);
-  const puffs = buildCloudPuffs(scene, rng);
   const forest = new Forest();
   const props = new Scatter();
   const low = new Scatter();
@@ -246,10 +246,9 @@ export function buildIsland(scene, rng, renderer, sky) {
       for (const d of domes) d.update(env, t);
       roads.update(env);
       bridges.update(env);
-      cloudSea.update(env, t, camera, sky.uniforms);
+      clouds.update(env, t, camera, sky.uniforms, dt);
       skyRocks.update(t);
       falls.update(env, t);
-      puffs.update(env, t, camera, sky.uniforms, dt);
       cafe.setNight(env.night);
       forest.setLight(env);
       forest.update(camera.position);
