@@ -6,8 +6,8 @@ import { rockGeometry } from './skyfx.js';
 
 /*
  * What hangs below each island, so no two read the same from below: glowing crystals and rock
- * spikes under downtown, roots under the first neighbourhood, chains under the second, vines by
- * the third's waterfalls. Plus rocky ledges jutting from the cliffs of every island.
+ * spikes under downtown, roots under one neighbourhood, vines by another's waterfalls, chains
+ * tying every neighbourhood to downtown. Plus rocky ledges jutting from the cliffs of every island.
  */
 
 // A tapered strand along a curve, thick at the top and thin at the tip.
@@ -94,25 +94,73 @@ function roots(isl, rng, group) {
   group.add(new THREE.Mesh(mergeGeometries(geos), new THREE.MeshLambertMaterial({ color: '#6b4a34' })));
 }
 
-function chains(isl, rng, group) {
-  const link = new THREE.TorusGeometry(0.55, 0.15, 6, 12);
-  const mats = [];
-  const anchors = [];
-  for (let k = 0; k < 4; k++) anchors.push(undersidePoint(isl, (k / 4) * Math.PI * 2 + 0.4, k % 2 ? 0.34 : 0.67));
-  for (const a of anchors) {
-    const n = 64;
-    for (let i = 0; i < n; i++) {
-      const m = new THREE.Matrix4();
-      const rot = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, i % 2 ? Math.PI / 2 : 0, 0));
-      m.compose(new THREE.Vector3(a.x, a.y - 0.4 - i * 0.82, a.z), rot, new THREE.Vector3(1, 1, 1));
-      mats.push(m);
+// Outward normal of an island's underside at (a, t), from neighbouring surface points.
+function rockNormal(isl, a, t) {
+  const p = undersidePoint(isl, a, t);
+  const da = undersidePoint(isl, a + 0.01, t).sub(p);
+  const dt = undersidePoint(isl, a, t + 0.01).sub(p);
+  const n = new THREE.Vector3().crossVectors(dt, da).normalize();
+  const out = new THREE.Vector3(p.x - isl.x, 0, p.z - isl.z);
+  if (n.dot(out) < 0) n.negate();
+  return n;
+}
+
+/*
+ * Chains tying each neighbourhood to downtown: two per bridge, one each side, a little below the
+ * rims. Each end is fixed to a bolt plate and ring on the rock face, and the chain sags between.
+ */
+function chains(group) {
+  const steel = new THREE.MeshStandardMaterial({ color: '#8f8aa3', roughness: 0.45, metalness: 0.8 });
+  const link = new THREE.TorusGeometry(0.42, 0.13, 6, 12).scale(1, 1.45, 1);
+  const linkMats = [];
+  const fixings = [];
+  const hub = ISLANDS[0];
+  const up = new THREE.Vector3(0, 1, 0);
+  const anchor = (isl, a, t) => {
+    const n = rockNormal(isl, a, t);
+    const p = undersidePoint(isl, a, t).addScaledVector(n, 0.25);
+    // Bolt plate flush on the rock, and the ring standing off it.
+    const q = new THREE.Quaternion().setFromUnitVectors(up, n);
+    fixings.push(new THREE.CylinderGeometry(1.3, 1.5, 0.35, 10).applyQuaternion(q).translate(p.x, p.y, p.z));
+    const ringAt = p.clone().addScaledVector(n, 0.9);
+    const ringQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(n.z, 0, -n.x).normalize());
+    fixings.push(new THREE.TorusGeometry(0.75, 0.2, 8, 16).applyQuaternion(ringQ).translate(ringAt.x, ringAt.y, ringAt.z));
+    fixings.push(new THREE.CylinderGeometry(0.22, 0.22, 0.9, 6).applyQuaternion(q).translate(...p.clone().addScaledVector(n, 0.45).toArray()));
+    return ringAt.addScaledVector(up, -0.6);
+  };
+  for (const b of BRIDGES) {
+    const hood = ISLANDS.find((i) => i.id === `hood${b.hood}`);
+    for (const side of [-1, 1]) {
+      const A = anchor(hub, b.angle + side * 0.2, 0.12);
+      const B = anchor(hood, b.angle + Math.PI - side * 0.32, 0.14);
+      const span = A.distanceTo(B);
+      const sag = span * 0.14;
+      const at = (u) => new THREE.Vector3().lerpVectors(A, B, u).addScaledVector(up, -sag * 4 * u * (1 - u));
+      // Walk along the curve placing links end to end, each turned a quarter from the last.
+      let u = 0, i = 0;
+      while (u < 1) {
+        const p0 = at(u);
+        let u1 = u, p1 = p0;
+        while (u1 < 1 && p1.distanceTo(p0) < 0.82) {
+          u1 = Math.min(1, u1 + 0.002);
+          p1 = at(u1);
+        }
+        const dir = p1.clone().sub(p0).normalize();
+        const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
+        if (i % 2) q.multiply(new THREE.Quaternion().setFromAxisAngle(up, Math.PI / 2));
+        linkMats.push(new THREE.Matrix4().compose(p0.clone().add(p1).multiplyScalar(0.5), q, new THREE.Vector3(1, 1, 1)));
+        u = u1;
+        i++;
+      }
     }
   }
-  const steel = new THREE.MeshStandardMaterial({ color: '#8f8aa3', roughness: 0.45, metalness: 0.8 });
-  const mesh = new THREE.InstancedMesh(link, steel, mats.length);
-  mats.forEach((m, i) => mesh.setMatrixAt(i, m));
-  mesh.castShadow = true;
-  group.add(mesh);
+  const links = new THREE.InstancedMesh(link, steel, linkMats.length);
+  linkMats.forEach((m, i) => links.setMatrixAt(i, m));
+  links.castShadow = true;
+  group.add(links);
+  const fix = new THREE.Mesh(mergeGeometries(fixings), steel);
+  fix.castShadow = true;
+  group.add(fix);
 }
 
 function vines(isl, rng, group) {
@@ -160,10 +208,10 @@ export function buildUndersides(scene, rng) {
   for (const isl of ISLANDS) {
     if (isl.under === 'crystal') crystals(isl, rng, group, glow);
     if (isl.under === 'roots') roots(isl, rng, group);
-    if (isl.under === 'chains') chains(isl, rng, group);
     if (isl.under === 'falls') vines(isl, rng, group);
     ledges(isl, rng, group, ledgeMat);
   }
+  chains(group);
   scene.add(group);
   return {
     update(env) {

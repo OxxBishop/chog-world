@@ -206,9 +206,12 @@ export function undersidePoint(isl, a, t) {
   const shift = prof.lean * Math.pow(t, 1.5) * isl.r * 0.45;
   const leanA = isl.seed * 2.3;
   const e = edgeR(isl, a);
-  const rr = e * prof.radius(t);
+  // Same crags and wobble as the mesh, so things fixed here sit on the actual rock.
+  const crag = 1 + (fbm(Math.cos(a) * 3 + isl.seed, Math.sin(a) * 3 + t * 6, 3) - 0.5) * 0.35 * Math.sin(t * Math.PI);
+  const rr = e * prof.radius(t) * crag;
   const rimY = surface(isl.x + Math.cos(a) * e * 0.9995, isl.z + Math.sin(a) * e * 0.9995, { isl, k: 0.9995 });
-  return new THREE.Vector3(isl.x + Math.cos(leanA) * shift + Math.cos(a) * rr, rimY - t * isl.depth, isl.z + Math.sin(leanA) * shift + Math.sin(a) * rr);
+  const y = rimY - t * isl.depth - (noise2(a * 9 + isl.seed, t * 12) - 0.5) * 3 * t;
+  return new THREE.Vector3(isl.x + Math.cos(leanA) * shift + Math.cos(a) * rr, y, isl.z + Math.sin(leanA) * shift + Math.sin(a) * rr);
 }
 
 /** Where an island's rim is at angle a: the edge point and its ground height. */
