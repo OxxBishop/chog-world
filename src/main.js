@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { loadAll } from './assets.js';
-import { loadClouds } from './clouds.js';
+import { CloudSeaPass } from './cloudsea.js';
 import { Sky } from './sky.js';
 import { Post } from './post.js';
 import { buildIsland } from './island.js';
@@ -44,6 +44,8 @@ const VIEWS = {
 };
 const rig = new CameraRig(camera, renderer.domElement, VIEWS);
 const post = new Post(renderer, scene, camera);
+const clouds = new CloudSeaPass(camera, sky);
+post.addClouds(clouds);
 
 let island;
 
@@ -64,11 +66,10 @@ function phaseName(h, night) {
 
 async function init() {
   await loadAll((p) => ($('loading').querySelector('.sub').textContent = `Waking the island... ${Math.round(p * 100)}%`));
-  $('loading').querySelector('.sub').textContent = 'Gathering clouds...';
-  const cloudModels = await loadClouds();
   await document.fonts.load('600 120px Fredoka').catch(() => {});
-  island = buildIsland(scene, makeRng(1969), renderer, sky, cloudModels);
+  island = buildIsland(scene, makeRng(1969), renderer, sky, clouds.late);
   island.setQuality(perf.quality);
+  clouds.setQuality(perf.quality);
   buildPickables();
   // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
   $('loading').querySelector('.sub').textContent = 'Lighting the sky...';
@@ -85,7 +86,7 @@ async function init() {
   }
   if (VIEWS[params.get('view')]) rig.jump(params.get('view'));
   renderer.setAnimationLoop(frame);
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, renderer, frame, VIEWS, perf };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf };
 }
 
 // UI.
@@ -164,8 +165,8 @@ rig.onFocusChange = (place) => {
 $('btn-back').addEventListener('click', () => rig.exitFocus());
 
 $('nav-hint').textContent = TOUCH
-  ? 'Drag to move · Pinch to zoom · Twist to turn · Two-finger slide to tilt · Tap a place to visit, tap again to leave'
-  : 'Drag to move · Scroll to zoom · Right-drag to turn and tilt · Click a place to visit, click again or Esc to leave';
+  ? 'Swipe to look around · Two fingers to move · Pinch to zoom · Twist to turn · Tap a place to visit, tap again to leave'
+  : 'Drag to look around · Right-drag to move · Scroll to zoom · Click a place to visit, click again or Esc to leave';
 setTimeout(() => $('nav-hint')?.classList.add('faded'), 14000);
 
 // Keeps the frame rate up on slow machines: lowers resolution first, then detail.
@@ -190,9 +191,13 @@ function tunePerf(realMs, dt) {
       resize();
     } else if (perf.quality > 0) {
       island.setQuality(--perf.quality);
+      clouds.setQuality(perf.quality);
     }
   } else if (perf.ema < 20) {
-    if (perf.quality < 2 && perf.scale >= 1) island.setQuality(++perf.quality);
+    if (perf.quality < 2 && perf.scale >= 1) {
+      island.setQuality(++perf.quality);
+      clouds.setQuality(perf.quality);
+    }
     else if (perf.scale < 1) {
       perf.scale = Math.round((perf.scale + 0.1) * 10) / 10;
       resize();
@@ -231,6 +236,7 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
+  clouds.setEnv(env, t);
 
   const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);
   const label = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}|${phaseName(hour, env.night)}`;

@@ -57,6 +57,24 @@ export function undersideAt(x, z) {
   return WORLD.landH - 1.6 - t * hit.isl.depth;
 }
 
+/**
+ * Lowest the camera may sit at a point: just over the grass on an island, easing down past the rim
+ * to just above the tallest cloud tops.
+ */
+export function cameraFloor(x, z, clearance = 1.5) {
+  const sky = WORLD.cloudSeaY + 28;
+  let floor = sky;
+  for (const isl of ISLANDS) {
+    const dx = x - isl.x, dz = z - isl.z;
+    const d = Math.hypot(dx, dz);
+    if (d > isl.r * 1.45) continue;
+    const k = d / edgeR(isl, Math.atan2(dz, dx));
+    const ground = (k <= 1 ? surface(x, z, { isl, k }) : WORLD.landH - 1.6) + clearance;
+    floor = Math.max(floor, ground + (sky - ground) * smoothstep(1, 1.3, k));
+  }
+  return floor;
+}
+
 const C = (hex) => new THREE.Color(hex);
 const PAL = {
   grassA: C('#76c93b'),

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { damp, easeInOut, clamp, angleLerp } from './util.js';
-import { heightAt, isVoid, undersideAt } from './terrain.js';
+import { heightAt, isVoid, cameraFloor } from './terrain.js';
 import { WORLD } from './layout.js';
 
 const MIN_DIST = 8;
@@ -8,6 +8,8 @@ const MAX_DIST = 750;
 const TARGET_LIMIT = 330;
 const TAP_MS = 280;
 const TAP_PX = 9;
+const _pos = new THREE.Vector3();
+const _look = new THREE.Vector3();
 
 /**
  * Map-style camera, built for touch first.
@@ -16,6 +18,9 @@ const TAP_PX = 9;
  * to the sky; two fingers drag to move, pinch to zoom and twist to turn (right mouse moves,
  * scroll zooms toward the pointer). Tap a place to visit it; tap again, tap empty sky or press
  * Back to return. Until the first touch the camera slowly circles the world.
+ *
+ * The camera never passes through an island or dips into the clouds: swing low and it stops at the
+ * grass or the cloud tops, and further swiping tilts the view up to the sky from there.
  */
 export class CameraRig {
   constructor(camera, dom, views) {
@@ -119,8 +124,8 @@ export class CameraRig {
   }
 
   maxPhi() {
-    // Past level, so you can swing low and look up at the sky.
-    return this.goal.target.y < WORLD.landH - 5 ? 2.5 : 1.95;
+    // Well past level: once the camera is as low as it can go, the extra tilt looks up at the sky.
+    return 2.8;
   }
 
   // World units per screen pixel at the target distance.
@@ -148,7 +153,12 @@ export class CameraRig {
     const real = next / this.goal.dist;
     if (!this.focused) {
       const p = this.groundPoint(sx, sy);
-      if (p) this.goal.target.lerp(p, 1 - real);
+      if (p) {
+        // Zooming in on an island settles the target onto the grass.
+        const g = heightAt(p.x, p.z);
+        if (!isVoid(g)) p.y = Math.max(p.y, g);
+        this.goal.target.lerp(p, 1 - real);
+      }
     }
     this.goal.dist = next;
   }
@@ -229,19 +239,41 @@ export class CameraRig {
 
   // ---------- per frame ----------
 
+  // Camera position for a tilt around the current target.
+  orbit(phi, out) {
+    const s = Math.sin(phi);
+    return out.set(s * Math.sin(this.theta), Math.cos(phi), s * Math.cos(this.theta)).multiplyScalar(this.dist).add(this.target);
+  }
+
+  clearAt(phi) {
+    const p = this.orbit(phi, _pos);
+    return p.y >= cameraFloor(p.x, p.z);
+  }
+
   apply() {
-    const s = Math.sin(this.phi);
-    const off = new THREE.Vector3(s * Math.sin(this.theta), Math.cos(this.phi), s * Math.cos(this.theta)).multiplyScalar(this.dist);
-    const pos = this.target.clone().add(off);
-    // Keep the camera out of the islands: above the grass or below the rock.
-    const g = heightAt(pos.x, pos.z);
-    if (!isVoid(g) && pos.y < g + 1.5) {
-      const bottom = undersideAt(pos.x, pos.z);
-      if (pos.y > bottom - 1.5) pos.y = pos.y - bottom > g + 1.5 - pos.y ? g + 1.5 : bottom - 1.5;
+    // Swing down only as far as the camera stays clear of the grass and the clouds.
+    let phi = this.phi;
+    if (!this.clearAt(phi)) {
+      let hi = phi;
+      let lo = phi;
+      while (lo > 0.05 && !this.clearAt(lo)) {
+        hi = lo;
+        lo = Math.max(0.05, lo - 0.08);
+      }
+      for (let i = 0; i < 10; i++) {
+        const mid = (lo + hi) / 2;
+        if (this.clearAt(mid)) lo = mid;
+        else hi = mid;
+      }
+      phi = lo;
     }
-    pos.y = Math.max(pos.y, WORLD.cloudSeaY + 25);
+    const pos = this.orbit(phi, _pos);
+    pos.y = Math.max(pos.y, cameraFloor(pos.x, pos.z));
     this.camera.position.copy(pos);
-    this.camera.lookAt(this.target);
+    // Any tilt beyond that turns the view upward from where the camera stopped.
+    const s = Math.sin(this.phi);
+    _look.set(s * Math.sin(this.theta), Math.cos(this.phi), s * Math.cos(this.theta)).multiplyScalar(-this.dist).add(pos);
+    this.camera.lookAt(_look);
   }
 
   keyMove(dt) {

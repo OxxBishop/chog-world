@@ -34,6 +34,11 @@ export class Post {
     this.bloom.luminanceMaterial.threshold = 0.95 - n * 0.12;
   }
 
+  // The cloud sea needs the scene's depth, so it runs straight after the scene is drawn.
+  addClouds(pass) {
+    this.composer.addPass(pass, 1);
+  }
+
   setSize(w, h) {
     this.composer.setSize(w, h);
   }
