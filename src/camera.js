@@ -5,8 +5,10 @@ import { heightAt, isVoid, cameraFloor } from './terrain.js';
 const MIN_DIST = 8;
 const MAX_DIST = 750;
 const TARGET_LIMIT = 420;
-const TAP_MS = 280;
-const TAP_PX = 9;
+const TAP_MS = 300;
+const TAP_PX = 10;
+// How fast a flung swing or drag dies away after the finger lifts (per second).
+const FRICTION = 3.2;
 const _pos = new THREE.Vector3();
 const _look = new THREE.Vector3();
 
@@ -39,6 +41,8 @@ export class CameraRig {
     this.keys = new Set();
     this.focusDist = 100;
     this.idleSpin = true;
+    this.fling = { theta: 0, phi: 0, pan: new THREE.Vector3() };
+    this.touching = 0;
     this.bind();
     this.jump('overview');
   }
@@ -59,11 +63,17 @@ export class CameraRig {
       return { n: 2, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y), ang: Math.atan2(b.y - a.y, b.x - a.x) };
     };
 
+    // Velocity of the last moves, kept going after release so a swipe glides to a stop.
+    const fling = this.fling;
+    let lastMove = 0;
     el.addEventListener('pointerdown', (e) => {
       el.setPointerCapture(e.pointerId);
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, t: performance.now(), sx: e.clientX, sy: e.clientY });
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, t: performance.now(), sx: e.clientX, sy: e.clientY, far: 0 });
+      this.touching = pts.size;
       this.tween = null;
       this.idleSpin = false;
+      fling.theta = fling.phi = 0;
+      fling.pan.set(0, 0, 0);
       gesture = { ...snapshot(), move: e.button === 2 || e.ctrlKey || e.shiftKey };
     });
     el.addEventListener('pointermove', (e) => {
@@ -71,12 +81,14 @@ export class CameraRig {
       if (!p) return;
       p.x = e.clientX;
       p.y = e.clientY;
+      p.far = Math.max(p.far, Math.hypot(p.x - p.sx, p.y - p.sy));
       const now = snapshot();
       if (!gesture || now.n !== gesture.n) {
         gesture = { ...now, move: gesture?.move };
         return;
       }
       const dx = now.x - gesture.x, dy = now.y - gesture.y;
+      const before = { theta: this.goal.theta, phi: this.goal.phi, target: this.goal.target.clone() };
       if (now.n === 1) {
         if (gesture.move && !this.focused) this.pan(dx, dy);
         else this.rotate(dx, dy);
@@ -90,14 +102,29 @@ export class CameraRig {
         if (this.focused) this.rotate(dx, 0);
         else this.pan(dx, dy);
       }
+      const t = performance.now();
+      const span = Math.max(8, Math.min(60, t - lastMove)) / 1000;
+      lastMove = t;
+      const k = 0.45;
+      fling.theta += ((this.goal.theta - before.theta) / span - fling.theta) * k;
+      fling.phi += ((this.goal.phi - before.phi) / span - fling.phi) * k;
+      fling.pan.lerp(this.goal.target.clone().sub(before.target).divideScalar(span), k);
       gesture = { ...now, move: gesture.move };
     });
     const end = (e) => {
       const p = pts.get(e.pointerId);
       if (!p) return;
       pts.delete(e.pointerId);
-      const quick = performance.now() - p.t < TAP_MS && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < TAP_PX;
+      this.touching = pts.size;
+      // A tap is short and never wanders: any real movement along the way makes it a swipe.
+      const far = Math.max(p.far, Math.hypot(e.clientX - p.sx, e.clientY - p.sy));
+      const quick = performance.now() - p.t < TAP_MS && far < TAP_PX;
       if (quick && pts.size === 0 && gesture?.n === 1 && p.button === 0) this.onTap?.(e.clientX, e.clientY);
+      // No glide after a tap or after a finger paused before lifting.
+      if (pts.size === 0 && (quick || performance.now() - lastMove > 90)) {
+        fling.theta = fling.phi = 0;
+        fling.pan.set(0, 0, 0);
+      }
       gesture = pts.size ? { ...snapshot(), move: false } : null;
     };
     el.addEventListener('pointerup', end);
@@ -298,6 +325,17 @@ export class CameraRig {
 
   update(dt) {
     if (!this.focused) this.keyMove(dt);
+    // Glide after a fling, slowing to a stop.
+    const f = this.fling;
+    if (!this.touching && (Math.abs(f.theta) + Math.abs(f.phi) > 1e-3 || f.pan.lengthSq() > 1e-3)) {
+      this.goal.theta += f.theta * dt;
+      this.goal.phi = clamp(this.goal.phi + f.phi * dt, 0.15, this.maxPhi());
+      if (!this.focused) this.goal.target.addScaledVector(f.pan, dt);
+      const decay = Math.exp(-FRICTION * dt);
+      f.theta *= decay;
+      f.phi *= decay;
+      f.pan.multiplyScalar(decay);
+    }
     if (this.idleSpin && !this.focused && !this.tween) this.goal.theta += dt * 0.05;
     // Stay over the archipelago.
     const r = Math.hypot(this.goal.target.x, this.goal.target.z);

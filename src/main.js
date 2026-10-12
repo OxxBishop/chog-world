@@ -113,7 +113,7 @@ async function init() {
   if (VIEWS[params.get('view')]) {
     rig.jump(params.get('view'));
     // Highlight the view it opened on, not Overview.
-    document.querySelectorAll('[data-view]').forEach((o) => o.classList.toggle('active', o.dataset.view === params.get('view')));
+    markView(params.get('view'));
   }
   renderer.setAnimationLoop(loop);
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
@@ -133,15 +133,33 @@ $('btn-live').addEventListener('click', () => {
 });
 // Place buttons visit the same framed spots as tapping; the rest are fixed camera views.
 const PLACE_FOR_VIEW = { downtown: 'hub', neighbourhood: 'hood0', dome: 'dome2' };
+// On phones the places live in a menu behind one button that names the current view.
+const placesMenu = $('places');
+const placesToggle = $('places-toggle');
+function setMenu(open) {
+  placesMenu.classList.toggle('open', open);
+  placesToggle.setAttribute('aria-expanded', String(open));
+}
+function markView(view) {
+  document.querySelectorAll('[data-view]').forEach((o) => o.classList.toggle('active', o.dataset.view === view));
+  const b = document.querySelector(`[data-view="${view}"]`);
+  $('places-current').textContent = b ? b.textContent : 'Places';
+}
+placesToggle.addEventListener('click', () => setMenu(!placesMenu.classList.contains('open')));
+renderer.domElement.addEventListener('pointerdown', () => setMenu(false));
 document.querySelectorAll('[data-view]').forEach((b) =>
   b.addEventListener('click', () => {
     const placeId = PLACE_FOR_VIEW[b.dataset.view];
     const place = placeId && pickables.find((m) => m.userData.place.id === placeId)?.userData.place;
     if (place) rig.focusOn(place);
     else rig.go(b.dataset.view);
-    document.querySelectorAll('[data-view]').forEach((o) => o.classList.toggle('active', o === b));
+    markView(b.dataset.view);
+    setMenu(false);
   }),
 );
+// iOS Safari ignores the viewport lock for pinches and double taps, so stop those gestures here.
+for (const type of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
 
 function resize() {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -195,7 +213,10 @@ rig.onFocusChange = (place) => {
   // The pill takes the hint's spot above the time bar.
   if (place) $('nav-hint').classList.add('faded');
   if (place) $('focus-name').textContent = place.name;
-  if (!place) document.querySelectorAll('[data-view]').forEach((o) => o.classList.remove('active'));
+  if (!place) {
+    document.querySelectorAll('[data-view]').forEach((o) => o.classList.remove('active'));
+    $('places-current').textContent = 'Places';
+  }
 };
 $('btn-back').addEventListener('click', () => rig.exitFocus());
 
