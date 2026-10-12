@@ -106,7 +106,7 @@ async function init() {
     $('btn-live').classList.remove('active');
   }
   if (VIEWS[params.get('view')]) rig.jump(params.get('view'));
-  renderer.setAnimationLoop(frame);
+  renderer.setAnimationLoop(loop);
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
   if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf };
 }
@@ -231,6 +231,23 @@ const timer = new THREE.Timer();
 timer.connect(document);
 let lastClock = '';
 let lastShadowHour = -1;
+
+// While nothing is moving (camera still, clock not being scrubbed) a fast machine skips every
+// other frame: the world keeps swaying and drifting at 30 fps and the machine gets a rest.
+// Machines already under 40 fps are left alone.
+const calm = { since: 0, last: 0, view: new THREE.Matrix4(), hour: 0, gap: 16 };
+function loop(now) {
+  const gap = now - calm.last;
+  const still = now - calm.since > 500;
+  if (still && calm.gap < 25 && gap < 30) return;
+  if (!still && gap < 200) calm.gap += (gap - calm.gap) * 0.1;
+  calm.last = now;
+  frame();
+  const hour = currentHour();
+  if (!calm.view.equals(camera.matrixWorld) || Math.abs(hour - calm.hour) > 1e-3) calm.since = now;
+  calm.view.copy(camera.matrixWorld);
+  calm.hour = hour;
+}
 
 function frame() {
   const cpu0 = performance.now();

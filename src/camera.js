@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { damp, easeInOut, clamp, angleLerp } from './util.js';
 import { heightAt, isVoid, cameraFloor } from './terrain.js';
-import { WORLD } from './layout.js';
 
 const MIN_DIST = 8;
 const MAX_DIST = 750;
@@ -38,7 +37,6 @@ export class CameraRig {
     this.onTap = null;
     this.onFocusChange = null;
     this.keys = new Set();
-    this.focus = new THREE.Vector3();
     this.focusDist = 100;
     this.idleSpin = true;
     this.bind();
@@ -326,7 +324,6 @@ export class CameraRig {
       this.phi += (this.goal.phi - this.phi) * a;
     }
     this.apply();
-    this.focus.copy(this.target).setY(WORLD.landH);
     this.focusDist = this.dist;
   }
 }
