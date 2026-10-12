@@ -378,3 +378,161 @@ void main() {
     },
   };
 }
+
+// Four soft cumulus shapes in a 2x2 atlas: red channel is how lit a spot is (bright tops, darker bellies), alpha is density.
+function cloudAtlas() {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S * 2;
+  const ctx = c.getContext('2d');
+  let seed = 5;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let cell = 0; cell < 4; cell++) {
+    const ox = (cell % 2) * S, oy = Math.floor(cell / 2) * S;
+    const layer = document.createElement('canvas');
+    layer.width = layer.height = S;
+    const l = layer.getContext('2d');
+    const blobs = 16 + Math.floor(rnd() * 10);
+    for (let i = 0; i < blobs; i++) {
+      // Heaped in the middle and top, flatter along the base.
+      const a = rnd() * Math.PI;
+      const rr = Math.sqrt(rnd());
+      const x = S / 2 + Math.cos(a) * rr * S * 0.34 * (cell % 2 ? 1.1 : 0.9);
+      const y = S * 0.62 - Math.sin(a) * rr * S * 0.26;
+      const r = S * (0.1 + rnd() * 0.12);
+      const g = l.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.95)');
+      g.addColorStop(0.6, 'rgba(255,255,255,0.55)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      l.fillStyle = g;
+      l.beginPath();
+      l.arc(x, y, r, 0, Math.PI * 2);
+      l.fill();
+    }
+    // Soft flat base.
+    l.globalCompositeOperation = 'destination-in';
+    const base = l.createLinearGradient(0, S * 0.6, 0, S * 0.8);
+    base.addColorStop(0, 'rgba(0,0,0,1)');
+    base.addColorStop(1, 'rgba(0,0,0,0)');
+    l.fillStyle = base;
+    l.fillRect(0, 0, S, S);
+    // Shade: lit tops, darker bellies (kept in the colour channels).
+    l.globalCompositeOperation = 'source-atop';
+    const shade = l.createLinearGradient(0, S * 0.3, 0, S * 0.78);
+    shade.addColorStop(0, 'rgb(255,255,255)');
+    shade.addColorStop(1, 'rgb(90,90,90)');
+    l.fillStyle = shade;
+    l.fillRect(0, 0, S, S);
+    ctx.drawImage(layer, ox, oy);
+  }
+  return new THREE.CanvasTexture(c);
+}
+
+/** Soft cloud banks drifting around and beneath the islands, so the height reads. */
+export function buildCloudPuffs(scene, rng) {
+  const puffs = [];
+  const clearOfIslands = (x, z, pad) => ISLANDS.every((isl) => Math.hypot(x - isl.x, z - isl.z) > isl.r + pad);
+  const add = (n, yMin, yMax, sMin, sMax, rMin, rMax, alpha, needClear) => {
+    for (let i = 0, tries = 0; i < n && tries < n * 30; tries++) {
+      const a = rng() * Math.PI * 2, r = rng.range(rMin, rMax);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      const size = rng.range(sMin, sMax);
+      if (needClear && !clearOfIslands(x, z, size * 0.5 + 20)) continue;
+      puffs.push({ x, y: rng.range(yMin, yMax), z, size, cell: Math.floor(rng() * 4), alpha: alpha * rng.range(0.7, 1), speed: rng.range(1.2, 3) });
+      i++;
+    }
+  };
+  add(34, -175, -60, 80, 170, 0, 380, 0.85, false); // beneath the islands
+  add(26, -28, 12, 45, 95, 110, 430, 0.8, true); // drifting between them
+  add(14, 45, 110, 60, 120, 60, 420, 0.45, false); // high wisps
+
+  const geo = new THREE.PlaneGeometry(1, 1);
+  const aCell = new THREE.InstancedBufferAttribute(new Float32Array(puffs.length), 1);
+  const aAlpha = new THREE.InstancedBufferAttribute(new Float32Array(puffs.length), 1);
+  geo.setAttribute('aCell', aCell);
+  geo.setAttribute('aAlpha', aAlpha);
+  const uniforms = THREE.UniformsUtils.merge([
+    THREE.UniformsLib.fog,
+    { uLit: { value: new THREE.Color() }, uShade: { value: new THREE.Color() } },
+  ]);
+  uniforms.uMap = { value: cloudAtlas() };
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    fog: true,
+    transparent: true,
+    depthWrite: false,
+    vertexShader: /* glsl */ `
+attribute float aCell;
+attribute float aAlpha;
+varying vec2 vUv;
+varying float vAlpha;
+#include <fog_pars_vertex>
+void main() {
+  vec3 center = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+  float s = length(instanceMatrix[0].xyz);
+  vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+  vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+  vec3 wp = center + (right * position.x * 1.6 + up * position.y) * s;
+  vec2 cell = vec2(mod(aCell, 2.0), floor(aCell / 2.0));
+  vUv = (cell + uv) * 0.5;
+  // Fade out as the camera gets close, so you glide through instead of hitting a wall.
+  float d = distance(center, cameraPosition);
+  vAlpha = aAlpha * smoothstep(s * 0.5, s * 1.4, d);
+  vec4 mvPosition = viewMatrix * vec4(wp, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`,
+    fragmentShader: /* glsl */ `
+uniform sampler2D uMap;
+uniform vec3 uLit, uShade;
+varying vec2 vUv;
+varying float vAlpha;
+#include <fog_pars_fragment>
+void main() {
+  vec4 t = texture2D(uMap, vUv);
+  float a = t.a * vAlpha;
+  if (a < 0.01) discard;
+  gl_FragColor = vec4(mix(uShade, uLit, t.r), a);
+  #include <fog_fragment>
+  #include <colorspace_fragment>
+}`,
+  });
+  const mesh = new THREE.InstancedMesh(geo, mat, puffs.length);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 4;
+  scene.add(mesh);
+
+  const wind = new THREE.Vector2(1, 0.35).normalize();
+  const m = new THREE.Matrix4();
+  const order = puffs.map((_, i) => i);
+  const nightLit = new THREE.Color('#5c44a6'), nightShade = new THREE.Color('#22164a');
+  return {
+    update(env, t, camera, skyU, dt) {
+      uniforms.uLit.value.copy(WHITE).lerp(skyU.uHorizon.value, 0.18).lerp(nightLit, env.night);
+      uniforms.uShade.value.copy(skyU.uTop.value).lerp(WHITE, 0.45).lerp(nightShade, env.night);
+      const cp = camera.position;
+      for (const p of puffs) {
+        p.x += wind.x * p.speed * dt;
+        p.z += wind.y * p.speed * dt;
+        // Drifted off one side: come back in on the other.
+        if (Math.hypot(p.x, p.z) > 460) {
+          p.x = -p.x * 0.98;
+          p.z = -p.z * 0.98;
+        }
+        p.d = (p.x - cp.x) ** 2 + (p.y - cp.y) ** 2 + (p.z - cp.z) ** 2;
+      }
+      // Far to near, so the soft edges layer correctly.
+      order.sort((a, b) => puffs[b].d - puffs[a].d);
+      order.forEach((idx, i) => {
+        const p = puffs[idx];
+        m.makeScale(p.size, p.size, p.size).setPosition(p.x, p.y, p.z);
+        mesh.setMatrixAt(i, m);
+        aCell.setX(i, p.cell);
+        aAlpha.setX(i, p.alpha);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      aCell.needsUpdate = true;
+      aAlpha.needsUpdate = true;
+    },
+  };
+}

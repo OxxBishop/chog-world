@@ -5,7 +5,7 @@ import { Forest } from './trees.js';
 import { buildTerrain, heightAt, islandAt } from './terrain.js';
 import { buildRoads } from './roads.js';
 import { makeCafe } from './cafe.js';
-import { buildCloudSea, buildBridges, buildSkyRocks, buildWaterfalls } from './skyfx.js';
+import { buildCloudSea, buildBridges, buildSkyRocks, buildWaterfalls, buildCloudPuffs } from './skyfx.js';
 import { WORLD, ISLANDS, DOWNTOWN, DOMES, DOME_R, CAFE, roadDistance, nearDome } from './layout.js';
 import { fbm, noise2 } from './util.js';
 
@@ -58,6 +58,7 @@ export function buildIsland(scene, rng, renderer, sky) {
   const bridges = buildBridges(scene);
   const skyRocks = buildSkyRocks(scene, rng, MODELS);
   const falls = buildWaterfalls(scene, rng, noise);
+  const puffs = buildCloudPuffs(scene, rng);
   const forest = new Forest();
   const props = new Scatter();
   const low = new Scatter();
@@ -241,13 +242,14 @@ export function buildIsland(scene, rng, renderer, sky) {
       lowDist = [55, 85, 120][q];
       forest.update(forest.last, true);
     },
-    update(env, t, camera) {
+    update(env, t, camera, dt = 0.016) {
       for (const d of domes) d.update(env, t);
       roads.update(env);
       bridges.update(env);
       cloudSea.update(env, t, camera, sky.uniforms);
       skyRocks.update(t);
       falls.update(env, t);
+      puffs.update(env, t, camera, sky.uniforms, dt);
       cafe.setNight(env.night);
       forest.setLight(env);
       forest.update(camera.position);

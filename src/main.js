@@ -32,7 +32,7 @@ const home = DOMES[2];
 const fwd = (d, k) => new THREE.Vector3(d.x + Math.sin(d.facing) * k, 0, d.z + Math.cos(d.facing) * k);
 const hood = HOODS[0];
 const VIEWS = {
-  overview: { pos: new THREE.Vector3(330, 230, 350), target: new THREE.Vector3(0, L, 20) },
+  overview: { pos: new THREE.Vector3(205, 120, 250), target: new THREE.Vector3(0, L - 10, 30) },
   below: { pos: new THREE.Vector3(230, -150, 260), target: new THREE.Vector3(0, -20, 0) },
   downtown: { pos: new THREE.Vector3(14, L + 10, 26), target: new THREE.Vector3(0, L + 2.5, CAFE.z) },
   neighbourhood: { pos: new THREE.Vector3(hood.x + 40, L + 38, hood.z - 70), target: new THREE.Vector3(hood.x, L + 2, hood.z + 10) },
@@ -214,7 +214,7 @@ function frame() {
   // Shadows cover what the camera is looking at, sized to how far away it is.
   const dist = rig.focusDist;
   sky.focus.copy(rig.focus);
-  sky.focusR = Math.round(Math.min(80, Math.max(24, dist * 0.55)) / 8) * 8;
+  sky.focusR = Math.round(Math.min(230, Math.max(24, dist * 0.55)) / 8) * 8;
   sky.fog.near = 350 + dist * 1.1;
   sky.fog.far = sky.fog.near + 1800;
   const env = sky.update(hour, camera, t);
@@ -227,7 +227,7 @@ function frame() {
     lastShadow.frames = 0;
   }
   wind.uTime.value = t;
-  island.update(env, t, camera);
+  island.update(env, t, camera, dt);
 
   const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);
   const label = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}|${phaseName(hour, env.night)}`;

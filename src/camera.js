@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { damp, easeInOut, clamp, angleLerp } from './util.js';
-import { heightAt, isVoid } from './terrain.js';
+import { heightAt, isVoid, undersideAt } from './terrain.js';
 import { WORLD } from './layout.js';
 
 const MIN_DIST = 8;
@@ -12,10 +12,10 @@ const TAP_PX = 9;
 /**
  * Map-style camera, built for touch first.
  *
- * Exploring: one finger (or left mouse) drags the world around, pinch or scroll zooms toward
- * where you point, two fingers twist to turn and slide up or down to tilt (right mouse does both).
- * Tap a place to visit it: the camera frames it and dragging then circles around it.
- * Tap again, tap empty sky or press Back to return to where you were.
+ * One finger (or left mouse) swings the view around whatever you are looking at, all the way up
+ * to the sky; two fingers drag to move, pinch to zoom and twist to turn (right mouse moves,
+ * scroll zooms toward the pointer). Tap a place to visit it; tap again, tap empty sky or press
+ * Back to return. Until the first touch the camera slowly circles the world.
  */
 export class CameraRig {
   constructor(camera, dom, views) {
@@ -35,6 +35,7 @@ export class CameraRig {
     this.keys = new Set();
     this.focus = new THREE.Vector3();
     this.focusDist = 100;
+    this.idleSpin = true;
     this.bind();
     this.jump('overview');
   }
@@ -59,7 +60,8 @@ export class CameraRig {
       el.setPointerCapture(e.pointerId);
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, t: performance.now(), sx: e.clientX, sy: e.clientY });
       this.tween = null;
-      gesture = { ...snapshot(), rotate: e.button === 2 || e.ctrlKey || e.shiftKey };
+      this.idleSpin = false;
+      gesture = { ...snapshot(), move: e.button === 2 || e.ctrlKey || e.shiftKey };
     });
     el.addEventListener('pointermove', (e) => {
       const p = pts.get(e.pointerId);
@@ -68,23 +70,24 @@ export class CameraRig {
       p.y = e.clientY;
       const now = snapshot();
       if (!gesture || now.n !== gesture.n) {
-        gesture = { ...now, rotate: gesture?.rotate };
+        gesture = { ...now, move: gesture?.move };
         return;
       }
       const dx = now.x - gesture.x, dy = now.y - gesture.y;
       if (now.n === 1) {
-        if (gesture.rotate || this.focused) this.rotate(dx, dy);
-        else this.pan(dx, dy);
+        if (gesture.move && !this.focused) this.pan(dx, dy);
+        else this.rotate(dx, dy);
       } else {
         this.zoomAt(gesture.d / now.d, now.x, now.y);
         let dAng = now.ang - gesture.ang;
         if (dAng > Math.PI) dAng -= Math.PI * 2;
         if (dAng < -Math.PI) dAng += Math.PI * 2;
         this.goal.theta -= dAng;
-        // Two fingers sliding together tilts the view.
-        this.goal.phi = clamp(this.goal.phi - dy * 0.006, 0.2, this.maxPhi());
+        // Two fingers dragging together move around (or circle, while visiting a place).
+        if (this.focused) this.rotate(dx, 0);
+        else this.pan(dx, dy);
       }
-      gesture = { ...now, rotate: gesture.rotate };
+      gesture = { ...now, move: gesture.move };
     });
     const end = (e) => {
       const p = pts.get(e.pointerId);
@@ -92,7 +95,7 @@ export class CameraRig {
       pts.delete(e.pointerId);
       const quick = performance.now() - p.t < TAP_MS && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < TAP_PX;
       if (quick && pts.size === 0 && gesture?.n === 1 && p.button === 0) this.onTap?.(e.clientX, e.clientY);
-      gesture = pts.size ? { ...snapshot(), rotate: false } : null;
+      gesture = pts.size ? { ...snapshot(), move: false } : null;
     };
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', end);
@@ -101,6 +104,7 @@ export class CameraRig {
       (e) => {
         e.preventDefault();
         this.tween = null;
+        this.idleSpin = false;
         this.zoomAt(Math.pow(1.0018, e.deltaY), e.clientX, e.clientY);
       },
       { passive: false },
@@ -115,8 +119,8 @@ export class CameraRig {
   }
 
   maxPhi() {
-    // Looking up from beneath the islands is allowed; otherwise stop a little past level.
-    return this.goal.target.y < WORLD.landH - 5 ? 2.5 : 1.62;
+    // Past level, so you can swing low and look up at the sky.
+    return this.goal.target.y < WORLD.landH - 5 ? 2.5 : 1.95;
   }
 
   // World units per screen pixel at the target distance.
@@ -135,7 +139,7 @@ export class CameraRig {
 
   rotate(dx, dy) {
     this.goal.theta -= dx * 0.006;
-    this.goal.phi = clamp(this.goal.phi - dy * 0.005, 0.2, this.maxPhi());
+    this.goal.phi = clamp(this.goal.phi - dy * 0.005, 0.15, this.maxPhi());
   }
 
   // Zoom by a factor, pulling the target toward whatever is under the screen point.
@@ -229,9 +233,12 @@ export class CameraRig {
     const s = Math.sin(this.phi);
     const off = new THREE.Vector3(s * Math.sin(this.theta), Math.cos(this.phi), s * Math.cos(this.theta)).multiplyScalar(this.dist);
     const pos = this.target.clone().add(off);
-    // Keep the camera out of the ground.
+    // Keep the camera out of the islands: above the grass or below the rock.
     const g = heightAt(pos.x, pos.z);
-    if (!isVoid(g) && pos.y < g + 1.5 && this.target.y > g - 3) pos.y = g + 1.5;
+    if (!isVoid(g) && pos.y < g + 1.5) {
+      const bottom = undersideAt(pos.x, pos.z);
+      if (pos.y > bottom - 1.5) pos.y = pos.y - bottom > g + 1.5 - pos.y ? g + 1.5 : bottom - 1.5;
+    }
     pos.y = Math.max(pos.y, WORLD.cloudSeaY + 25);
     this.camera.position.copy(pos);
     this.camera.lookAt(this.target);
@@ -245,6 +252,7 @@ export class CameraRig {
     const turn = (k.has('e') ? 1 : 0) - (k.has('q') ? 1 : 0);
     const zoom = (k.has('-') || k.has('_') ? 1 : 0) - (k.has('=') || k.has('+') ? 1 : 0);
     const speed = this.goal.dist * 0.9 * dt;
+    if (f || s || turn || zoom) this.idleSpin = false;
     if (f || s) {
       this.tween = null;
       const right = new THREE.Vector3(Math.cos(this.theta), 0, -Math.sin(this.theta));
@@ -257,6 +265,7 @@ export class CameraRig {
 
   update(dt) {
     if (!this.focused) this.keyMove(dt);
+    if (this.idleSpin && !this.focused && !this.tween) this.goal.theta += dt * 0.05;
     // Stay over the archipelago.
     const r = Math.hypot(this.goal.target.x, this.goal.target.z);
     if (r > TARGET_LIMIT) {
