@@ -7,7 +7,10 @@ import { createDebug } from './debug.js';
 import { buildIsland } from './island.js';
 import { CameraRig } from './camera.js';
 import { wind } from './foliage.js';
-import { DOMES, DOME_R, WORLD, HOODS, CAFE, ISLANDS } from './layout.js';
+import { DOMES, DOME_R, HOODS, ISLANDS, DOWNTOWN, baseY } from './layout.js';
+import { loadKit } from './kaykit.js';
+import { HUB_KIT } from './hub.js';
+import { LANDMARK_KIT } from './landmarks.js';
 import { rng as makeRng } from './util.js';
 
 const $ = (id) => document.getElementById(id);
@@ -33,19 +36,20 @@ const sky = new Sky(scene, renderer);
 if (QUALITY === 'medium') sky.light.shadow.mapSize.set(2048, 2048);
 
 // Framed views for judging the look.
-const L = WORLD.landH;
+const T = DOWNTOWN.y;
 const home = DOMES[2];
 const fwd = (d, k) => new THREE.Vector3(d.x + Math.sin(d.facing) * k, 0, d.z + Math.cos(d.facing) * k);
 const hood = HOODS[0];
+const H = baseY(hood);
 const VIEWS = {
-  overview: { pos: new THREE.Vector3(205, 120, 250), target: new THREE.Vector3(0, L - 10, 30) },
-  cloudline: { pos: new THREE.Vector3(150, 2, 215), target: new THREE.Vector3(0, 4, 0) },
-  downtown: { pos: new THREE.Vector3(14, L + 10, 26), target: new THREE.Vector3(0, L + 2.5, CAFE.z) },
-  neighbourhood: { pos: new THREE.Vector3(hood.x + 40, L + 38, hood.z - 70), target: new THREE.Vector3(hood.x, L + 2, hood.z + 10) },
-  dome: { pos: fwd(home, DOME_R + 18).setY(L + 5), target: new THREE.Vector3(home.x, L + 6, home.z) },
-  inside: { pos: fwd(home, DOME_R - 3).setY(L + 2.2), target: fwd(home, -4).setY(L + 3.5) },
-  ground: { pos: new THREE.Vector3(1.5, L + 1.8, 34), target: new THREE.Vector3(0, L + 3.5, 100) },
-  sky: { pos: new THREE.Vector3(-20, L + 3, 40), target: new THREE.Vector3(-60, L + 70, -120) },
+  overview: { pos: new THREE.Vector3(270, 190, 345), target: new THREE.Vector3(0, 0, 40) },
+  cloudline: { pos: new THREE.Vector3(205, 4, 290), target: new THREE.Vector3(0, 14, 0) },
+  downtown: { pos: new THREE.Vector3(20, T + 14, 70), target: new THREE.Vector3(0, T + 8, 0) },
+  neighbourhood: { pos: new THREE.Vector3(hood.x + 40, H + 38, hood.z + 70), target: new THREE.Vector3(hood.x, H + 2, hood.z - 10) },
+  dome: { pos: fwd(home, DOME_R + 18).setY(home.y + 3), target: new THREE.Vector3(home.x, home.y + 4, home.z) },
+  inside: { pos: fwd(home, DOME_R - 3).setY(home.y), target: fwd(home, -4).setY(home.y + 1.3) },
+  ground: { pos: new THREE.Vector3(2, T + 1.8, 56), target: new THREE.Vector3(10, T + 3.5, 130) },
+  sky: { pos: new THREE.Vector3(-20, T + 3, 60), target: new THREE.Vector3(-60, T + 70, -100) },
 };
 const rig = new CameraRig(camera, renderer.domElement, VIEWS);
 const post = new Post(renderer, scene, camera);
@@ -73,6 +77,7 @@ function phaseName(h, night) {
 async function init() {
   await loadAll((p) => ($('loading').querySelector('.sub').textContent = `Waking the island... ${Math.round(p * 100)}%`));
   await document.fonts.load('600 120px Fredoka').catch(() => {});
+  await loadKit([...new Set([...HUB_KIT, ...LANDMARK_KIT])]);
   island = buildIsland(scene, makeRng(1969), renderer, sky);
   island.setQuality(perf.quality);
   buildPickables();
@@ -156,17 +161,18 @@ function buildPickables() {
   };
   DOMES.forEach((d, i) => {
     const m = new THREE.Mesh(new THREE.SphereGeometry(DOME_R, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), proxyMat);
-    m.position.set(d.x, L, d.z);
+    m.position.set(d.x, d.y, d.z);
     const label = { meadow: 'Meadow dome', frost: 'Frost dome', grove: 'Grove dome' }[d.biome];
-    add(m, { id: `dome${i}`, name: label, center: new THREE.Vector3(d.x, L + 6, d.z), radius: DOME_R + 3, theta: d.facing, phi: 1.12 });
+    add(m, { id: `dome${i}`, name: label, center: new THREE.Vector3(d.x, d.y + 4, d.z), radius: DOME_R + 3, theta: d.facing, phi: 1.12 });
   });
-  const cafe = new THREE.Mesh(new THREE.BoxGeometry(20, 8, 18), proxyMat);
-  cafe.position.set(CAFE.x, L + 4, CAFE.z + 4);
-  add(cafe, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(CAFE.x, L + 2.5, CAFE.z + 4), radius: 13, theta: 0.35, phi: 1.12 });
+  const hub = island.hub;
+  const box = new THREE.Mesh(new THREE.BoxGeometry(hub.width, hub.height, hub.depth), proxyMat);
+  box.position.set(DOWNTOWN.x, T + hub.height / 2, DOWNTOWN.z);
+  add(box, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(DOWNTOWN.x, T + 7, DOWNTOWN.z), radius: hub.width * 0.42, theta: 0.25, phi: 1.2 });
   island.terrain.tops.forEach((top, i) => {
     const isl = ISLANDS[i];
     const name = isl.id === 'downtown' ? 'Downtown' : `Neighbourhood ${Number(isl.id.slice(4)) + 1}`;
-    top.userData.place = { id: isl.id, name, center: new THREE.Vector3(isl.x, L, isl.z), radius: isl.r * 0.95, phi: 0.95 };
+    top.userData.place = { id: isl.id, name, center: new THREE.Vector3(isl.x, baseY(isl), isl.z), radius: isl.r * 1.05, phi: 0.95 };
     pickables.push(top);
   });
 }

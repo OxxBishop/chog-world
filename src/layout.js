@@ -1,36 +1,54 @@
-// The world plan: floating islands in the sky. Downtown with Chog Hub in the middle,
-// a neighbourhood of domes on each surrounding island, bridges between them.
+// The world plan: floating islands in the sky. Downtown with the Chog Hub in the middle, the
+// biggest and highest; a neighbourhood of domes on each island around it, each at its own height
+// and its own distance, joined to downtown by bridges that slope or step between the levels.
 export const WORLD = {
   landH: 2.2,
-  cloudSeaY: -30,
+  cloudSeaY: -40,
 };
 
-export const DOWNTOWN = { x: 0, z: 0, r: 24 };
 export const DOME_R = 17;
-
-const DOWNTOWN_ISLAND_R = 58;
-const HOOD_ISLAND_R = 78;
-const BRIDGE_GAP = 42;
-const HOOD_DIST = DOWNTOWN_ISLAND_R + BRIDGE_GAP + HOOD_ISLAND_R;
-const HOOD_DOME_RING = 50;
+const HOOD_DOME_RING = 46;
 const HOOD_LOOP_R = 26;
+const TERRACE_H = 5;
 
 const BIOME_CYCLE = ['meadow', 'frost', 'grove', 'meadow', 'grove'];
 const ACCENTS = ['#a78bfa', '#7cc7ff', '#f07fd8', '#b6f09c', '#ffb86b'];
 
-export const HOODS = [Math.PI / 2, Math.PI / 2 + (Math.PI * 2) / 3, Math.PI / 2 + (Math.PI * 4) / 3].map((angle, h) => ({
-  id: h,
-  angle,
-  x: Math.cos(angle) * HOOD_DIST,
-  z: Math.sin(angle) * HOOD_DIST,
-  loopR: HOOD_LOOP_R,
-}));
-
-/** Floating islands. depth is how far the rocky underside hangs below the surface. */
-export const ISLANDS = [
-  { id: 'downtown', x: 0, z: 0, r: DOWNTOWN_ISLAND_R, depth: 56, seed: 1 },
-  ...HOODS.map((h) => ({ id: `hood${h.id}`, x: h.x, z: h.z, r: HOOD_ISLAND_R, depth: 70, seed: 3 + h.id * 2 })),
+/*
+ * Islands. r is the island's inner outline; its lobes reach further out (see terrain.js).
+ * y lifts the whole island. under picks its underside: crystal, roots, chains or falls.
+ * landmark is the one thing you spot it by from afar.
+ */
+const HUB = { id: 'downtown', x: 0, z: 0, r: 110, y: 16, depth: 96, seed: 1, under: 'crystal', landmark: 'hub', falls: 1 };
+const HOOD_SPECS = [
+  { angle: 1.62, gap: 46, r: 72, y: 0, depth: 56, seed: 3, under: 'roots', landmark: 'tree', falls: 0 },
+  { angle: 1.62 + 2.17, gap: 54, r: 70, y: 7, depth: 64, seed: 5, under: 'chains', landmark: 'turbine', falls: 0 },
+  { angle: 1.62 + 4.22, gap: 42, r: 74, y: -6, depth: 74, seed: 7, under: 'falls', landmark: 'beacon', falls: 2 },
 ];
+
+export const HOODS = HOOD_SPECS.map((s, h) => {
+  const dist = HUB.r + s.gap + s.r;
+  return { id: h, ...s, x: Math.cos(s.angle) * dist, z: Math.sin(s.angle) * dist, loopR: HOOD_LOOP_R };
+});
+
+export const ISLANDS = [HUB, ...HOODS.map((h) => ({ ...h, id: `hood${h.id}` }))];
+
+/** Ground level of an island before hills and terraces. */
+export const baseY = (isl) => isl.y + WORLD.landH;
+
+// The hub's plaza and building.
+export const DOWNTOWN = { x: 0, z: 0, r: 52, y: baseY(HUB) };
+export const CAFE = { x: 0, z: 0 };
+
+// Raised plateaus with cliff edges: one in the middle of each neighbourhood (its landmark stands
+// on it), two garden terraces downtown between the bridge roads.
+export const TERRACES = [];
+for (const h of HOODS) TERRACES.push({ isl: `hood${h.id}`, x: h.x, z: h.z, r: 17, h: TERRACE_H });
+{
+  const a = HOODS.map((h) => h.angle).sort((p, q) => p - q);
+  const mids = a.map((v, i) => (i === a.length - 1 ? (v + a[0] + Math.PI * 2) / 2 : (v + a[i + 1]) / 2));
+  for (const m of mids.slice(0, 2)) TERRACES.push({ isl: 'downtown', x: Math.cos(m) * 75, z: Math.sin(m) * 75, r: 12, h: 4 });
+}
 
 // Five domes per neighbourhood, spread around the side facing away from downtown.
 export const DOMES = HOODS.flatMap((hood) =>
@@ -44,6 +62,7 @@ export const DOMES = HOODS.flatMap((hood) =>
     const doorZ = z + Math.cos(facing) * (DOME_R + 1.5);
     return {
       hood: hood.id,
+      y: baseY(hood),
       biome: BIOME_CYCLE[(k + hood.id * 2) % BIOME_CYCLE.length],
       accent: ACCENTS[(k + hood.id) % ACCENTS.length],
       x, z, facing, doorX, doorZ,
@@ -68,18 +87,21 @@ function line(ax, az, bx, bz, n = 8) {
   return pts;
 }
 
-/** Bridges between downtown and each neighbourhood island; ends sit a little inside each rim. */
+/**
+ * Bridges between downtown and each neighbourhood; ends sit a little inside each rim. ay and by
+ * are the ground heights at the two ends, so a bridge between different levels slopes or steps.
+ */
 export const BRIDGES = HOODS.map((h) => {
   const ux = Math.cos(h.angle), uz = Math.sin(h.angle);
-  const a = DOWNTOWN_ISLAND_R - 6, b = HOOD_DIST - HOOD_ISLAND_R + 6;
-  return { ax: ux * a, az: uz * a, bx: ux * b, bz: uz * b, width: 5 };
+  const a = HUB.r - 6, b = HUB.r + h.gap + 6;
+  return { hood: h.id, angle: h.angle, ax: ux * a, az: uz * a, bx: ux * b, bz: uz * b, ay: baseY(HUB) - 1.6, by: baseY(h) - 1.6, width: 5 };
 });
 
 /** Walkways on the islands. kind decides width and paving. */
 export const ROADS = [];
 // Downtown ring around the plaza, and a walk around the island near its edge.
-ROADS.push({ kind: 'main', width: 5, closed: true, points: circle(0, 0, DOWNTOWN.r + 2.5, 56) });
-ROADS.push({ kind: 'edge', width: 3.5, closed: true, points: circle(0, 0, DOWNTOWN_ISLAND_R - 12, 72) });
+ROADS.push({ kind: 'main', width: 5, closed: true, points: circle(0, 0, DOWNTOWN.r + 2.5, 64) });
+ROADS.push({ kind: 'edge', width: 3.5, closed: true, points: circle(0, 0, HUB.r - 14, 80) });
 for (const h of HOODS) {
   const ux = Math.cos(h.angle), uz = Math.sin(h.angle);
   const br = BRIDGES[h.id];
@@ -133,5 +155,3 @@ export function nearDome(x, z, pad = 0) {
   for (const d of DOMES) if (Math.hypot(x - d.x, z - d.z) < DOME_R + pad) return d;
   return null;
 }
-
-export const CAFE = { x: 0, z: -13 };

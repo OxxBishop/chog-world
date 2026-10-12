@@ -4,7 +4,7 @@ import { heightAt, isVoid, cameraFloor } from './terrain.js';
 
 const MIN_DIST = 8;
 const MAX_DIST = 750;
-const TARGET_LIMIT = 330;
+const TARGET_LIMIT = 420;
 const TAP_MS = 280;
 const TAP_PX = 9;
 const _pos = new THREE.Vector3();

@@ -13,11 +13,11 @@ const DOOR_H = 5.2;
  * Plants inside are added by the island builder so they share the instanced batches.
  */
 export class Dome {
-  constructor({ x, z, facing, biome, accent }) {
+  constructor({ x, y, z, facing, biome, accent }) {
     this.radius = DOME_R;
     this.biome = biome;
     this.group = new THREE.Group();
-    this.group.position.set(x, WORLD.landH, z);
+    this.group.position.set(x, y, z);
     this.group.rotation.y = facing;
     const R = this.radius;
 

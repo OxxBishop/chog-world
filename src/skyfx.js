@@ -27,7 +27,10 @@ function planks() {
   return t;
 }
 
-/** Arched walkway bridges between islands: timber deck, steel arch underneath, rails and lamps. */
+/**
+ * Walkway bridges between islands: timber deck, steel arch underneath, rails and lamps. Between
+ * islands at different heights the deck slopes, and where the drop is steep it becomes a stair.
+ */
 export function buildBridges(scene) {
   const deckMat = new THREE.MeshLambertMaterial({ map: planks() });
   const steel = new THREE.MeshStandardMaterial({ color: '#eceaf3', roughness: 0.32, metalness: 0.75 });
@@ -47,18 +50,29 @@ export function buildBridges(scene) {
     const len = Math.hypot(br.bx - br.ax, br.bz - br.az);
     const ux = (br.bx - br.ax) / len, uz = (br.bz - br.az) / len;
     const nx = -uz, nz = ux;
-    const L = WORLD.landH;
-    const deckY = (t) => L + 0.25 + Math.sin(t * Math.PI) * 2.4;
+    const rise = br.by - br.ay;
+    const steep = Math.abs(rise) / len > 0.12;
+    const deckY = (t) => br.ay + rise * t + 0.25 + Math.sin(t * Math.PI) * (steep ? 0.8 : 2.4);
     const at = (t, side = 0, dy = 0) => new THREE.Vector3(br.ax + ux * len * t + nx * side, deckY(t) + dy, br.az + uz * len * t + nz * side);
     paths.push({ ...br, len, deckY });
 
-    // Deck: short boards following the arch.
+    // Deck: short boards following the arch, or level treads stepping down a stair.
     const N = 28;
-    for (let i = 0; i < N; i++) {
-      const a = at(i / N), b = at((i + 1) / N);
-      const seg = new THREE.Mesh(new THREE.BoxGeometry(br.width, 0.3, a.distanceTo(b) + 0.05), deckMat);
-      seg.position.copy(a).add(b).multiplyScalar(0.5);
-      seg.lookAt(b);
+    const steps = steep ? Math.round(len / 0.85) : N;
+    for (let i = 0; i < steps; i++) {
+      const a = at(i / steps), b = at((i + 1) / steps);
+      let seg;
+      if (steep) {
+        const h = 0.3 + Math.abs(b.y - a.y);
+        const top = Math.max(a.y, b.y);
+        seg = new THREE.Mesh(new THREE.BoxGeometry(br.width, h, a.clone().setY(0).distanceTo(b.clone().setY(0)) + 0.02), deckMat);
+        seg.position.copy(a).add(b).multiplyScalar(0.5).setY(top - h / 2 + 0.15);
+        seg.lookAt(b.x, seg.position.y, b.z);
+      } else {
+        seg = new THREE.Mesh(new THREE.BoxGeometry(br.width, 0.3, a.distanceTo(b) + 0.05), deckMat);
+        seg.position.copy(a).add(b).multiplyScalar(0.5);
+        seg.lookAt(b);
+      }
       seg.receiveShadow = true;
       seg.castShadow = true;
       group.add(seg);
@@ -76,7 +90,7 @@ export function buildBridges(scene) {
       for (let i = 0; i <= N; i++) {
         const t = i / N;
         const p = at(t, s * 0.8, 0);
-        p.y = L - 9 + Math.sin(t * Math.PI) * 8.6;
+        p.y = br.ay + rise * t - 9 + Math.sin(t * Math.PI) * 8.6;
         arch.push(p);
       }
       group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(arch), 64, 0.28, 8), steel));
@@ -121,7 +135,7 @@ function plant(name, tint, scale) {
 }
 
 // A small floating rock: a domed grassy cap on a tapering stone underside.
-function rockGeometry(r, depth, seed) {
+export function rockGeometry(r, depth, seed) {
   const SEG = 48, LV = 12;
   const pos = [], col = [], idx = [];
   const grassA = new THREE.Color('#6fb53d'), grassB = new THREE.Color('#4f9a2e'), soil = new THREE.Color('#6e4b33');
@@ -183,7 +197,7 @@ export function buildSkyRocks(scene, rng, models) {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const rocks = [];
   const clearOf = (x, z, r) => {
-    for (const isl of ISLANDS) if (Math.hypot(x - isl.x, z - isl.z) < isl.r + r + 18) return false;
+    for (const isl of ISLANDS) if (Math.hypot(x - isl.x, z - isl.z) < isl.r * 1.3 + r + 14) return false;
     for (const b of BRIDGES) {
       const vx = b.bx - b.ax, vz = b.bz - b.az;
       const t = clamp(((x - b.ax) * vx + (z - b.az) * vz) / (vx * vx + vz * vz), 0, 1);
@@ -191,10 +205,10 @@ export function buildSkyRocks(scene, rng, models) {
     }
     return rocks.every((o) => Math.hypot(x - o.x, z - o.z) > o.r + r + 10);
   };
-  for (let tries = 0; tries < 400 && rocks.length < 22; tries++) {
-    const a = rng() * Math.PI * 2, d = rng.range(90, 360);
+  for (let tries = 0; tries < 400 && rocks.length < 14; tries++) {
+    const a = rng() * Math.PI * 2, d = rng.range(140, 440);
     const x = Math.cos(a) * d, z = Math.sin(a) * d;
-    const r = rng.range(4, 15);
+    const r = rng.range(3.5, 9);
     if (!clearOf(x, z, r)) continue;
     const y = rng.range(-8, 48);
     const g = new THREE.Group();
@@ -262,7 +276,7 @@ void main() {
 
   const falls = [];
   for (const isl of ISLANDS) {
-    for (let n = 0; n < 2; n++) {
+    for (let n = 0; n < (isl.falls ?? 0); n++) {
       // Pick a rim spot away from the bridges.
       let a = 0;
       for (let tries = 0; tries < 40; tries++) {
@@ -275,7 +289,8 @@ void main() {
       const ox = Math.cos(a), oz = Math.sin(a);
       const topX = isl.x + ox * e * 0.995, topZ = isl.z + oz * e * 0.995;
       const topY = heightAt(isl.x + ox * e * 0.98, isl.z + oz * e * 0.98);
-      const width = rng.range(3, 5.5);
+      // Islands known for their falls get wide ones.
+      const width = isl.under === 'falls' ? rng.range(6, 9) : rng.range(3, 5.5);
       // Long enough to pour into the cloud sea below.
       const H = topY - WORLD.cloudSeaY + 4;
       // A curtain that arcs out over the lip, then drops and widens.

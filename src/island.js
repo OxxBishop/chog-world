@@ -4,9 +4,11 @@ import { Dome } from './dome.js';
 import { Forest } from './trees.js';
 import { buildTerrain, heightAt, islandAt } from './terrain.js';
 import { buildRoads } from './roads.js';
-import { makeCafe } from './cafe.js';
+import { buildHub } from './hub.js';
+import { buildLandmarks } from './landmarks.js';
+import { buildUndersides } from './underside.js';
 import { buildBridges, buildSkyRocks, buildWaterfalls } from './skyfx.js';
-import { WORLD, ISLANDS, DOWNTOWN, DOMES, DOME_R, CAFE, roadDistance, nearDome } from './layout.js';
+import { ISLANDS, HOODS, DOWNTOWN, DOMES, DOME_R, roadDistance, nearDome } from './layout.js';
 import { fbm, noise2 } from './util.js';
 
 // Leaf colours: lush greens, with lilac and pink blossom trees picking up the purple sky.
@@ -57,6 +59,8 @@ export function buildIsland(scene, rng, renderer, sky) {
   const bridges = buildBridges(scene);
   const skyRocks = buildSkyRocks(scene, rng, MODELS);
   const falls = buildWaterfalls(scene, rng, noise);
+  const undersides = buildUndersides(scene, rng);
+  const landmarks = buildLandmarks(scene);
   const forest = new Forest();
   const props = new Scatter();
   const low = new Scatter();
@@ -68,9 +72,10 @@ export function buildIsland(scene, rng, renderer, sky) {
     return dome;
   });
 
-  const cafe = makeCafe();
-  cafe.group.position.set(CAFE.x, heightAt(CAFE.x, CAFE.z) + 0.1, CAFE.z);
-  scene.add(cafe.group);
+  // The Chog Hub on the downtown plaza, its doors facing south.
+  const hub = buildHub();
+  hub.group.position.set(DOWNTOWN.x, heightAt(DOWNTOWN.x, DOWNTOWN.z) + 0.1, DOWNTOWN.z);
+  scene.add(hub.group);
 
   const downtownDist = (x, z) => Math.hypot(x - DOWNTOWN.x, z - DOWNTOWN.z);
   // On an island and back from the rim.
@@ -78,7 +83,9 @@ export function buildIsland(scene, rng, renderer, sky) {
     const hit = islandAt(x, z);
     return !!hit && hit.k < margin;
   };
-  const built = (x, z, pad) => roadDistance(x, z) < pad || nearDome(x, z, pad) || downtownDist(x, z) < DOWNTOWN.r + 4 + pad;
+  // Each neighbourhood's landmark stands in a clearing on its central plateau.
+  const nearLandmark = (x, z, pad) => HOODS.some((h) => Math.hypot(x - h.x, z - h.z) < 20 + pad);
+  const built = (x, z, pad) => roadDistance(x, z) < pad || nearDome(x, z, pad) || downtownDist(x, z) < DOWNTOWN.r + 4 + pad || nearLandmark(x, z, pad);
 
   // Forest: jittered grid kept where a noise field says "woods", thinner in the built-up middle.
   const trees = [];
@@ -163,17 +170,11 @@ export function buildIsland(scene, rng, renderer, sky) {
     }
   }
 
-  // Café planters.
-  for (const [px, pz] of cafe.planters) {
-    const w = cafe.group.localToWorld(new THREE.Vector3(px, 0, pz));
-    low.add(rng.pick(MODELS.bush), w.x, w.y, w.z, { scale: 0.9, rotY: rng() * Math.PI * 2, tint: rng.pick(GREENS) });
-    low.add(rng.pick(MODELS.flowers), w.x + 0.6, w.y, w.z + 0.4, { scale: 0.9 });
-  }
-  // Downtown: a ring of blossom trees around the plaza edge, leaving the café and the spokes clear.
-  for (let k = 0; k < 14; k++) {
-    const a = (k / 14) * Math.PI * 2 + 0.11;
+  // Downtown: a ring of blossom trees around the plaza edge, leaving the hub and the spokes clear.
+  for (let k = 0; k < 18; k++) {
+    const a = (k / 18) * Math.PI * 2 + 0.11;
     const x = DOWNTOWN.x + Math.cos(a) * (DOWNTOWN.r - 2.5), z = DOWNTOWN.z + Math.sin(a) * (DOWNTOWN.r - 2.5);
-    if (z < -6 && Math.abs(x) < 12) continue;
+    if (Math.abs(z) < hub.depth / 2 + 4 && Math.abs(x) < hub.width / 2 + 4) continue;
     if (roadDistance(x, z) < 2.5) continue;
     forest.add(rng.pick(MODELS.common), x, heightAt(x, z), z, { scale: 0.7, rotY: rng() * Math.PI * 2, tint: rng.pick(BLOSSOM) });
   }
@@ -181,7 +182,7 @@ export function buildIsland(scene, rng, renderer, sky) {
   // Dome gardens.
   for (const dome of domes) {
     const b = BIOMES[dome.biome];
-    const y = WORLD.landH;
+    const y = dome.group.position.y;
     const place = (count, pad, minR, fn) => {
       let placed = 0;
       for (let tries = 0; tries < count * 12 && placed < count; tries++) {
@@ -233,7 +234,7 @@ export function buildIsland(scene, rng, renderer, sky) {
     domes,
     terrain,
     forest,
-    cafe,
+    hub,
     setQuality(q) {
       forest.lodDist = [45, 65, 90][q];
       forest.maxNear = [70, 120, 200][q];
@@ -246,7 +247,9 @@ export function buildIsland(scene, rng, renderer, sky) {
       bridges.update(env);
       skyRocks.update(t);
       falls.update(env, t);
-      cafe.setNight(env.night);
+      hub.setNight(env.night);
+      undersides.update(env);
+      landmarks.update(env, t, dt);
       forest.setLight(env);
       forest.update(camera.position);
       const cp = camera.position;

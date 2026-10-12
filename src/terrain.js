@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WORLD, ISLANDS, DOWNTOWN, DOMES, DOME_R, roadDistance, nearDome } from './layout.js';
+import { WORLD, ISLANDS, BRIDGES, TERRACES, DOWNTOWN, DOMES, DOME_R, baseY, roadDistance, nearDome } from './layout.js';
 import { fbm, noise2, smoothstep, clamp } from './util.js';
 
 const VOID = -1e4;
@@ -7,10 +7,24 @@ const RINGS = 64;
 const SEGS = 192;
 const LEVELS = 30;
 
-// Wobbly island outline: radius of the rim at a given angle.
+// Directions (from each island's centre) where a bridge lands: the rim stays put there.
+const PINS = new Map(
+  ISLANDS.map((isl) => [
+    isl.id,
+    BRIDGES.flatMap((b) => (isl.id === 'downtown' ? [b.angle] : isl.id === `hood${b.hood}` ? [b.angle + Math.PI] : [])),
+  ]),
+);
+const angleGap = (a, b) => Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+
+// Island outline: radius of the rim at a given angle. Big lobes and bays push out from the inner
+// outline r (never in), except where a bridge lands.
 function edgeR(isl, a) {
-  const n = fbm(Math.cos(a) * 1.4 + isl.seed * 7.3, Math.sin(a) * 1.4 - isl.seed * 3.1, 4) - 0.5;
-  return isl.r * (1 + 0.045 * Math.sin(3 * a + isl.seed) + 0.025 * Math.sin(7 * a + isl.seed * 2.1) + n * 0.1);
+  const s = isl.seed;
+  const wave = 0.5 * Math.sin(2 * a + s * 1.7) + 0.4 * Math.sin(3 * a + s * 4.1) + 0.25 * Math.sin(5 * a + s * 0.7);
+  const n = fbm(Math.cos(a) * 1.6 + s * 7.3, Math.sin(a) * 1.6 - s * 3.1, 4) - 0.5;
+  let pin = 1;
+  for (const p of PINS.get(isl.id)) pin = Math.min(pin, smoothstep(0.22, 0.6, angleGap(a, p)));
+  return isl.r * (1 + Math.max(0, wave) * 0.2 * pin + n * 0.06 * pin + 0.012 * Math.sin(11 * a + s));
 }
 
 /** Which island a point is over, with k = distance from centre / rim radius (1 at the rim). */
@@ -18,15 +32,28 @@ export function islandAt(x, z) {
   for (const isl of ISLANDS) {
     const dx = x - isl.x, dz = z - isl.z;
     const d = Math.hypot(dx, dz);
-    if (d > isl.r * 1.2) continue;
+    if (d > isl.r * 1.4) continue;
     const e = edgeR(isl, Math.atan2(dz, dx));
     if (d <= e) return { isl, k: d / e, edge: e, d };
   }
   return null;
 }
 
+// Raised plateaus on an island: full height inside, a short steep cliff at the edge.
+function terraceLift(isl, x, z) {
+  let h = 0;
+  for (const t of TERRACES) {
+    if (t.isl !== isl.id) continue;
+    const dx = x - t.x, dz = z - t.z;
+    const d = Math.hypot(dx, dz) - (noise2(Math.atan2(dz, dx) * 2 + t.x * 0.1, t.z * 0.1) - 0.5) * 3;
+    h = Math.max(h, t.h * smoothstep(t.r + 2.5, t.r, d));
+  }
+  return h;
+}
+
 // Surface height for a point known to be on `hit`.
 function surface(x, z, hit) {
+  const isl = hit.isl;
   const rolling = (fbm(x * 0.012 + 11, z * 0.012 - 4, 4) - 0.45) * 5;
   const hills = Math.max(0, fbm(x * 0.009 - 3, z * 0.009 + 9, 3) - 0.52) * 30;
   const lift = Math.max(-1, rolling) + hills;
@@ -36,9 +63,11 @@ function surface(x, z, hit) {
     const dd = Math.hypot(x - d.x, z - d.z);
     if (dd < DOME_R + 16) flat = Math.max(flat, smoothstep(DOME_R + 16, DOME_R + 3, dd));
   }
+  const terrace = terraceLift(isl, x, z);
+  if (terrace > 0) flat = Math.max(flat, terrace / 4);
   // Hills settle toward the rim, and the rim itself rounds over like the lip of a cliff.
   const rim = smoothstep(0.8, 1.0, hit.k);
-  return WORLD.landH + lift * (1 - flat) * (1 - rim) - smoothstep(0.9, 1.0, hit.k) * 1.6;
+  return baseY(isl) + terrace + lift * (1 - Math.min(1, flat)) * (1 - rim) - smoothstep(0.9, 1.0, hit.k) * 1.6;
 }
 
 /** Ground height, or a huge negative number over open sky. */
@@ -48,14 +77,6 @@ export function heightAt(x, z) {
 }
 
 export const isVoid = (y) => y <= VOID + 1;
-
-/** Underside of an island at a point (for keeping the camera out of the rock). */
-export function undersideAt(x, z) {
-  const hit = islandAt(x, z);
-  if (!hit) return null;
-  const t = 1 - Math.pow(hit.k, 1 / 1.6);
-  return WORLD.landH - 1.6 - t * hit.isl.depth;
-}
 
 /**
  * Lowest the camera may sit at a point: just over the grass on an island, easing down past the rim
@@ -67,9 +88,9 @@ export function cameraFloor(x, z, clearance = 1.5) {
   for (const isl of ISLANDS) {
     const dx = x - isl.x, dz = z - isl.z;
     const d = Math.hypot(dx, dz);
-    if (d > isl.r * 1.45) continue;
+    if (d > isl.r * 1.6) continue;
     const k = d / edgeR(isl, Math.atan2(dz, dx));
-    const ground = (k <= 1 ? surface(x, z, { isl, k }) : WORLD.landH - 1.6) + clearance;
+    const ground = (k <= 1 ? surface(x, z, { isl, k }) : baseY(isl) - 1.6) + clearance;
     floor = Math.max(floor, ground + (sky - ground) * smoothstep(1, 1.3, k));
   }
   return floor;
@@ -170,19 +191,51 @@ function topGeometry(isl) {
   return g;
 }
 
-// Rocky underside: tapers from the rim to a point far below, craggy, in layered rock tones.
+// How each island's underside narrows with depth (t from 0 at the rim to 1 at the bottom), so no
+// two hang the same: a broad plug, a round root ball, stepped tiers, or a leaning spike.
+const PROFILES = {
+  crystal: { radius: (t) => Math.pow(1 - t, 1.25), lean: 0 },
+  roots: { radius: (t) => Math.pow(1 - t, 0.75) * (1 - 0.15 * t), lean: 0 },
+  chains: { radius: (t) => (1 - 0.92 * Math.min(1, (Math.floor(t * 3) + smoothstep(0.7, 1.0, (t * 3) % 1)) / 3)) * (1 - smoothstep(0.9, 1.0, t)), lean: 0 },
+  falls: { radius: (t) => Math.pow(1 - t, 1.45), lean: 0.45 },
+};
+
+/** A point on an island's underside at angle a and depth fraction t, for hanging things off it. */
+export function undersidePoint(isl, a, t) {
+  const prof = PROFILES[isl.under] ?? PROFILES.crystal;
+  const shift = prof.lean * Math.pow(t, 1.5) * isl.r * 0.45;
+  const leanA = isl.seed * 2.3;
+  const e = edgeR(isl, a);
+  const rr = e * prof.radius(t);
+  const rimY = surface(isl.x + Math.cos(a) * e * 0.9995, isl.z + Math.sin(a) * e * 0.9995, { isl, k: 0.9995 });
+  return new THREE.Vector3(isl.x + Math.cos(leanA) * shift + Math.cos(a) * rr, rimY - t * isl.depth, isl.z + Math.sin(leanA) * shift + Math.sin(a) * rr);
+}
+
+/** Where an island's rim is at angle a: the edge point and its ground height. */
+export function rimPoint(isl, a, k = 0.99) {
+  const e = edgeR(isl, a) * k;
+  const x = isl.x + Math.cos(a) * e, z = isl.z + Math.sin(a) * e;
+  return new THREE.Vector3(x, surface(x, z, { isl, k }), z);
+}
+
+// Rocky underside in layered rock tones, shaped by the island's profile.
 function undersideGeometry(isl) {
   const pos = [], col = [], uv = [], idx = [];
   const c = new THREE.Color();
+  const prof = PROFILES[isl.under] ?? PROFILES.crystal;
+  const leanA = isl.seed * 2.3;
   for (let l = 0; l <= LEVELS; l++) {
     const t = l / LEVELS;
+    // A leaning island's rings drift sideways as they go down.
+    const shift = prof.lean * Math.pow(t, 1.5) * isl.r * 0.45;
+    const cx = isl.x + Math.cos(leanA) * shift, cz = isl.z + Math.sin(leanA) * shift;
     for (let j = 0; j <= SEGS; j++) {
       const a = (j / SEGS) * Math.PI * 2;
       const e = edgeR(isl, a);
       const crag = 1 + (fbm(Math.cos(a) * 3 + isl.seed, Math.sin(a) * 3 + t * 6, 3) - 0.5) * 0.35 * Math.sin(t * Math.PI);
       // The top ring shares the lawn's edge vertices exactly, so no sliver of sky shows between them.
-      const rr = l === 0 ? e * 0.9995 : e * Math.pow(1 - t, 1.6) * crag;
-      const x = isl.x + Math.cos(a) * rr, z = isl.z + Math.sin(a) * rr;
+      const rr = l === 0 ? e * 0.9995 : e * prof.radius(t) * crag;
+      const x = (l === 0 ? isl.x : cx) + Math.cos(a) * rr, z = (l === 0 ? isl.z : cz) + Math.sin(a) * rr;
       const rimY = surface(isl.x + Math.cos(a) * e * 0.9995, isl.z + Math.sin(a) * e * 0.9995, { isl, k: 0.9995 });
       const y = l === 0 ? rimY : rimY - t * isl.depth - (noise2(a * 9 + isl.seed, t * 12) - 0.5) * 3 * t;
       pos.push(x, y, z);

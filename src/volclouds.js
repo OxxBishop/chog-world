@@ -3,6 +3,7 @@ import { Effect, EffectAttribute } from 'postprocessing';
 import { CloudsEffect, CLOUD_SHAPE_TEXTURE_SIZE, CLOUD_SHAPE_DETAIL_TEXTURE_SIZE } from '@takram/three-clouds';
 import { AtmosphereParameters, PrecomputedTexturesGenerator } from '@takram/three-atmosphere';
 import { Ellipsoid, Geodetic, radians, DataTextureLoader, parseUint8Array, STBNLoader, DEFAULT_STBN_URL } from '@takram/three-geospatial';
+import { HOODS } from './layout.js';
 
 /*
  * The sea of clouds: physically based volumetric clouds (Takram's three-clouds, MIT).
@@ -207,11 +208,13 @@ function puffPaths() {
   const range = (a, b) => a + rnd() * (b - a);
   const paths = [];
   for (let i = 0; i < 7; i++) {
-    paths.push({ kind: 'orbit', r: range(300, 380), a0: (i / 7) * Math.PI * 2 + range(-0.3, 0.3), w: range(0.004, 0.008) * (i % 2 ? 1 : -1), y: range(-12, 30), size: range(20, 32), phase: rnd() * 10 });
+    paths.push({ kind: 'orbit', r: range(360, 460), a0: (i / 7) * Math.PI * 2 + range(-0.3, 0.3), w: range(0.004, 0.008) * (i % 2 ? 1 : -1), y: range(-12, 30), size: range(20, 32), phase: rnd() * 10 });
   }
-  const gaps = [Math.PI / 6, (Math.PI * 5) / 6, (Math.PI * 3) / 2];
+  // Halfway between neighbouring bridges, where no island is.
+  const a = HOODS.map((h) => h.angle).sort((p, q) => p - q);
+  const gaps = a.map((v, i) => (i === a.length - 1 ? (v + a[0] + Math.PI * 2) / 2 : (v + a[i + 1]) / 2));
   for (let i = 0; i < PUFF_COUNT - 7; i++) {
-    paths.push({ kind: 'gap', a: gaps[i % 3] + range(-0.08, 0.08), r0: 125, r1: 230, w: range(0.02, 0.035), y: range(-10, 22), size: range(16, 24), phase: rnd() * 10 });
+    paths.push({ kind: 'gap', a: gaps[i % 3] + range(-0.08, 0.08), r0: 165, r1: 270, w: range(0.02, 0.035), y: range(-10, 22), size: range(16, 24), phase: rnd() * 10 });
   }
   return paths;
 }
@@ -347,7 +350,7 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
   // them (the rocky undersides sink into it; its shadow maps shade the clouds themselves), and a
   // second layer far below that shows through the gaps and gives the sea its depth.
   const deck = clouds.cloudLayers[0];
-  Object.assign(deck, { altitude: ALTITUDE - 360, height: 340, densityScale: 0.2, shapeAmount: 1, shapeDetailAmount: 1, weatherExponent: 1, shapeAlteringBias: 0.35, coverageFilterWidth: 0.6, shadow: true });
+  Object.assign(deck, { altitude: ALTITUDE - 370, height: 340, densityScale: 0.2, shapeAmount: 1, shapeDetailAmount: 1, weatherExponent: 1, shapeAlteringBias: 0.35, coverageFilterWidth: 0.6, shadow: true });
   for (let i = 1; i < clouds.cloudLayers.length; i++) clouds.cloudLayers[i].height = 0;
   Object.assign(clouds.cloudLayers[1], { altitude: ALTITUDE - 1300, height: 600, densityScale: 0.2, shapeDetailAmount: 0, shadow: false });
   clouds.coverage = 0.5;
