@@ -4,7 +4,6 @@ import { edgeR, heightAt } from './terrain.js';
 import { info } from './assets.js';
 import { fbm, noise2, clamp } from './util.js';
 import { mergeByMaterial } from './merge.js';
-import { CLOUD_TOP_GLSL } from './cloudsea.js';
 
 const WHITE = new THREE.Color(1, 1, 1);
 
@@ -230,7 +229,7 @@ export function buildSkyRocks(scene, rng, models) {
 
 /** Waterfalls spilling off the island rims into the sky, fading as they fall. */
 export function buildWaterfalls(scene, rng, noise) {
-  const uniforms = { uTime: { value: 0 }, uNoise: { value: noise }, uNight: { value: 0 }, uSeaTop: { value: WORLD.cloudSeaY } };
+  const uniforms = { uTime: { value: 0 }, uNoise: { value: noise }, uNight: { value: 0 } };
   const mat = new THREE.ShaderMaterial({
     uniforms,
     transparent: true,
@@ -238,28 +237,21 @@ export function buildWaterfalls(scene, rng, noise) {
     side: THREE.DoubleSide,
     vertexShader: /* glsl */ `
 varying vec2 vUv;
-varying vec3 vWorld;
 void main() {
   vUv = uv;
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vWorld = wp.xyz;
-  gl_Position = projectionMatrix * viewMatrix * wp;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`,
     fragmentShader: /* glsl */ `
-uniform float uTime, uNight, uSeaTop;
+uniform float uTime, uNight;
 uniform sampler2D uNoise;
 varying vec2 vUv;
-varying vec3 vWorld;
-${CLOUD_TOP_GLSL}
 void main() {
   // Streaks rushing down, broken up by noise.
   float s1 = texture2D(uNoise, vec2(vUv.x * 1.6, vUv.y * 0.35 + uTime * 0.35)).b;
   float s2 = texture2D(uNoise, vec2(vUv.x * 3.1 + 0.4, vUv.y * 0.6 + uTime * 0.55)).r;
   float streak = smoothstep(0.35, 0.75, s1 * 0.6 + s2 * 0.5);
   float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
-  float fall = 1.0 - smoothstep(0.55, 1.0, vUv.y);
-  float top = cloudTop(uNoise, vWorld.xz, uTime, uSeaTop);
-  fall *= smoothstep(top, top + 7.0, vWorld.y);
+  float fall = 1.0 - smoothstep(0.35, 1.0, vUv.y);
   vec3 col = mix(vec3(0.55, 0.85, 0.95), vec3(1.0), streak);
   col = mix(col, col * vec3(0.45, 0.4, 0.7), uNight * 0.7);
   float a = edge * fall * (0.45 + 0.5 * streak);
@@ -285,7 +277,7 @@ void main() {
       const topY = heightAt(isl.x + ox * e * 0.98, isl.z + oz * e * 0.98);
       const width = rng.range(3, 5.5);
       // Long enough to pour into the cloud sea below.
-      const H = topY - WORLD.cloudSeaY + 32;
+      const H = topY - WORLD.cloudSeaY + 4;
       // A curtain that arcs out over the lip, then drops and widens.
       const rows = 24;
       const pos = [], uv = [], idx = [];

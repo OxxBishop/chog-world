@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { loadAll } from './assets.js';
-import { CloudSeaPass } from './cloudsea.js';
 import { Sky } from './sky.js';
 import { Post } from './post.js';
 import { buildIsland } from './island.js';
@@ -44,8 +43,6 @@ const VIEWS = {
 };
 const rig = new CameraRig(camera, renderer.domElement, VIEWS);
 const post = new Post(renderer, scene, camera);
-const clouds = new CloudSeaPass(camera, sky);
-post.addClouds(clouds);
 
 let island;
 
@@ -67,15 +64,22 @@ function phaseName(h, night) {
 async function init() {
   await loadAll((p) => ($('loading').querySelector('.sub').textContent = `Waking the island... ${Math.round(p * 100)}%`));
   await document.fonts.load('600 120px Fredoka').catch(() => {});
-  island = buildIsland(scene, makeRng(1969), renderer, sky, clouds.late);
+  island = buildIsland(scene, makeRng(1969), renderer, sky);
   island.setQuality(perf.quality);
-  clouds.setQuality(perf.quality);
   buildPickables();
   // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
   $('loading').querySelector('.sub').textContent = 'Lighting the sky...';
   await renderer.compileAsync(scene, camera).catch(() => {});
   frame();
   frame();
+  // Wait for the GPU to finish that first work (shader builds, texture uploads) while the loader
+  // is still up, then give it a couple of real frames, so the world appears already running smoothly.
+  const gl = renderer.getContext();
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  for (let i = 0; i < 3; i++) {
+    await new Promise(requestAnimationFrame);
+    frame();
+  }
   $('loading').classList.add('done');
   // Optional ?view=dome&hour=22 in the address, handy for sharing a specific shot.
   const params = new URLSearchParams(location.search);
@@ -86,7 +90,7 @@ async function init() {
   }
   if (VIEWS[params.get('view')]) rig.jump(params.get('view'));
   renderer.setAnimationLoop(frame);
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, renderer, frame, VIEWS, perf };
 }
 
 // UI.
@@ -159,6 +163,8 @@ rig.onTap = (x, y) => {
 };
 rig.onFocusChange = (place) => {
   $('focus-bar').hidden = !place;
+  // The pill takes the hint's spot above the time bar.
+  if (place) $('nav-hint').classList.add('faded');
   if (place) $('focus-name').textContent = place.name;
   if (!place) document.querySelectorAll('[data-view]').forEach((o) => o.classList.remove('active'));
 };
@@ -173,8 +179,6 @@ setTimeout(() => $('nav-hint')?.classList.add('faded'), 14000);
 const perf = { ema: 16, scale: 1, quality: TOUCH ? 1 : 2, check: 0, frames: 0, fpsT: 0 };
 function tunePerf(realMs, dt) {
   // Ignore stalls (tab in the background, window dragged): they are not render cost.
-  if (realMs > 250) return;
-  perf.ema += (realMs - perf.ema) * 0.08;
   perf.frames++;
   perf.fpsT += dt;
   if (perf.fpsT > 0.5) {
@@ -182,6 +186,8 @@ function tunePerf(realMs, dt) {
     perf.frames = 0;
     perf.fpsT = 0;
   }
+  if (realMs > 250) return;
+  perf.ema += (realMs - perf.ema) * 0.08;
   perf.check += dt;
   if (perf.check < 1.5) return;
   perf.check = 0;
@@ -191,13 +197,9 @@ function tunePerf(realMs, dt) {
       resize();
     } else if (perf.quality > 0) {
       island.setQuality(--perf.quality);
-      clouds.setQuality(perf.quality);
     }
   } else if (perf.ema < 20) {
-    if (perf.quality < 2 && perf.scale >= 1) {
-      island.setQuality(++perf.quality);
-      clouds.setQuality(perf.quality);
-    }
+    if (perf.quality < 2 && perf.scale >= 1) island.setQuality(++perf.quality);
     else if (perf.scale < 1) {
       perf.scale = Math.round((perf.scale + 0.1) * 10) / 10;
       resize();
@@ -223,8 +225,8 @@ function frame() {
   const dist = rig.focusDist;
   sky.focus.copy(rig.focus);
   sky.focusR = Math.round(Math.min(230, Math.max(24, dist * 0.55)) / 8) * 8;
-  sky.fog.near = 350 + dist * 1.1;
-  sky.fog.far = sky.fog.near + 1800;
+  sky.fog.near = 600 + dist * 1.3;
+  sky.fog.far = sky.fog.near + 2600;
   const env = sky.update(hour, camera, t);
   lastShadow.frames++;
   if (sky.focus.distanceTo(lastShadow.focus) > 3 || Math.abs(hour - lastShadow.hour) > 0.02 || sky.focusR !== lastShadow.r || lastShadow.frames > 90) {
@@ -236,7 +238,6 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
-  clouds.setEnv(env, t);
 
   const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);
   const label = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}|${phaseName(hour, env.night)}`;

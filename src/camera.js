@@ -189,6 +189,8 @@ export class CameraRig {
   }
 
   jump(name) {
+    if (this.focused) this.clearFocus();
+    this.tween = null;
     const v = this.views[name];
     this.setState(this.fromPosTarget(v.pos, v.target));
     this.target.copy(this.goal.target);
@@ -220,7 +222,8 @@ export class CameraRig {
     this.focused = obj;
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
-    const fit = obj.radius / Math.sin(Math.min(vfov, hfov) / 2);
+    // On a tall phone screen let the sides crop a little, so places still fill the view.
+    const fit = obj.radius / Math.sin(Math.max(Math.min(vfov, hfov), vfov * 0.62) / 2);
     this.flyTo({ target: obj.center.clone(), dist: clamp(fit * 1.05, MIN_DIST, MAX_DIST), theta: obj.theta ?? this.theta, phi: obj.phi ?? 1.05 });
     this.onFocusChange?.(obj);
   }

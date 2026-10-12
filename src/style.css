@@ -63,10 +63,16 @@ html, body {
 }
 
 .tag {
+  margin-top: 4px;
+  padding: 2px 8px;
   font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
 }
 
 button {
@@ -167,7 +173,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   position: fixed;
   z-index: 6;
   left: 50%;
-  top: 16px;
+  bottom: 76px;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
@@ -182,10 +188,10 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 .focus-bar button { padding: 6px 12px; border-radius: 999px; }
 
-/* Phones: one scrollable row of places under the title, focus pill below it. */
+/* Phones: one scrollable row of places under the title. */
 @media (max-width: 760px) {
   .top-right { top: 62px; left: 16px; right: 16px; max-width: none; justify-content: flex-start; }
-  .focus-bar { top: 112px; }
+  .focus-bar { bottom: 84px; }
   .nav-hint { bottom: 88px; }
 }
 .focus-bar[hidden] { display: none; }
