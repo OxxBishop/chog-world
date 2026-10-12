@@ -3,7 +3,6 @@ import { Effect, EffectAttribute } from 'postprocessing';
 import { CloudsEffect, CLOUD_SHAPE_TEXTURE_SIZE, CLOUD_SHAPE_DETAIL_TEXTURE_SIZE } from '@takram/three-clouds';
 import { AtmosphereParameters, PrecomputedTexturesGenerator } from '@takram/three-atmosphere';
 import { Ellipsoid, Geodetic, radians, DataTextureLoader, parseUint8Array, STBNLoader, DEFAULT_STBN_URL } from '@takram/three-geospatial';
-import { HOODS } from './layout.js';
 
 /*
  * The sea of clouds: physically based volumetric clouds (Takram's three-clouds, MIT).
@@ -110,12 +109,13 @@ float puffDensity(const in vec3 x, const in vec4 p, const in vec2 turn) {
   for (int i = 0; i < 7; i++) body = max(body, 1.0 - smoothstep(LUMPS[i].w * 0.3, LUMPS[i].w, length(q - LUMPS[i].xyz)));
   body *= smoothstep(-0.42, -0.2, q.y);
   if (body <= 0.0) return 0.0;
-  vec3 sp = x * 0.035 + vec3(drift, 0.0, drift * 0.4);
+  // Noise in the puff's own space, so it keeps its shape as it travels and slowly re-forms.
+  vec3 sp = (x - p.xyz) * 0.035 + vec3(p.w * 0.37, drift, p.w * 0.11);
   float n = texture(shapeTex, sp).r * 0.7 + texture(shapeTex, sp * 2.3 + 0.31).r * 0.3;
   // Billows: near the middle most of the noise survives, at the edge only its peaks do.
   float dens = clamp((n - (1.0 - body)) / max(body, 1e-3), 0.0, 1.0);
   // Fine wisps eat into the thin outer parts.
-  float detail = texture(detailTex, x * 0.11 + drift * 3.0).r;
+  float detail = texture(detailTex, (x - p.xyz) * 0.11 + vec3(0.0, drift * 2.0, p.w * 0.2)).r;
   return clamp(dens - (1.0 - detail) * 0.45 * (1.0 - dens), 0.0, 1.0);
 }
 
@@ -199,22 +199,16 @@ const SUN_GAIN = 2.1;
 // Optical depth of the air above the islands, per airmass (red, green, blue): Rayleigh plus a little haze.
 const SKY_EXT = [0.07, 0.13, 0.3];
 
-// Where each drifting cloud goes: slow loops around the outside of the archipelago, and slow
-// swings in and out along the three gaps between the neighbourhoods. All paths stay clear of the
-// islands and bridges.
+// Where each drifting cloud goes: wide loops around the whole archipelago, some each way, far
+// enough out to clear every island's outline.
 function puffPaths() {
   let seed = 11;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const range = (a, b) => a + rnd() * (b - a);
   const paths = [];
-  for (let i = 0; i < 7; i++) {
-    paths.push({ kind: 'orbit', r: range(360, 460), a0: (i / 7) * Math.PI * 2 + range(-0.3, 0.3), w: range(0.004, 0.008) * (i % 2 ? 1 : -1), y: range(-12, 30), size: range(20, 32), phase: rnd() * 10 });
-  }
-  // Halfway between neighbouring bridges, where no island is.
-  const a = HOODS.map((h) => h.angle).sort((p, q) => p - q);
-  const gaps = a.map((v, i) => (i === a.length - 1 ? (v + a[0] + Math.PI * 2) / 2 : (v + a[i + 1]) / 2));
-  for (let i = 0; i < PUFF_COUNT - 7; i++) {
-    paths.push({ kind: 'gap', a: gaps[i % 3] + range(-0.08, 0.08), r0: 165, r1: 270, w: range(0.02, 0.035), y: range(-10, 22), size: range(16, 24), phase: rnd() * 10 });
+  for (let i = 0; i < PUFF_COUNT; i++) {
+    const size = range(16, 32);
+    paths.push({ r: 330 + size * 2 + range(0, 80), a0: (i / PUFF_COUNT) * Math.PI * 2 + range(-0.2, 0.2), w: range(0.012, 0.02) * (i % 3 ? 1 : -1), y: range(-14, 30), size, phase: rnd() * 10 });
   }
   return paths;
 }
@@ -261,14 +255,11 @@ class CloudComposite extends Effect {
       const p = this.paths[i];
       const turn = p.phase + t * 0.01;
       u.get('puffTurn').value[i].set(Math.cos(turn), Math.sin(turn));
-      const bob = Math.sin(t * 0.2 + p.phase) * 2;
-      if (p.kind === 'orbit') {
-        const a = p.a0 + t * p.w;
-        v.set(Math.cos(a) * p.r, p.y + bob, Math.sin(a) * p.r, p.size);
-      } else {
-        const r = p.r0 + (p.r1 - p.r0) * (0.5 + 0.5 * Math.sin(t * p.w + p.phase));
-        v.set(Math.cos(p.a) * r, p.y + bob, Math.sin(p.a) * r, p.size);
-      }
+      // Drift round the world, bob gently, and swell or shrink a little over time.
+      const a = p.a0 + t * p.w;
+      const bob = Math.sin(t * 0.25 + p.phase) * 3;
+      const r = p.r + Math.sin(t * 0.05 + p.phase) * 12;
+      v.set(Math.cos(a) * r, p.y + bob, Math.sin(a) * r, p.size * (1 + Math.sin(t * 0.07 + p.phase * 2) * 0.08));
     });
     // Lit like the deck: sunlight that turns golden as it crosses more air near the horizon,
     // or the dim lilac moon at night, plus a soft sky glow from above and the deck below.
@@ -289,7 +280,7 @@ class CloudComposite extends Effect {
     u.get('ambBot').value.copy(su.uHorizon.value).lerp(WHITE, 0.3).multiplyScalar(0.3 * day + 0.04);
     u.get('hazeCol').value.copy(sky.fog.color);
     u.get('hazeRange').value.set(sky.fog.near, sky.fog.far);
-    u.get('drift').value = t * 0.004;
+    u.get('drift').value = t * 0.01;
   }
 }
 
