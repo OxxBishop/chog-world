@@ -5,6 +5,7 @@ import { Forest } from './trees.js';
 import { buildTerrain, heightAt, islandAt } from './terrain.js';
 import { buildRoads } from './roads.js';
 import { buildHub } from './hub.js';
+import { buildPlaza } from './plaza.js';
 import { buildLandmarks } from './landmarks.js';
 import { buildUndersides } from './underside.js';
 import { buildBridges, buildSkyRocks, buildWaterfalls } from './skyfx.js';
@@ -76,6 +77,10 @@ export function buildIsland(scene, rng, renderer, sky) {
   const hub = buildHub();
   hub.group.position.set(DOWNTOWN.x, heightAt(DOWNTOWN.x, DOWNTOWN.z) + 0.1, DOWNTOWN.z);
   scene.add(hub.group);
+  const plaza = buildPlaza();
+  plaza.group.position.copy(hub.group.position);
+  plaza.group.updateMatrixWorld(true);
+  scene.add(plaza.group);
 
   const downtownDist = (x, z) => Math.hypot(x - DOWNTOWN.x, z - DOWNTOWN.z);
   // On an island and back from the rim.
@@ -178,8 +183,16 @@ export function buildIsland(scene, rng, renderer, sky) {
     const a = (k / 18) * Math.PI * 2 + 0.11;
     const x = DOWNTOWN.x + Math.cos(a) * (DOWNTOWN.r - 2.5), z = DOWNTOWN.z + Math.sin(a) * (DOWNTOWN.r - 2.5);
     if (Math.abs(z) < hub.depth / 2 + 4 && Math.abs(x) < hub.width / 2 + 4) continue;
+    if (plaza.spots.some(([px, pz]) => Math.hypot(x - px, z - pz) < 5)) continue;
     if (roadDistance(x, z) < 2.5) continue;
     forest.add(rng.pick(MODELS.common), x, heightAt(x, z), z, { scale: 0.7, rotY: rng() * Math.PI * 2, tint: rng.pick(BLOSSOM) });
+  }
+
+  // Flowers and bushes in the plaza planters.
+  for (const [px, pz, h] of plaza.planters) {
+    const w = plaza.group.localToWorld(new THREE.Vector3(px, h, pz));
+    low.add(rng.pick(MODELS.bush), w.x, w.y, w.z, { scale: 0.8, rotY: rng() * Math.PI * 2, tint: rng.pick(GREENS) });
+    for (let k = 0; k < 3; k++) low.add(rng.pick(MODELS.flowers), w.x + rng.range(-0.6, 0.6), w.y, w.z + rng.range(-0.6, 0.6), { scale: 0.9, rotY: rng() * Math.PI * 2 });
   }
 
   // Dome gardens.
@@ -251,6 +264,7 @@ export function buildIsland(scene, rng, renderer, sky) {
       skyRocks.update(t);
       falls.update(env, t);
       hub.update(env, t, renderer);
+      plaza.update(env, t, renderer);
       terrain.update(env, sky, camera);
       undersides.update(env);
       landmarks.update(env, t, dt);
