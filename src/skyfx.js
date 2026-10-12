@@ -65,7 +65,7 @@ void main() {
       uniforms.uHorizon.value.copy(skyU.uHorizon.value);
       uniforms.uGlow.value.copy(glow).multiplyScalar(env.night);
       uniforms.uLit.value.copy(WHITE).lerp(skyU.uHorizon.value, 0.25).lerp(nightLit, env.night);
-      uniforms.uShade.value.copy(skyU.uTop.value).lerp(WHITE, 0.4).lerp(nightShade, env.night);
+      uniforms.uShade.value.copy(skyU.uTop.value).lerp(WHITE, 0.25).lerp(nightShade, env.night);
       mesh.position.x = camera.position.x;
       mesh.position.z = camera.position.z;
     },

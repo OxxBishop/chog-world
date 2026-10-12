@@ -28,6 +28,12 @@ export class Post {
     this.composer.addPass(new EffectPass(camera, new SMAAEffect()));
   }
 
+  // Glow is for lamps, windows and the aurora: keep it faint under a bright day sky so the scene stays crisp.
+  setNight(n) {
+    this.bloom.intensity = 0.15 + n * 0.5;
+    this.bloom.luminanceMaterial.threshold = 0.95 - n * 0.12;
+  }
+
   setSize(w, h) {
     this.composer.setSize(w, h);
   }

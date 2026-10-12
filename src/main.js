@@ -5,12 +5,14 @@ import { Post } from './post.js';
 import { buildIsland } from './island.js';
 import { CameraRig } from './camera.js';
 import { wind } from './foliage.js';
-import { DOMES, DOME_R, WORLD, HOODS, CAFE } from './layout.js';
+import { DOMES, DOME_R, WORLD, HOODS, CAFE, ISLANDS } from './layout.js';
 import { rng as makeRng } from './util.js';
 
 const $ = (id) => document.getElementById(id);
 
-const BASE_DPR = Math.min(window.devicePixelRatio, 1.25);
+// Phones have dense screens: render sharper there and let the auto-tuner trade detail for speed.
+const TOUCH = window.matchMedia('(pointer: coarse)').matches;
+const BASE_DPR = Math.min(window.devicePixelRatio, TOUCH ? 2 : 1.25);
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
 renderer.setPixelRatio(BASE_DPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -30,7 +32,7 @@ const home = DOMES[2];
 const fwd = (d, k) => new THREE.Vector3(d.x + Math.sin(d.facing) * k, 0, d.z + Math.cos(d.facing) * k);
 const hood = HOODS[0];
 const VIEWS = {
-  overview: { pos: new THREE.Vector3(360, 190, 380), target: new THREE.Vector3(0, -30, 0) },
+  overview: { pos: new THREE.Vector3(330, 230, 350), target: new THREE.Vector3(0, L, 20) },
   below: { pos: new THREE.Vector3(230, -150, 260), target: new THREE.Vector3(0, -20, 0) },
   downtown: { pos: new THREE.Vector3(14, L + 10, 26), target: new THREE.Vector3(0, L + 2.5, CAFE.z) },
   neighbourhood: { pos: new THREE.Vector3(hood.x + 40, L + 38, hood.z - 70), target: new THREE.Vector3(hood.x, L + 2, hood.z + 10) },
@@ -64,6 +66,12 @@ async function init() {
   await document.fonts.load('600 120px Fredoka').catch(() => {});
   island = buildIsland(scene, makeRng(1969), renderer, sky);
   island.setQuality(perf.quality);
+  buildPickables();
+  // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
+  $('loading').querySelector('.sub').textContent = 'Lighting the sky...';
+  await renderer.compileAsync(scene, camera).catch(() => {});
+  frame();
+  frame();
   $('loading').classList.add('done');
   // Optional ?view=dome&hour=22 in the address, handy for sharing a specific shot.
   const params = new URLSearchParams(location.search);
@@ -88,9 +96,14 @@ $('btn-live').addEventListener('click', () => {
   time.live = true;
   $('btn-live').classList.add('active');
 });
+// Place buttons visit the same framed spots as tapping; the rest are fixed camera views.
+const PLACE_FOR_VIEW = { downtown: 'hub', neighbourhood: 'hood0', dome: 'dome2' };
 document.querySelectorAll('[data-view]').forEach((b) =>
   b.addEventListener('click', () => {
-    rig.go(b.dataset.view);
+    const placeId = PLACE_FOR_VIEW[b.dataset.view];
+    const place = placeId && pickables.find((m) => m.userData.place.id === placeId)?.userData.place;
+    if (place) rig.focusOn(place);
+    else rig.go(b.dataset.view);
     document.querySelectorAll('[data-view]').forEach((o) => o.classList.toggle('active', o === b));
   }),
 );
@@ -104,18 +117,56 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 
-// Double-click the ground to fly there.
+// Tap a place to visit it; tap again, tap the sky or press Back to leave.
 const ray = new THREE.Raycaster();
-renderer.domElement.addEventListener('dblclick', (e) => {
+const pickables = [];
+function buildPickables() {
+  const proxyMat = new THREE.MeshBasicMaterial();
+  const add = (mesh, place) => {
+    mesh.updateMatrixWorld(true);
+    mesh.userData.place = place;
+    pickables.push(mesh);
+  };
+  DOMES.forEach((d, i) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(DOME_R, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), proxyMat);
+    m.position.set(d.x, L, d.z);
+    const label = { meadow: 'Meadow dome', frost: 'Frost dome', grove: 'Grove dome' }[d.biome];
+    add(m, { id: `dome${i}`, name: label, center: new THREE.Vector3(d.x, L + 6, d.z), radius: DOME_R + 3, theta: d.facing, phi: 1.12 });
+  });
+  const cafe = new THREE.Mesh(new THREE.BoxGeometry(20, 8, 18), proxyMat);
+  cafe.position.set(CAFE.x, L + 4, CAFE.z + 4);
+  add(cafe, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(CAFE.x, L + 2.5, CAFE.z + 4), radius: 13, theta: 0.35, phi: 1.12 });
+  island.terrain.tops.forEach((top, i) => {
+    const isl = ISLANDS[i];
+    const name = isl.id === 'downtown' ? 'Downtown' : `Neighbourhood ${Number(isl.id.slice(4)) + 1}`;
+    top.userData.place = { id: isl.id, name, center: new THREE.Vector3(isl.x, L, isl.z), radius: isl.r * 0.95, phi: 0.95 };
+    pickables.push(top);
+  });
+}
+rig.onTap = (x, y) => {
   if (!island) return;
-  ray.setFromCamera(new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1), camera);
-  const hit = ray.intersectObjects(island.terrain.tops, false)[0];
-  if (hit) rig.focusOn(hit.point);
-});
-setTimeout(() => $('nav-hint')?.classList.add('faded'), 25000);
+  ray.setFromCamera(new THREE.Vector2((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1), camera);
+  const hits = ray.intersectObjects(pickables, false);
+  // Prefer a dome or the Hub over the island it sits on.
+  const hit = hits.find((h) => !h.object.userData.place.id.startsWith('hood') && h.object.userData.place.id !== 'downtown') ?? hits[0];
+  const place = hit?.object.userData.place;
+  if (rig.focused && (!place || place.id === rig.focused.id)) rig.exitFocus();
+  else if (place) rig.focusOn(place);
+};
+rig.onFocusChange = (place) => {
+  $('focus-bar').hidden = !place;
+  if (place) $('focus-name').textContent = place.name;
+  if (!place) document.querySelectorAll('[data-view]').forEach((o) => o.classList.remove('active'));
+};
+$('btn-back').addEventListener('click', () => rig.exitFocus());
+
+$('nav-hint').textContent = TOUCH
+  ? 'Drag to move · Pinch to zoom · Twist to turn · Two-finger slide to tilt · Tap a place to visit, tap again to leave'
+  : 'Drag to move · Scroll to zoom · Right-drag to turn and tilt · Click a place to visit, click again or Esc to leave';
+setTimeout(() => $('nav-hint')?.classList.add('faded'), 14000);
 
 // Keeps the frame rate up on slow machines: lowers resolution first, then detail.
-const perf = { ema: 16, scale: 1, quality: 2, check: 0, frames: 0, fpsT: 0 };
+const perf = { ema: 16, scale: 1, quality: TOUCH ? 1 : 2, check: 0, frames: 0, fpsT: 0 };
 function tunePerf(realMs, dt) {
   // Ignore stalls (tab in the background, window dragged): they are not render cost.
   if (realMs > 250) return;
@@ -164,8 +215,8 @@ function frame() {
   const dist = rig.focusDist;
   sky.focus.copy(rig.focus);
   sky.focusR = Math.round(Math.min(80, Math.max(24, dist * 0.55)) / 8) * 8;
-  sky.fog.near = 220 + dist * 0.9;
-  sky.fog.far = sky.fog.near + 1300;
+  sky.fog.near = 350 + dist * 1.1;
+  sky.fog.far = sky.fog.near + 1800;
   const env = sky.update(hour, camera, t);
   lastShadow.frames++;
   if (sky.focus.distanceTo(lastShadow.focus) > 3 || Math.abs(hour - lastShadow.hour) > 0.02 || sky.focusR !== lastShadow.r || lastShadow.frames > 90) {
@@ -187,6 +238,7 @@ function frame() {
     $('clock-phase').textContent = phase;
   }
 
+  post.setNight(env.night);
   post.render(dt);
   tunePerf(realDt * 1000, realDt);
 }

@@ -1,55 +1,98 @@
 import * as THREE from 'three';
-import { damp, easeInOut, angleLerp, clamp } from './util.js';
-import { heightAt, undersideAt, isVoid } from './terrain.js';
+import { damp, easeInOut, clamp, angleLerp } from './util.js';
+import { heightAt, isVoid } from './terrain.js';
 import { WORLD } from './layout.js';
 
-const LIMIT_R = 750;
-const MAX_Y = 450;
-const LOOK_SENS = 0.0032;
+const MIN_DIST = 8;
+const MAX_DIST = 750;
+const TARGET_LIMIT = 330;
+const TAP_MS = 280;
+const TAP_PX = 9;
 
 /**
- * Free-fly camera, like a drone.
- * Drag to look (any direction, straight up included), WASD / arrows to fly, Space up, C down,
- * Shift for speed, scroll to glide forward or back, double-click to fly to a spot.
- * Speed scales with height so it feels right both at street level and high above the island.
+ * Map-style camera, built for touch first.
+ *
+ * Exploring: one finger (or left mouse) drags the world around, pinch or scroll zooms toward
+ * where you point, two fingers twist to turn and slide up or down to tilt (right mouse does both).
+ * Tap a place to visit it: the camera frames it and dragging then circles around it.
+ * Tap again, tap empty sky or press Back to return to where you were.
  */
 export class CameraRig {
   constructor(camera, dom, views) {
     this.camera = camera;
     this.dom = dom;
     this.views = views;
-    camera.rotation.order = 'YXZ';
-    this.yaw = 0;
-    this.pitch = 0;
-    this.yawGoal = 0;
-    this.pitchGoal = 0;
-    this.vel = new THREE.Vector3();
-    this.keys = new Set();
+    this.target = new THREE.Vector3();
+    this.goal = { target: new THREE.Vector3(), dist: 300, theta: 0, phi: 1 };
+    this.dist = 300;
+    this.theta = 0;
+    this.phi = 1;
     this.tween = null;
+    this.focused = null;
+    this.saved = null;
+    this.onTap = null;
+    this.onFocusChange = null;
+    this.keys = new Set();
     this.focus = new THREE.Vector3();
-    this.focusDist = 50;
+    this.focusDist = 100;
     this.bind();
     this.jump('overview');
   }
 
+  // ---------- input ----------
+
   bind() {
     const el = this.dom;
-    let drag = null;
+    const pts = new Map();
+    let gesture = null;
+    el.style.touchAction = 'none';
     el.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    const snapshot = () => {
+      const list = [...pts.values()];
+      if (list.length === 1) return { n: 1, x: list[0].x, y: list[0].y };
+      const [a, b] = list;
+      return { n: 2, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y), ang: Math.atan2(b.y - a.y, b.x - a.x) };
+    };
+
     el.addEventListener('pointerdown', (e) => {
-      drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
       el.setPointerCapture(e.pointerId);
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, t: performance.now(), sx: e.clientX, sy: e.clientY });
       this.tween = null;
+      gesture = { ...snapshot(), rotate: e.button === 2 || e.ctrlKey || e.shiftKey };
     });
     el.addEventListener('pointermove', (e) => {
-      if (!drag || drag.id !== e.pointerId) return;
-      this.yawGoal -= (e.clientX - drag.x) * LOOK_SENS;
-      this.pitchGoal = clamp(this.pitchGoal - (e.clientY - drag.y) * LOOK_SENS, -1.54, 1.54);
-      drag.x = e.clientX;
-      drag.y = e.clientY;
+      const p = pts.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      const now = snapshot();
+      if (!gesture || now.n !== gesture.n) {
+        gesture = { ...now, rotate: gesture?.rotate };
+        return;
+      }
+      const dx = now.x - gesture.x, dy = now.y - gesture.y;
+      if (now.n === 1) {
+        if (gesture.rotate || this.focused) this.rotate(dx, dy);
+        else this.pan(dx, dy);
+      } else {
+        this.zoomAt(gesture.d / now.d, now.x, now.y);
+        let dAng = now.ang - gesture.ang;
+        if (dAng > Math.PI) dAng -= Math.PI * 2;
+        if (dAng < -Math.PI) dAng += Math.PI * 2;
+        this.goal.theta -= dAng;
+        // Two fingers sliding together tilts the view.
+        this.goal.phi = clamp(this.goal.phi - dy * 0.006, 0.2, this.maxPhi());
+      }
+      gesture = { ...now, rotate: gesture.rotate };
     });
     const end = (e) => {
-      if (drag && drag.id === e.pointerId) drag = null;
+      const p = pts.get(e.pointerId);
+      if (!p) return;
+      pts.delete(e.pointerId);
+      const quick = performance.now() - p.t < TAP_MS && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < TAP_PX;
+      if (quick && pts.size === 0 && gesture?.n === 1 && p.button === 0) this.onTap?.(e.clientX, e.clientY);
+      gesture = pts.size ? { ...snapshot(), rotate: false } : null;
     };
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', end);
@@ -58,144 +101,188 @@ export class CameraRig {
       (e) => {
         e.preventDefault();
         this.tween = null;
-        const amount = clamp(-e.deltaY / 100, -3, 3);
-        const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-        this.vel.addScaledVector(fwd, amount * this.speed() * 1.6);
+        this.zoomAt(Math.pow(1.0018, e.deltaY), e.clientX, e.clientY);
       },
       { passive: false },
     );
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT') return;
-      const k = e.key.toLowerCase();
-      if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
-      this.keys.add(k);
-      this.tween = null;
+      this.keys.add(e.key.toLowerCase());
+      if (e.key === 'Escape') this.exitFocus();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
     window.addEventListener('blur', () => this.keys.clear());
   }
 
-  // Height above whatever is below (an island, or the cloud sea far down), used to scale speed.
-  altitude() {
-    const p = this.camera.position;
-    const g = heightAt(p.x, p.z);
-    return Math.max(1, Math.min(isVoid(g) ? 80 : p.y - g, Math.abs(p.y - WORLD.cloudSeaY)));
+  maxPhi() {
+    // Looking up from beneath the islands is allowed; otherwise stop a little past level.
+    return this.goal.target.y < WORLD.landH - 5 ? 2.5 : 1.62;
   }
 
-  speed() {
-    return clamp(this.altitude() * 1.1, 7, 160);
+  // World units per screen pixel at the target distance.
+  unitsPerPixel() {
+    return (2 * this.goal.dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) / this.dom.clientHeight;
   }
 
-  setLook(pos, target) {
-    const d = target.clone().sub(pos);
-    this.yaw = this.yawGoal = Math.atan2(-d.x, -d.z);
-    this.pitch = this.pitchGoal = Math.atan2(d.y, Math.hypot(d.x, d.z));
+  pan(dx, dy) {
+    const k = this.unitsPerPixel();
+    const right = new THREE.Vector3(Math.cos(this.theta), 0, -Math.sin(this.theta));
+    const fwd = new THREE.Vector3(-Math.sin(this.theta), 0, -Math.cos(this.theta));
+    // Steeper views move the ground more per pixel vertically.
+    const vy = 1 / Math.max(0.35, Math.cos(Math.min(this.phi, 1.45)));
+    this.goal.target.addScaledVector(right, -dx * k).addScaledVector(fwd, dy * k * Math.min(vy, 2.2));
+  }
+
+  rotate(dx, dy) {
+    this.goal.theta -= dx * 0.006;
+    this.goal.phi = clamp(this.goal.phi - dy * 0.005, 0.2, this.maxPhi());
+  }
+
+  // Zoom by a factor, pulling the target toward whatever is under the screen point.
+  zoomAt(factor, sx, sy) {
+    const next = clamp(this.goal.dist * factor, MIN_DIST, MAX_DIST);
+    const real = next / this.goal.dist;
+    if (!this.focused) {
+      const p = this.groundPoint(sx, sy);
+      if (p) this.goal.target.lerp(p, 1 - real);
+    }
+    this.goal.dist = next;
+  }
+
+  groundPoint(sx, sy) {
+    const ndc = new THREE.Vector2((sx / this.dom.clientWidth) * 2 - 1, -(sy / this.dom.clientHeight) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -this.goal.target.y);
+    const hit = ray.ray.intersectPlane(plane, new THREE.Vector3());
+    // Ignore points far out toward the horizon.
+    return hit && hit.distanceTo(this.camera.position) < this.goal.dist * 4 ? hit : null;
+  }
+
+  // ---------- views and focus ----------
+
+  fromPosTarget(pos, target) {
+    const off = pos.clone().sub(target);
+    const dist = off.length();
+    return { target: target.clone(), dist, theta: Math.atan2(off.x, off.z), phi: Math.acos(clamp(off.y / dist, -1, 1)) };
+  }
+
+  setState(s) {
+    this.goal.target.copy(s.target);
+    this.goal.dist = s.dist;
+    this.goal.theta = s.theta;
+    this.goal.phi = s.phi;
   }
 
   jump(name) {
     const v = this.views[name];
-    this.camera.position.copy(v.pos);
-    this.setLook(v.pos, v.target);
-    this.vel.set(0, 0, 0);
+    this.setState(this.fromPosTarget(v.pos, v.target));
+    this.target.copy(this.goal.target);
+    this.dist = this.goal.dist;
+    this.theta = this.goal.theta;
+    this.phi = this.goal.phi;
     this.apply();
   }
 
-  go(name, duration = 2.2) {
+  go(name, duration = 1.8) {
+    if (this.focused) this.clearFocus();
     const v = this.views[name];
-    this.flyTo(v.pos, v.target, duration);
+    this.flyTo(this.fromPosTarget(v.pos, v.target), duration);
   }
 
-  flyTo(pos, target, duration = 1.6) {
-    const d = target.clone().sub(pos);
+  flyTo(state, duration = 1.4) {
     this.tween = {
       t: 0,
       duration,
-      fromPos: this.camera.position.clone(),
-      toPos: pos.clone(),
-      fromYaw: this.yaw,
-      fromPitch: this.pitch,
-      toYaw: Math.atan2(-d.x, -d.z),
-      toPitch: Math.atan2(d.y, Math.hypot(d.x, d.z)),
+      from: { target: this.target.clone(), dist: this.dist, theta: this.theta, phi: this.phi },
+      to: state,
     };
-    this.vel.set(0, 0, 0);
+    this.setState(state);
   }
 
-  // Fly toward a spot on the ground, ending a comfortable distance away and looking at it.
-  focusOn(point) {
-    const from = this.camera.position;
-    const dir = from.clone().sub(point);
-    const dist = clamp(dir.length() * 0.35, 12, 60);
-    dir.setLength(dist);
-    dir.y = Math.max(dir.y, dist * 0.45);
-    this.flyTo(point.clone().add(dir), point, 1.3);
+  /** Frame an object: { center, radius, name, theta?, phi? }. */
+  focusOn(obj) {
+    if (!this.focused) this.saved = { target: this.goal.target.clone(), dist: this.goal.dist, theta: this.goal.theta, phi: this.goal.phi };
+    this.focused = obj;
+    const vfov = THREE.MathUtils.degToRad(this.camera.fov);
+    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
+    const fit = obj.radius / Math.sin(Math.min(vfov, hfov) / 2);
+    this.flyTo({ target: obj.center.clone(), dist: clamp(fit * 1.05, MIN_DIST, MAX_DIST), theta: obj.theta ?? this.theta, phi: obj.phi ?? 1.05 });
+    this.onFocusChange?.(obj);
   }
+
+  clearFocus() {
+    this.focused = null;
+    this.onFocusChange?.(null);
+  }
+
+  exitFocus() {
+    if (!this.focused) return;
+    const back = this.saved;
+    this.clearFocus();
+    if (back) this.flyTo(back, 1.2);
+  }
+
+  // ---------- per frame ----------
 
   apply() {
-    this.camera.rotation.set(this.pitch, this.yaw, 0);
+    const s = Math.sin(this.phi);
+    const off = new THREE.Vector3(s * Math.sin(this.theta), Math.cos(this.phi), s * Math.cos(this.theta)).multiplyScalar(this.dist);
+    const pos = this.target.clone().add(off);
+    // Keep the camera out of the ground.
+    const g = heightAt(pos.x, pos.z);
+    if (!isVoid(g) && pos.y < g + 1.5 && this.target.y > g - 3) pos.y = g + 1.5;
+    pos.y = Math.max(pos.y, WORLD.cloudSeaY + 25);
+    this.camera.position.copy(pos);
+    this.camera.lookAt(this.target);
   }
 
-  constrain() {
-    const p = this.camera.position;
-    const r = Math.hypot(p.x, p.z);
-    if (r > LIMIT_R) {
-      p.x *= LIMIT_R / r;
-      p.z *= LIMIT_R / r;
+  keyMove(dt) {
+    if (!this.keys.size) return;
+    const k = this.keys;
+    const f = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 1 : 0);
+    const s = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0);
+    const turn = (k.has('e') ? 1 : 0) - (k.has('q') ? 1 : 0);
+    const zoom = (k.has('-') || k.has('_') ? 1 : 0) - (k.has('=') || k.has('+') ? 1 : 0);
+    const speed = this.goal.dist * 0.9 * dt;
+    if (f || s) {
+      this.tween = null;
+      const right = new THREE.Vector3(Math.cos(this.theta), 0, -Math.sin(this.theta));
+      const fwd = new THREE.Vector3(-Math.sin(this.theta), 0, -Math.cos(this.theta));
+      this.goal.target.addScaledVector(fwd, f * speed).addScaledVector(right, s * speed);
     }
-    p.y = clamp(p.y, WORLD.cloudSeaY + 25, MAX_Y);
-    // Stay out of the islands: above the grass, or below the rocky underside.
-    const top = heightAt(p.x, p.z);
-    if (!isVoid(top)) {
-      const bottom = undersideAt(p.x, p.z);
-      if (p.y < top + 1.5 && p.y > bottom - 1.5) p.y = p.y - bottom < (top + 1.5 - p.y) ? bottom - 1.5 : top + 1.5;
-    }
+    if (turn) this.goal.theta -= turn * 1.6 * dt;
+    if (zoom) this.goal.dist = clamp(this.goal.dist * (1 + zoom * 1.5 * dt), MIN_DIST, MAX_DIST);
   }
 
   update(dt) {
-    const cam = this.camera;
+    if (!this.focused) this.keyMove(dt);
+    // Stay over the archipelago.
+    const r = Math.hypot(this.goal.target.x, this.goal.target.z);
+    if (r > TARGET_LIMIT) {
+      const y = this.goal.target.y;
+      this.goal.target.multiplyScalar(TARGET_LIMIT / r).setY(y);
+    }
+
     if (this.tween) {
       const tw = this.tween;
       tw.t += dt / tw.duration;
       const k = easeInOut(Math.min(tw.t, 1));
-      cam.position.lerpVectors(tw.fromPos, tw.toPos, k);
-      this.yaw = this.yawGoal = angleLerp(tw.fromYaw, tw.toYaw, k);
-      this.pitch = this.pitchGoal = tw.fromPitch + (tw.toPitch - tw.fromPitch) * k;
+      this.target.lerpVectors(tw.from.target, tw.to.target, k);
+      // Arc out a little mid-flight so the move reads as a glide.
+      this.dist = THREE.MathUtils.lerp(tw.from.dist, tw.to.dist, k) * (1 + Math.sin(k * Math.PI) * 0.15);
+      this.theta = angleLerp(tw.from.theta, tw.to.theta, k);
+      this.phi = THREE.MathUtils.lerp(tw.from.phi, tw.to.phi, k);
       if (tw.t >= 1) this.tween = null;
     } else {
-      // Smooth look.
-      this.yaw = angleLerp(this.yaw, this.yawGoal, damp(20, dt));
-      this.pitch += (this.pitchGoal - this.pitch) * damp(20, dt);
-
-      // Keys push the drone; it glides to a stop when you let go.
-      const k = this.keys;
-      const f = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 1 : 0);
-      const s = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0);
-      const u = (k.has(' ') || k.has('e') ? 1 : 0) - (k.has('c') || k.has('q') || k.has('control') ? 1 : 0);
-      if (f || s || u) {
-        const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion).setY(0).normalize();
-        const wish = fwd.multiplyScalar(f).add(right.multiplyScalar(s));
-        wish.y += u;
-        wish.normalize().multiplyScalar(this.speed() * (k.has('shift') ? 3 : 1));
-        this.vel.lerp(wish, damp(6, dt));
-      } else {
-        this.vel.multiplyScalar(1 - damp(4, dt));
-      }
-      cam.position.addScaledVector(this.vel, dt);
+      const a = damp(12, dt);
+      this.target.lerp(this.goal.target, a);
+      this.dist += (this.goal.dist - this.dist) * a;
+      this.theta = angleLerp(this.theta, this.goal.theta, a);
+      this.phi += (this.goal.phi - this.phi) * a;
     }
-    this.constrain();
     this.apply();
-    cam.updateMatrixWorld();
-
-    // What the camera is looking at on the ground, for shadows and detail.
-    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-    const groundY = WORLD.landH;
-    if (fwd.y < -0.05 && cam.position.y > groundY + 0.5) {
-      const t = Math.min((cam.position.y - groundY) / -fwd.y, 250);
-      this.focus.copy(cam.position).addScaledVector(fwd, t);
-    } else {
-      this.focus.copy(cam.position).addScaledVector(fwd.setY(0).normalize(), 25);
-    }
-    this.focus.y = groundY;
-    this.focusDist = cam.position.distanceTo(this.focus);
+    this.focus.copy(this.target).setY(WORLD.landH);
+    this.focusDist = this.dist;
   }
 }

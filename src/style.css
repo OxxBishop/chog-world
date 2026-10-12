@@ -38,7 +38,9 @@ html, body {
 }
 
 .top-left { top: 16px; left: 16px; flex-direction: column; align-items: flex-start; gap: 0; pointer-events: none; }
-.top-right { top: 16px; right: 16px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 180px); }
+.top-right { top: 16px; right: 16px; flex-wrap: nowrap; justify-content: flex-end; max-width: calc(100vw - 200px); overflow-x: auto; scrollbar-width: none; }
+.top-right::-webkit-scrollbar { display: none; }
+.top-right button { flex: none; }
 .bottom {
   left: 50%;
   bottom: 18px;
@@ -160,3 +162,30 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 .nav-hint.faded { opacity: 0; }
 @media (max-width: 640px) { .nav-hint { white-space: normal; width: calc(100vw - 32px); text-align: center; } }
+
+.focus-bar {
+  position: fixed;
+  z-index: 6;
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 14px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+  font: 600 14px var(--body);
+  white-space: nowrap;
+}
+.focus-bar button { padding: 6px 12px; border-radius: 999px; }
+
+/* Phones: one scrollable row of places under the title, focus pill below it. */
+@media (max-width: 760px) {
+  .top-right { top: 62px; left: 16px; right: 16px; max-width: none; justify-content: flex-start; }
+  .focus-bar { top: 112px; }
+  .nav-hint { bottom: 88px; }
+}
+.focus-bar[hidden] { display: none; }
