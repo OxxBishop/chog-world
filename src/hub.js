@@ -1,33 +1,40 @@
 import * as THREE from 'three';
-import { piece } from './kaykit.js';
+import { piece, kitMaterial } from './kaykit.js';
 import { mergeByMaterial } from './merge.js';
+import { createGlows } from './glows.js';
 
 /*
- * The Chog Hub: one building on the downtown plaza with three doors. The domed lobby in the
- * middle (where owners sign in), the bar wing on the left (where Chogs hang out), and the casino
- * wing on the right, closed for now. Built from KayKit pods and tubes.
+ * The Chog Hub: one building on the downtown plaza with three doors, each wing with its own
+ * character. The domed lobby in the middle (where owners sign in) behind a wooden welcome arch,
+ * with banners and a Chog statue; the bar on the left under a striped awning, with string lights
+ * and tables outside; the casino on the right, closed for now, framed in marquee bulbs with a
+ * giant die and chip on its roof. KayKit pods in warm cream, with wood, brass and the purple.
  */
 
-export const HUB_KIT = ['basemodule_E', 'basemodule_A', 'basemodule_D', 'tunnel_straight_A', 'roofmodule_solarpanels', 'roofmodule_cargo_A', 'lights'];
+export const HUB_KIT = ['basemodule_E', 'basemodule_A', 'basemodule_D', 'tunnel_straight_A'];
 
 const LOBBY_S = 15;
 const WING_S = 10;
 const WING_X = 37;
+const LOBBY_FRONT = 1.14 * LOBBY_S;
+const WING_FRONT = 1.09 * WING_S;
+
+const PURPLE = '#8b6cf0';
 
 // A lit sign: rounded dark panel, big title, optional small line under it.
-function signTexture(title, sub, accent) {
+function signTexture(title, sub, accent, panel = 'rgba(40,24,52,0.94)') {
   const c = document.createElement('canvas');
   c.width = 1024;
   c.height = sub ? 320 : 220;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = 'rgba(26,18,48,0.92)';
+  ctx.fillStyle = panel;
   ctx.beginPath();
   ctx.roundRect(8, 8, c.width - 16, c.height - 16, 48);
   ctx.fill();
   ctx.strokeStyle = accent;
   ctx.lineWidth = 10;
   ctx.stroke();
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = '#fff6e8';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = '600 128px Fredoka, sans-serif';
@@ -43,57 +50,281 @@ function signTexture(title, sub, accent) {
   return t;
 }
 
-function sign(title, sub, width, accent) {
-  const map = signTexture(title, sub, accent);
+function signMesh(map, width, glow = 0.35) {
   const aspect = map.image.height / map.image.width;
-  const mat = new THREE.MeshStandardMaterial({ map, emissiveMap: map, emissive: new THREE.Color('#ffffff'), emissiveIntensity: 0.35, transparent: true, roughness: 0.6 });
+  const mat = new THREE.MeshStandardMaterial({ map, emissiveMap: map, emissive: new THREE.Color('#ffffff'), emissiveIntensity: glow, transparent: true, roughness: 0.6 });
   const m = new THREE.Mesh(new THREE.PlaneGeometry(width, width * aspect), mat);
   m.userData.keep = true;
   return m;
 }
 
+// The bar's neon: a mug outline and the word, glowing teal on a dark board.
+function neonMugTexture() {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 400;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(30,20,40,0.92)';
+  ctx.beginPath();
+  ctx.roundRect(8, 8, 1008, 384, 60);
+  ctx.fill();
+  ctx.strokeStyle = '#7ef0e4';
+  ctx.shadowColor = '#7ef0e4';
+  ctx.shadowBlur = 30;
+  ctx.lineWidth = 16;
+  ctx.lineJoin = 'round';
+  // Mug body, handle and foam.
+  ctx.beginPath();
+  ctx.roundRect(110, 110, 190, 220, 24);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(300, 220, 58, -Math.PI / 2, Math.PI / 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(100, 112);
+  for (let i = 0; i <= 4; i++) ctx.arc(120 + i * 42, 104, 22, Math.PI, 0);
+  ctx.stroke();
+  ctx.fillStyle = '#fff6e8';
+  ctx.font = '600 210px Fredoka, sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('BAR', 450, 215);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function stripes(a, b, n = 10) {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 16;
+  const ctx = c.getContext('2d');
+  for (let i = 0; i < n; i++) {
+    ctx.fillStyle = i % 2 ? b : a;
+    ctx.fillRect((i * 256) / n, 0, 256 / n + 1, 16);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Bulbs along a sagging line between two points.
+function stringOfBulbs(a, b, spacing, sag, out) {
+  const n = Math.max(2, Math.round(a.distanceTo(b) / spacing));
+  for (let i = 0; i <= n; i++) {
+    const u = i / n;
+    out.push(new THREE.Vector3().lerpVectors(a, b, u).add(new THREE.Vector3(0, -sag * 4 * u * (1 - u), 0)));
+  }
+}
+
+const box = (w, h, d, mat, x, y, z) => {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  return m;
+};
+const post = (r, h, mat, x, z, y = 0) => {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 10).translate(0, h / 2, 0), mat);
+  m.position.set(x, y, z);
+  return m;
+};
+
 export function buildHub() {
   const group = new THREE.Group();
+  const props = new THREE.Group();
   const signs = [];
+  const mats = {
+    wood: new THREE.MeshLambertMaterial({ color: '#9a6842' }),
+    darkWood: new THREE.MeshLambertMaterial({ color: '#6e4630' }),
+    cream: new THREE.MeshLambertMaterial({ color: '#f3e6cf' }),
+    brass: new THREE.MeshStandardMaterial({ color: '#cfa84e', metalness: 0.75, roughness: 0.35 }),
+    purple: new THREE.MeshLambertMaterial({ color: PURPLE }),
+    red: new THREE.MeshLambertMaterial({ color: '#c4334a' }),
+    gold: new THREE.MeshStandardMaterial({ color: '#e8b84a', metalness: 0.8, roughness: 0.3 }),
+  };
 
-  const lobby = piece('basemodule_E', LOBBY_S);
-  group.add(lobby);
-  const lobbyHalf = 1.14 * LOBBY_S;
+  // The pods themselves, in warm cream instead of cool white and grey.
+  const warm = kitMaterial().clone();
+  warm.color.set('#fff0dc');
+  const kit = new THREE.Group();
+  kit.add(piece('basemodule_E', LOBBY_S));
   for (const side of [-1, 1]) {
     const wing = piece(side < 0 ? 'basemodule_A' : 'basemodule_D', WING_S);
     wing.position.x = side * WING_X;
-    group.add(wing);
-    const roof = piece(side < 0 ? 'roofmodule_solarpanels' : 'roofmodule_cargo_A', WING_S * 1.1);
-    roof.position.set(side * WING_X, WING_S, 0);
-    group.add(roof);
+    kit.add(wing);
     const tube = piece('tunnel_straight_A', WING_S);
-    tube.position.x = side * (lobbyHalf + (WING_X - 1.1 * WING_S - lobbyHalf) / 2);
-    group.add(tube);
+    tube.position.x = side * (LOBBY_FRONT + (WING_X - 1.1 * WING_S - LOBBY_FRONT) / 2);
+    kit.add(tube);
   }
+  kit.traverse((o) => {
+    if (o.isMesh) o.material = warm;
+  });
+  group.add(kit);
 
-  // Signs: the building's name over the lobby, a name over each door.
-  const accent = '#b89cff';
-  const front = (s) => 1.12 * s + 0.15;
-  // The name stands on the roof, big enough to read from the other islands, facing both ways.
+  // The name on the roof, big enough to read from the other islands, facing both ways.
   for (const turn of [0, Math.PI]) {
-    const name = sign('CHOG HUB', null, 24, accent);
+    const name = signMesh(signTexture('CHOG HUB', null, '#e8b84a'), 24);
     name.position.set(0, 1.65 * LOBBY_S + 3.2, 0);
     name.rotation.y = turn;
     name.translateZ(0.2);
     signs.push(name);
   }
-  const doors = [
-    { title: 'LOBBY', sub: null, x: 0, z: front(LOBBY_S), y: 9.4, w: 8.5, color: accent },
-    { title: 'BAR', sub: null, x: -WING_X, z: front(WING_S), y: 8, w: 7, color: '#7ee0d8' },
-    { title: 'CASINO', sub: 'opening soon', x: WING_X, z: front(WING_S), y: 8, w: 8.5, color: '#ff9bd6' },
-  ];
-  for (const d of doors) {
-    const s = sign(d.title, d.sub, d.w, d.color);
-    s.position.set(d.x, d.y, d.z);
-    signs.push(s);
-  }
-  for (const s of signs) group.add(s);
 
+  // Lobby: a wooden welcome arch on the walk to the door, banners, and a statue of a Chog.
+  const archZ = LOBBY_FRONT + 6;
+  for (const sx of [-6, 6]) {
+    props.add(box(0.9, 7, 0.9, mats.wood, sx, 3.5, archZ));
+    props.add(box(1.2, 0.4, 1.2, mats.brass, sx, 7.1, archZ));
+  }
+  props.add(new THREE.Mesh(new THREE.TorusGeometry(6, 0.45, 10, 32, Math.PI).translate(0, 7.1, archZ), mats.wood));
+  const welcome = signMesh(signTexture('WELCOME', 'to the Chog Hub', '#b89cff', 'rgba(70,40,30,0.95)'), 7, 0.5);
+  welcome.position.set(0, 9.2, archZ + 0.5);
+  signs.push(welcome);
+  const lobbySign = signMesh(signTexture('LOBBY', null, '#b89cff'), 8.5);
+  lobbySign.position.set(0, 9.4, LOBBY_FRONT + 0.15);
+  signs.push(lobbySign);
+  const banners = [];
+  const bannerTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 320;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = PURPLE;
+    ctx.fillRect(0, 0, 128, 290);
+    ctx.beginPath();
+    ctx.moveTo(0, 290);
+    ctx.lineTo(64, 320);
+    ctx.lineTo(128, 290);
+    ctx.fill();
+    ctx.fillStyle = '#e8b84a';
+    ctx.fillRect(0, 0, 128, 16);
+    // A round Chog face with two ears.
+    ctx.fillStyle = '#fff0dc';
+    ctx.beginPath();
+    ctx.arc(64, 140, 34, 0, Math.PI * 2);
+    ctx.moveTo(38, 116);
+    ctx.lineTo(30, 80);
+    ctx.lineTo(56, 104);
+    ctx.moveTo(90, 116);
+    ctx.lineTo(98, 80);
+    ctx.lineTo(72, 104);
+    ctx.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const bannerMat = new THREE.MeshLambertMaterial({ map: bannerTex, side: THREE.DoubleSide, transparent: true, alphaTest: 0.5 });
+  for (const sx of [-12, 12]) {
+    props.add(post(0.12, 12, mats.brass, sx, LOBBY_FRONT + 2));
+    props.add(box(2.6, 0.12, 0.12, mats.brass, sx, 11.6, LOBBY_FRONT + 2));
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 6).translate(0, -3, 0), bannerMat);
+    flag.position.set(sx, 11.5, LOBBY_FRONT + 2.05);
+    flag.userData.keep = true;
+    banners.push(flag);
+    group.add(flag);
+  }
+  // The statue: a placeholder Chog in brass on a stone plinth, until the real model arrives.
+  const statue = new THREE.Group();
+  statue.add(box(3, 1.6, 3, mats.cream, 0, 0.8, 0));
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.2, 24, 16).scale(1, 1.15, 0.95).translate(0, 2.9, 0), mats.brass);
+  statue.add(body);
+  for (const sx of [-0.6, 0.6]) statue.add(new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 12).rotateZ(-sx * 0.3).translate(sx, 4.4, 0), mats.brass));
+  statue.position.set(-13, 0, LOBBY_FRONT + 10);
+  statue.rotation.y = 0.4;
+  props.add(statue);
+
+  // Bar: a striped awning over the door, string lights out to two posts, tables and stools.
+  const bx = -WING_X;
+  const awningMat = new THREE.MeshLambertMaterial({ map: stripes('#f3e6cf', '#9a7cf2', 14), side: THREE.DoubleSide });
+  const awning = new THREE.Mesh(new THREE.PlaneGeometry(16, 4.8), awningMat);
+  awning.position.set(bx, 6.4, WING_FRONT + 2.3);
+  awning.rotation.x = -Math.PI / 2 + 0.38;
+  awning.userData.keep = true;
+  group.add(awning);
+  const valance = new THREE.Mesh(new THREE.PlaneGeometry(16, 0.6), awningMat);
+  valance.position.set(bx, 5.25, WING_FRONT + 4.55);
+  valance.userData.keep = true;
+  group.add(valance);
+  for (const sx of [-7.8, 7.8]) props.add(post(0.1, 5.6, mats.brass, bx + sx, WING_FRONT + 4.5));
+  const bulbs = [];
+  const yardZ = WING_FRONT + 12;
+  props.add(post(0.14, 5, mats.darkWood, bx - 7, yardZ));
+  props.add(post(0.14, 5, mats.darkWood, bx + 7, yardZ));
+  stringOfBulbs(new THREE.Vector3(bx - 7.8, 5.5, WING_FRONT + 4.5), new THREE.Vector3(bx - 7, 4.9, yardZ), 0.75, 0.6, bulbs);
+  stringOfBulbs(new THREE.Vector3(bx + 7.8, 5.5, WING_FRONT + 4.5), new THREE.Vector3(bx + 7, 4.9, yardZ), 0.75, 0.6, bulbs);
+  stringOfBulbs(new THREE.Vector3(bx - 7, 4.9, yardZ), new THREE.Vector3(bx + 7, 4.9, yardZ), 0.75, 0.9, bulbs);
+  stringOfBulbs(new THREE.Vector3(bx - 7.8, 5.5, WING_FRONT + 4.5), new THREE.Vector3(bx + 7, 4.9, yardZ), 0.75, 1.1, bulbs);
+  for (const [tx, tz] of [[-4.5, 8], [0.5, 10.5], [4.5, 7.5]]) {
+    const x = bx + tx, z = WING_FRONT + tz;
+    props.add(post(0.09, 1.05, mats.brass, x, z));
+    props.add(new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.08, 20).translate(x, 1.08, z), mats.wood));
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + tx;
+      const sxs = x + Math.cos(a) * 1.35, szs = z + Math.sin(a) * 1.35;
+      props.add(post(0.05, 0.7, mats.brass, sxs, szs));
+      props.add(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.1, 14).translate(sxs, 0.75, szs), mats.darkWood));
+    }
+  }
+  const mug = signMesh(neonMugTexture(), 7.5, 0.5);
+  mug.position.set(bx, 8.4, WING_FRONT + 0.2);
+  signs.push(mug);
+
+  // Casino: marquee bulbs round the door and sign, red and gold trim, a giant die and chip on the roof.
+  const cx = WING_X;
+  props.add(box(22.5, 0.7, 0.3, mats.red, cx, 0.6, WING_FRONT + 0.1));
+  props.add(box(22.5, 0.25, 0.32, mats.gold, cx, 1.05, WING_FRONT + 0.12));
+  props.add(box(22.5, 0.5, 0.3, mats.red, cx, 9.3, WING_FRONT + 0.1));
+  const marquee = [];
+  const mw = 12, mh = 8.6, my = 5.0, mz = WING_FRONT + 0.35;
+  stringOfBulbs(new THREE.Vector3(cx - mw / 2, my - mh / 2, mz), new THREE.Vector3(cx - mw / 2, my + mh / 2, mz), 0.55, 0, marquee);
+  stringOfBulbs(new THREE.Vector3(cx - mw / 2, my + mh / 2, mz), new THREE.Vector3(cx + mw / 2, my + mh / 2, mz), 0.55, 0, marquee);
+  stringOfBulbs(new THREE.Vector3(cx + mw / 2, my + mh / 2, mz), new THREE.Vector3(cx + mw / 2, my - mh / 2, mz), 0.55, 0, marquee);
+  props.add(box(mw + 0.6, 0.3, 0.25, mats.gold, cx, my + mh / 2 + 0.05, mz - 0.15));
+  for (const sx of [-1, 1]) props.add(box(0.3, mh, 0.25, mats.gold, cx + (sx * mw) / 2, my, mz - 0.15));
+  const casinoSign = signMesh(signTexture('CASINO', 'opening soon', '#e8b84a', 'rgba(60,14,26,0.95)'), 8.5);
+  casinoSign.position.set(cx, 7.4, WING_FRONT + 0.3);
+  signs.push(casinoSign);
+  // A closed door: dark panel with a brass bar across it.
+  props.add(box(4.2, 5.4, 0.2, mats.darkWood, cx, 2.7, WING_FRONT + 0.25));
+  props.add(box(4.6, 0.25, 0.3, mats.brass, cx, 3.2, WING_FRONT + 0.4));
+  // The die: cream with purple pips, tipped onto one corner; the chip leaning beside it.
+  const die = new THREE.Group();
+  die.add(new THREE.Mesh(new THREE.BoxGeometry(5, 5, 5), mats.cream));
+  const pip = new THREE.SphereGeometry(0.42, 12, 8).scale(1, 1, 0.35);
+  const faces = [
+    [[0, 0]], // 1 on the front
+    [[-1.2, -1.2], [1.2, 1.2]],
+    [[-1.3, -1.3], [0, 0], [1.3, 1.3]],
+  ];
+  const facing = [
+    (u, v) => new THREE.Vector3(u, v, 2.52),
+    (u, v) => new THREE.Vector3(2.52, v, u),
+    (u, v) => new THREE.Vector3(u, 2.52, v),
+  ];
+  faces.forEach((list, f) => {
+    for (const [u, v] of list) {
+      const m = new THREE.Mesh(pip, mats.purple);
+      m.position.copy(facing[f](u, v));
+      m.lookAt(m.position.clone().multiplyScalar(2));
+      die.add(m);
+    }
+  });
+  die.position.set(cx + 3.5, WING_S + 3.6, -2);
+  die.rotation.set(0.35, 0.6, 0.2);
+  props.add(die);
+  const chipTex = stripes('#c4334a', '#fff0dc', 16);
+  const chip = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.8, 32), [new THREE.MeshLambertMaterial({ map: chipTex }), mats.red, mats.red]);
+  chip.position.set(cx - 4.5, WING_S + 2.6, 1.5);
+  chip.rotation.set(0.2, 0, 1.15);
+  chip.userData.keep = true;
+  group.add(chip);
+
+  for (const s of signs) group.add(s);
+  props.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+  group.add(props);
   mergeByMaterial(group);
   group.traverse((o) => {
     if (o.isMesh && !o.userData.keep) {
@@ -102,13 +333,44 @@ export function buildHub() {
     }
   });
 
+  // Bulbs: warm string lights over the bar, gold marquee bulbs that chase round the casino door.
+  const bulbGeo = new THREE.SphereGeometry(0.13, 8, 6);
+  const warmBulbs = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd9a0') });
+  const stringMesh = new THREE.InstancedMesh(bulbGeo, warmBulbs, bulbs.length);
+  bulbs.forEach((p, i) => stringMesh.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)));
+  group.add(stringMesh);
+  const marqueeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffffff') });
+  const marqueeMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.17, 8, 6), marqueeMat, marquee.length);
+  marquee.forEach((p, i) => {
+    marqueeMesh.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z));
+    marqueeMesh.setColorAt(i, new THREE.Color('#ffd27a'));
+  });
+  group.add(marqueeMesh);
+  const stringGlow = createGlows(bulbs, { color: '#ffcf8a', size: 0.9, minPx: 3 });
+  const marqueeGlow = createGlows(marquee, { color: '#ffd27a', size: 0.8, minPx: 3 });
+  group.add(stringGlow.points, marqueeGlow.points);
+  const lit = new THREE.Color('#ffd27a'), dim = new THREE.Color('#6b4a20');
+  const tmp = new THREE.Color();
+
   return {
     group,
     width: (WING_X + 1.1 * WING_S) * 2,
     depth: 2.3 * LOBBY_S,
     height: 1.65 * LOBBY_S,
-    setNight(n) {
+    update(env, t, renderer) {
+      const n = env.night;
       for (const s of signs) s.material.emissiveIntensity = 0.35 + n * 1.6;
+      // Bulbs glow by day as decoration and properly at night.
+      warmBulbs.color.set('#ffd9a0').multiplyScalar(1 + n * 2.5);
+      const step = Math.floor(t * 6);
+      marquee.forEach((p, i) => {
+        tmp.copy((i + step) % 3 === 0 ? lit : dim).multiplyScalar(1 + n * 2.5);
+        marqueeMesh.setColorAt(i, tmp);
+      });
+      marqueeMesh.instanceColor.needsUpdate = true;
+      for (const [k, b] of banners.entries()) b.rotation.y = Math.sin(t * 0.8 + k * 2) * 0.12;
+      stringGlow.update(env, renderer);
+      marqueeGlow.update(env, renderer);
     },
   };
 }
