@@ -36,8 +36,8 @@ export class Post {
   }
 
   // Clouds read the scene's depth, so they go straight after the scene is drawn.
-  addClouds(effect) {
-    this.cloudPass = new EffectPass(this.camera, effect);
+  addClouds(effects) {
+    this.cloudPass = new EffectPass(this.camera, ...effects);
     this.composer.addPass(this.cloudPass, 1);
   }
 

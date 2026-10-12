@@ -180,7 +180,8 @@ function undersideGeometry(isl) {
       const a = (j / SEGS) * Math.PI * 2;
       const e = edgeR(isl, a);
       const crag = 1 + (fbm(Math.cos(a) * 3 + isl.seed, Math.sin(a) * 3 + t * 6, 3) - 0.5) * 0.35 * Math.sin(t * Math.PI);
-      const rr = e * Math.pow(1 - t, 1.6) * crag;
+      // The top ring shares the lawn's edge vertices exactly, so no sliver of sky shows between them.
+      const rr = l === 0 ? e * 0.9995 : e * Math.pow(1 - t, 1.6) * crag;
       const x = isl.x + Math.cos(a) * rr, z = isl.z + Math.sin(a) * rr;
       const rimY = surface(isl.x + Math.cos(a) * e * 0.9995, isl.z + Math.sin(a) * e * 0.9995, { isl, k: 0.9995 });
       const y = l === 0 ? rimY : rimY - t * isl.depth - (noise2(a * 9 + isl.seed, t * 12) - 0.5) * 3 * t;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Effect, EffectAttribute } from 'postprocessing';
 import { CloudsEffect, CLOUD_SHAPE_TEXTURE_SIZE, CLOUD_SHAPE_DETAIL_TEXTURE_SIZE } from '@takram/three-clouds';
 import { AtmosphereParameters, PrecomputedTexturesGenerator } from '@takram/three-atmosphere';
 import { Ellipsoid, Geodetic, radians, DataTextureLoader, parseUint8Array, STBNLoader, DEFAULT_STBN_URL } from '@takram/three-geospatial';
@@ -26,6 +27,76 @@ const PRESETS = {
   high: { preset: 'high', resolutionScale: 1 },
   ultra: { preset: 'ultra', resolutionScale: 1 },
 };
+
+// Puts the clouds over the scene. Anything solid above the deck can never have cloud in front of
+// it (the camera stays above the deck), so it is left untouched; and next to those silhouettes the
+// coarse cloud samples that partly saw the island are swapped for the fullest cloud nearby, so no
+// jagged fringe shows along island rims and bridges.
+const COMPOSITE = /* glsl */ `
+uniform sampler2D cloudsTex;
+uniform mat4 invProj;
+uniform mat4 camWorld;
+uniform float deckTop;
+
+bool aboveDeck(const in vec2 uv, const in float d) {
+  if (d >= 0.9999999) return false;
+  vec4 v = invProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  return (camWorld * vec4(v.xyz / v.w, 1.0)).y > deckTop;
+}
+
+void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor) {
+  outputColor = inputColor;
+  if (aboveDeck(uv, depth)) return;
+  vec2 size = vec2(textureSize(cloudsTex, 0));
+  vec4 c = texture(cloudsTex, uv);
+  // The clouds are marched at a quarter of this resolution, so a bad sample spreads about 4 texels.
+  vec2 o = 5.0 / size;
+  // Only open sky (where the clouds are the backdrop) gets patched; rock below the deck keeps its own sample.
+  bool edge = depth >= 0.9999999 && (aboveDeck(uv + vec2(o.x, 0.0), readDepth(uv + vec2(o.x, 0.0))) ||
+    aboveDeck(uv - vec2(o.x, 0.0), readDepth(uv - vec2(o.x, 0.0))) ||
+    aboveDeck(uv + vec2(0.0, o.y), readDepth(uv + vec2(0.0, o.y))) ||
+    aboveDeck(uv - vec2(0.0, o.y), readDepth(uv - vec2(0.0, o.y))));
+  if (edge) {
+    // Average the fullest samples around, which smooths out any single odd one.
+    ivec2 p = ivec2(uv * size);
+    ivec2 hi = ivec2(size) - 1;
+    float top = c.a;
+    for (int y = -3; y <= 3; y++) {
+      for (int x = -3; x <= 3; x++) top = max(top, texelFetch(cloudsTex, clamp(p + ivec2(x, y) * 2, ivec2(0), hi), 0).a);
+    }
+    vec4 sum = vec4(0.0);
+    for (int y = -3; y <= 3; y++) {
+      for (int x = -3; x <= 3; x++) {
+        vec4 s = texelFetch(cloudsTex, clamp(p + ivec2(x, y) * 2, ivec2(0), hi), 0);
+        sum += s.a >= top - 0.08 ? vec4(s.rgb, 1.0) : vec4(0.0);
+      }
+    }
+    c = vec4(sum.rgb / sum.a, top);
+  }
+  outputColor.rgb = inputColor.rgb * (1.0 - c.a) + c.rgb;
+}`;
+
+class CloudComposite extends Effect {
+  constructor(camera, clouds, deckTop) {
+    super('CloudComposite', COMPOSITE, {
+      attributes: EffectAttribute.DEPTH,
+      uniforms: new Map([
+        ['cloudsTex', new THREE.Uniform(null)],
+        ['invProj', new THREE.Uniform(new THREE.Matrix4())],
+        ['camWorld', new THREE.Uniform(new THREE.Matrix4())],
+        ['deckTop', new THREE.Uniform(deckTop)],
+      ]),
+    });
+    this.view = camera;
+    this.clouds = clouds;
+  }
+
+  update() {
+    this.uniforms.get('cloudsTex').value = this.clouds.uniforms.get('cloudsBuffer').value;
+    this.uniforms.get('invProj').value.copy(this.view.projectionMatrixInverse);
+    this.uniforms.get('camWorld').value.copy(this.view.matrixWorld);
+  }
+}
 
 function loadTexture(url) {
   return new Promise((resolve, reject) =>
@@ -59,7 +130,8 @@ function load3D(url, size) {
 export async function createVolumetricClouds(renderer, camera, quality = 'high') {
   const atmosphere = new AtmosphereParameters();
   const clouds = new CloudsEffect(camera, {}, atmosphere);
-  clouds.skipRendering = false;
+  // The library's own composite is replaced by CloudComposite.
+  clouds.skipRendering = true;
 
   const [localWeather, shape, shapeDetail, turbulence, stbn] = await Promise.all([
     loadTexture(`${ASSETS}local_weather.png`),
@@ -98,8 +170,10 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
   const moonTint = new THREE.Vector3(0.62, 0.5, 1.0);
   const dir = new THREE.Vector3();
 
+  const composite = new CloudComposite(camera, clouds, deck.altitude + deck.height - ALTITUDE + 2);
+
   return {
-    effect: clouds,
+    effects: [clouds, composite],
     setQuality(q) {
       const p = PRESETS[q] ?? PRESETS.high;
       clouds.qualityPreset = p.preset;

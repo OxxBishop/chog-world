@@ -80,7 +80,7 @@ async function init() {
   try {
     clouds = await createVolumetricClouds(renderer, camera);
     clouds.setQuality(QUALITY === 'auto' ? 'high' : QUALITY);
-    post.addClouds(clouds.effect);
+    post.addClouds(clouds.effects);
   } catch (err) {
     console.error('Clouds unavailable', err);
   }
