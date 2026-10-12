@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { loadAll } from './assets.js';
 import { Sky } from './sky.js';
+import { createVolumetricClouds } from './volclouds.js';
 import { Post } from './post.js';
 import { buildIsland } from './island.js';
 import { CameraRig } from './camera.js';
@@ -10,13 +11,16 @@ import { rng as makeRng } from './util.js';
 
 const $ = (id) => document.getElementById(id);
 
-// Phones have dense screens: render sharper there and let the auto-tuner trade detail for speed.
+const params = new URLSearchParams(location.search);
 const TOUCH = window.matchMedia('(pointer: coarse)').matches;
-const BASE_DPR = Math.min(window.devicePixelRatio, TOUCH ? 2 : 1.25);
+// Quality: the full look by default. ?q=medium or ?q=low for slower machines, ?q=auto to adapt
+// on the fly, ?q=ultra for the sharpest cloud shadows.
+const QUALITY = ['low', 'medium', 'high', 'ultra', 'auto'].includes(params.get('q')) ? params.get('q') : 'high';
+const BASE_DPR = Math.min(window.devicePixelRatio, { low: 1, medium: 1.5 }[QUALITY] ?? 2);
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
 renderer.setPixelRatio(BASE_DPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = QUALITY !== 'low';
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.NoToneMapping;
@@ -45,6 +49,7 @@ const rig = new CameraRig(camera, renderer.domElement, VIEWS);
 const post = new Post(renderer, scene, camera);
 
 let island;
+let clouds;
 
 // Time of day: live local clock, or a scrubbed hour from the slider.
 const time = { live: true, hour: 12 };
@@ -68,6 +73,15 @@ async function init() {
   island.setQuality(perf.quality);
   buildPickables();
   // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
+  $('loading').querySelector('.sub').textContent = 'Gathering clouds...';
+  // If the clouds can't load (offline, blocked download), the world still opens without them.
+  try {
+    clouds = await createVolumetricClouds(renderer, camera);
+    clouds.setQuality(QUALITY === 'auto' ? 'high' : QUALITY);
+    post.addClouds(clouds.effect);
+  } catch (err) {
+    console.error('Clouds unavailable', err);
+  }
   $('loading').querySelector('.sub').textContent = 'Lighting the sky...';
   await renderer.compileAsync(scene, camera).catch(() => {});
   frame();
@@ -82,7 +96,6 @@ async function init() {
   }
   $('loading').classList.add('done');
   // Optional ?view=dome&hour=22 in the address, handy for sharing a specific shot.
-  const params = new URLSearchParams(location.search);
   if (params.has('hour')) {
     time.live = false;
     time.hour = parseFloat(params.get('hour'));
@@ -90,7 +103,7 @@ async function init() {
   }
   if (VIEWS[params.get('view')]) rig.jump(params.get('view'));
   renderer.setAnimationLoop(frame);
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, renderer, frame, VIEWS, perf };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf };
 }
 
 // UI.
@@ -176,7 +189,7 @@ $('nav-hint').textContent = TOUCH
 setTimeout(() => $('nav-hint')?.classList.add('faded'), 14000);
 
 // Keeps the frame rate up on slow machines: lowers resolution first, then detail.
-const perf = { ema: 16, scale: 1, quality: TOUCH ? 1 : 2, check: 0, frames: 0, fpsT: 0 };
+const perf = { ema: 16, scale: 1, quality: { low: 0, medium: 1 }[QUALITY] ?? 2, check: 0, frames: 0, fpsT: 0 };
 function tunePerf(realMs, dt) {
   // Ignore stalls (tab in the background, window dragged): they are not render cost.
   perf.frames++;
@@ -186,7 +199,8 @@ function tunePerf(realMs, dt) {
     perf.frames = 0;
     perf.fpsT = 0;
   }
-  if (realMs > 250) return;
+  // Only ?q=auto trades looks for speed; otherwise the chosen quality holds.
+  if (realMs > 250 || QUALITY !== 'auto') return;
   perf.ema += (realMs - perf.ema) * 0.08;
   perf.check += dt;
   if (perf.check < 1.5) return;
@@ -238,6 +252,7 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
+  clouds?.update(env, sky);
 
   const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);
   const label = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}|${phaseName(hour, env.night)}`;

@@ -8,7 +8,7 @@ Chogathon 2026 entry.
 
 ## Status
 
-Early build. The world is in: the floating islands, downtown and Chog Hub, three neighbourhoods of domes, bridges, waterfalls, drifting rocks, day and night, and the aurora. Chogs, wallet sign-in and chat come next.
+Early build. The world is in: the floating islands over a volumetric sea of clouds, downtown and Chog Hub, three neighbourhoods of domes, bridges, waterfalls, drifting rocks, day and night, and the aurora. Chogs, wallet sign-in and chat come next.
 
 ## Run it
 
@@ -19,7 +19,9 @@ npm run dev
 
 Then open http://localhost:5173.
 
-Controls: drag to look around, WASD to fly, Space to go up, C to go down, Shift for speed, scroll to glide, double-click to fly to a spot. Add `?view=below&hour=22` to the address to jump to a view and a time.
+Controls: swipe or drag to look around, two fingers or right-drag to move, pinch or scroll to zoom. Tap a place to visit it, tap again to leave. Add `?view=dome&hour=22` to the address to jump to a view and a time.
+
+Quality: the world runs at full quality by default. On a slower machine, add `?q=medium` or `?q=low` to the address. `?q=auto` adjusts as you go.
 
 ## Credits
 

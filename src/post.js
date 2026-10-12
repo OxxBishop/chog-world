@@ -16,6 +16,7 @@ import {
 export class Post {
   constructor(renderer, scene, camera) {
     this.renderer = renderer;
+    this.camera = camera;
     this.composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType, multisampling: 0 });
     this.composer.addPass(new RenderPass(scene, camera));
 
@@ -32,6 +33,11 @@ export class Post {
   setNight(n) {
     this.bloom.intensity = 0.15 + n * 0.5;
     this.bloom.luminanceMaterial.threshold = 0.95 - n * 0.12;
+  }
+
+  // Clouds read the scene's depth, so they go straight after the scene is drawn.
+  addClouds(effect) {
+    this.composer.addPass(new EffectPass(this.camera, effect), 1);
   }
 
   setSize(w, h) {

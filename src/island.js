@@ -6,7 +6,6 @@ import { buildTerrain, heightAt, islandAt } from './terrain.js';
 import { buildRoads } from './roads.js';
 import { makeCafe } from './cafe.js';
 import { buildBridges, buildSkyRocks, buildWaterfalls } from './skyfx.js';
-import { buildClouds } from './clouds.js';
 import { WORLD, ISLANDS, DOWNTOWN, DOMES, DOME_R, CAFE, roadDistance, nearDome } from './layout.js';
 import { fbm, noise2 } from './util.js';
 
@@ -58,7 +57,6 @@ export function buildIsland(scene, rng, renderer, sky) {
   const bridges = buildBridges(scene);
   const skyRocks = buildSkyRocks(scene, rng, MODELS);
   const falls = buildWaterfalls(scene, rng, noise);
-  const clouds = buildClouds(scene, rng);
   const forest = new Forest();
   const props = new Scatter();
   const low = new Scatter();
@@ -248,7 +246,6 @@ export function buildIsland(scene, rng, renderer, sky) {
       bridges.update(env);
       skyRocks.update(t);
       falls.update(env, t);
-      clouds.update(env, t, sky.uniforms.uHorizon.value);
       cafe.setNight(env.night);
       forest.setLight(env);
       forest.update(camera.position);
