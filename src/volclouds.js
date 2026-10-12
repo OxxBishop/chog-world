@@ -20,10 +20,11 @@ const EXPOSURE = 5;
 const STEP = 0.2;
 const ASSETS = `${import.meta.env.BASE_URL}assets/volclouds/`;
 
-// Cloud quality per site quality setting.
+// Cloud quality per site quality setting. Half resolution is much faster and nearly identical,
+// but softens island edges a touch at sunset, so high keeps full resolution.
 const PRESETS = {
-  low: { preset: 'low', resolutionScale: 0.75 },
-  medium: { preset: 'medium', resolutionScale: 1 },
+  low: { preset: 'low', resolutionScale: 0.5 },
+  medium: { preset: 'high', resolutionScale: 0.5 },
   high: { preset: 'high', resolutionScale: 1 },
   ultra: { preset: 'ultra', resolutionScale: 1 },
 };
@@ -71,9 +72,11 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
         sum += s.a >= top - 0.08 ? vec4(s.rgb, 1.0) : vec4(0.0);
       }
     }
-    c = vec4(sum.rgb / sum.a, top);
+    if (sum.a > 0.0) c = vec4(sum.rgb / sum.a, top);
   }
-  outputColor.rgb = inputColor.rgb * (1.0 - c.a) + c.rgb;
+  vec3 col = inputColor.rgb * (1.0 - c.a) + c.rgb;
+  // A single bad value would be smeared across the screen by the bloom, so never let one through.
+  if (!any(isnan(col)) && !any(isinf(col))) outputColor.rgb = col;
 }`;
 
 class CloudComposite extends Effect {
