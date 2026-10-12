@@ -17,7 +17,7 @@ const TOUCH = window.matchMedia('(pointer: coarse)').matches;
 // Quality: the full look by default. ?q=medium or ?q=low for slower machines, ?q=auto to adapt
 // on the fly, ?q=ultra for the sharpest cloud shadows.
 const QUALITY = ['low', 'medium', 'high', 'ultra', 'auto'].includes(params.get('q')) ? params.get('q') : 'high';
-const BASE_DPR = Math.min(window.devicePixelRatio, { low: 1, medium: 1.5 }[QUALITY] ?? 2);
+const BASE_DPR = Math.min(window.devicePixelRatio, { low: 1, ultra: 2 }[QUALITY] ?? 1.5);
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
 renderer.setPixelRatio(BASE_DPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -48,6 +48,7 @@ const VIEWS = {
 };
 const rig = new CameraRig(camera, renderer.domElement, VIEWS);
 const post = new Post(renderer, scene, camera);
+post.setPixelRatio(renderer.getPixelRatio());
 
 let island;
 let clouds;
@@ -137,6 +138,7 @@ function resize() {
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(BASE_DPR * perf.scale);
   renderer.setSize(window.innerWidth, window.innerHeight);
+  post.setPixelRatio(renderer.getPixelRatio());
   post.setSize(window.innerWidth, window.innerHeight);
 }
 window.addEventListener('resize', resize);

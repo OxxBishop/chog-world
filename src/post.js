@@ -26,7 +26,8 @@ export class Post {
     const contrast = new BrightnessContrastEffect({ brightness: 0.0, contrast: 0.14 });
     const vignette = new VignetteEffect({ offset: 0.5, darkness: 0.22 });
     this.composer.addPass(new EffectPass(camera, this.bloom, tone, sat, contrast, vignette));
-    this.composer.addPass(new EffectPass(camera, new SMAAEffect()));
+    this.smaaPass = new EffectPass(camera, new SMAAEffect());
+    this.composer.addPass(this.smaaPass);
   }
 
   // Glow is for lamps, windows and the aurora: keep it faint under a bright day sky so the scene stays crisp.
@@ -39,6 +40,15 @@ export class Post {
   addClouds(effects) {
     this.cloudPass = new EffectPass(this.camera, ...effects);
     this.composer.addPass(this.cloudPass, 1);
+  }
+
+  // At a pixel ratio of 2 and up the anti-aliasing pass is not needed. At 1.5 it still is: edges
+  // visibly stair-step without it.
+  setPixelRatio(ratio) {
+    const want = ratio < 2;
+    const has = this.composer.passes.includes(this.smaaPass);
+    if (want && !has) this.composer.addPass(this.smaaPass);
+    if (!want && has) this.composer.removePass(this.smaaPass);
   }
 
   setSize(w, h) {
