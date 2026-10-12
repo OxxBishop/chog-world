@@ -86,6 +86,27 @@ void main() {
   // A soft glow along the horizon at night, so sea and sky meet without a hard edge.
   col += vec3(0.32, 0.14, 0.58) * exp(-abs(h) * 9.0) * uNight * 0.3;
 
+  // The sea, far below the clouds at sea level: rolling waves that catch the sky and the sun or
+  // moon, fading into the haze toward the horizon. It shows through the gaps in the cloud deck.
+  if (h < 0.0) {
+    float t = (uCamPos.y + 1800.0) / max(-h, 1e-4);
+    vec2 sp = uCamPos.xz + d.xz * t;
+    vec2 q = sp / 700.0 + vec2(uTime * 0.0015, uTime * 0.001);
+    vec2 q2 = q * 3.7 + vec2(-uTime * 0.002, uTime * 0.0012);
+    float e = 0.004;
+    vec2 slope = vec2(tn(q) - tn(q + vec2(e, 0.0)), tn(q) - tn(q + vec2(0.0, e))) * 30.0
+      + vec2(tg(q2) - tg(q2 + vec2(e, 0.0)), tg(q2) - tg(q2 + vec2(0.0, e))) * 18.0;
+    vec3 n = normalize(vec3(slope.x, 1.0, slope.y));
+    vec3 r = reflect(d, n);
+    vec3 sky = mix(uHorizon, uTop, pow(smoothstep(0.0, 0.65, max(r.y, 0.0)), 0.8));
+    float fres = 0.02 + 0.98 * pow(1.0 - max(dot(-d, n), 0.0), 5.0);
+    vec3 deep = mix(vec3(0.012, 0.06, 0.2), vec3(0.003, 0.006, 0.025), uNight);
+    vec3 sea = mix(deep, sky, fres);
+    sea += uSunColor * pow(max(dot(r, uSunDir), 0.0), 300.0) * 3.0 * (1.0 - uNight);
+    sea += vec3(0.6, 0.55, 0.9) * pow(max(dot(r, uMoonDir), 0.0), 400.0) * 1.5 * uNight;
+    col = mix(sea, col, 1.0 - exp(-t / 12000.0));
+  }
+
   // Aurora: curtains of light hanging in a slab high above the world, ray-marched so they have
   // real depth: they overlap, converge on the horizon and shift as you fly.
   if (h > 0.0 && uNight > 0.01) {

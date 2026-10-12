@@ -271,7 +271,7 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
-  clouds?.update(env, sky);
+  clouds?.update(env, sky, t);
 
   const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);
   const label = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}|${phaseName(hour, env.night)}`;
