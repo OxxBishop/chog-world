@@ -4,6 +4,7 @@ import { edgeR, heightAt } from './terrain.js';
 import { info } from './assets.js';
 import { fbm, noise2, clamp } from './util.js';
 import { mergeByMaterial } from './merge.js';
+import { createGlows } from './glows.js';
 
 const WHITE = new THREE.Color(1, 1, 1);
 
@@ -35,6 +36,7 @@ export function buildBridges(scene) {
   const deckMat = new THREE.MeshLambertMaterial({ map: planks() });
   const steel = new THREE.MeshStandardMaterial({ color: '#eceaf3', roughness: 0.32, metalness: 0.75 });
   const globeMat = new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.2 });
+  const glowSpots = [];
   const group = new THREE.Group();
   const up = new THREE.Vector3(0, 1, 0);
   const strut = (a, b, r, mat) => {
@@ -105,15 +107,18 @@ export function buildBridges(scene) {
         const g = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), globeMat);
         g.position.copy(base).setY(base.y + 2.75);
         group.add(g);
+        glowSpots.push(g.position.clone());
       }
     }
   }
   mergeByMaterial(group);
-  scene.add(group);
+  const glows = createGlows(glowSpots);
+  scene.add(group, glows.points);
   return {
     paths,
-    update(env) {
-      globeMat.emissiveIntensity = 0.2 + env.night * 7;
+    update(env, renderer) {
+      globeMat.emissiveIntensity = 0.2 + env.night * 2.2;
+      glows.update(env, renderer);
     },
   };
 }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createGlows } from './glows.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ROADS, DOWNTOWN, roadDistance } from './layout.js';
 import { heightAt, islandAt } from './terrain.js';
@@ -173,6 +174,7 @@ export function buildRoads(scene) {
   globeGeo.translate(0, 3.75, 0);
   const steel = new THREE.MeshLambertMaterial({ color: '#2d2938' });
   const globeMat = new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.2 });
+  const glowSpots = [];
   const poles = new THREE.InstancedMesh(poleGeo, steel, lampSpots.length);
   const globes = new THREE.InstancedMesh(globeGeo, globeMat, lampSpots.length);
   const m = new THREE.Matrix4();
@@ -180,14 +182,18 @@ export function buildRoads(scene) {
     m.makeTranslation(x, heightAt(x, z), z);
     poles.setMatrixAt(i, m);
     globes.setMatrixAt(i, m);
+    glowSpots.push(new THREE.Vector3(x, heightAt(x, z) + 3.75, z));
   });
   poles.castShadow = true;
-  scene.add(poles, globes);
+  const glows = createGlows(glowSpots);
+  scene.add(poles, globes, glows.points);
 
   return {
     lamps: lampSpots,
-    update(env) {
-      globeMat.emissiveIntensity = 0.2 + env.night * 7;
+    update(env, renderer) {
+      // A warm glow, not a blinding one: the halo does the rest.
+      globeMat.emissiveIntensity = 0.2 + env.night * 2.2;
+      glows.update(env, renderer);
     },
   };
 }

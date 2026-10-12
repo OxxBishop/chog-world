@@ -243,8 +243,8 @@ export function buildIsland(scene, rng, renderer, sky) {
     },
     update(env, t, camera, dt = 0.016) {
       for (const d of domes) d.update(env, t);
-      roads.update(env);
-      bridges.update(env);
+      roads.update(env, renderer);
+      bridges.update(env, renderer);
       skyRocks.update(t);
       falls.update(env, t);
       hub.setNight(env.night);

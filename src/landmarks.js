@@ -66,11 +66,22 @@ function beacon(x, y, z) {
   const lantern = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 12), lanternMat);
   lantern.position.y = top + 5.8;
   g.add(lantern);
-  const beamMat = new THREE.MeshBasicMaterial({ color: '#ffe9b8', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  // Beams fade out along their length and tilt up a little, so they sweep the sky above the
+  // other islands instead of cutting through them.
+  const beamMat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color('#ffe9b8') }, uStrength: { value: 0 } },
+    vertexShader: 'varying float vAlong; void main() { vAlong = uv.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform vec3 uColor; uniform float uStrength; varying float vAlong; void main() { gl_FragColor = vec4(uColor * uStrength * pow(vAlong, 2.2), 1.0); }',
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
   const head = new THREE.Group();
   head.position.y = lantern.position.y;
+  const BEAM = 55;
   for (const side of [-1, 1]) {
-    const beam = new THREE.Mesh(new THREE.ConeGeometry(9, 120, 24, 1, true).translate(0, -60, 0).rotateZ((side * Math.PI) / 2), beamMat);
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(4.5, BEAM, 20, 1, true).translate(0, -BEAM / 2, 0).rotateZ(side * (Math.PI / 2 + 0.16)), beamMat);
     head.add(beam);
   }
   g.add(head);
@@ -79,7 +90,7 @@ function beacon(x, y, z) {
     group: g,
     update(env, t) {
       head.rotation.y = t * 0.5;
-      beamMat.opacity = 0.03 + env.night * 0.16;
+      beamMat.uniforms.uStrength.value = 0.04 + env.night * 0.22;
       lanternMat.emissiveIntensity = 1 + env.night * 4;
     },
   };
