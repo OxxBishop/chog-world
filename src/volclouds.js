@@ -79,7 +79,8 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
   Ellipsoid.WGS84.getNorthUpEastFrame(origin, clouds.worldToECEFMatrix);
   const toECEF = new THREE.Matrix3().setFromMatrix4(clouds.worldToECEFMatrix);
 
-  // One dense deck just under the islands; the rocky undersides sink into it.
+  // One dense deck just under the islands; the rocky undersides sink into it. Its shadow maps
+  // shade the clouds themselves (the blue-grey shadows between the tops at sunset).
   const deck = clouds.cloudLayers[0];
   Object.assign(deck, { altitude: ALTITUDE - 360, height: 340, densityScale: 0.3, shapeAmount: 1, shapeDetailAmount: 1, weatherExponent: 1, shapeAlteringBias: 0.35, coverageFilterWidth: 0.6, shadow: true });
   for (let i = 1; i < clouds.cloudLayers.length; i++) clouds.cloudLayers[i].height = 0;
@@ -113,6 +114,8 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
       c.maxShadowLengthRayDistance = 6000;
       s.minStepSize *= STEP;
       s.maxStepSize *= STEP;
+      // One shadow cascade covers our view distance; three cost a lot and look the same here.
+      s.cascadeCount = 1;
     },
     update(env, sky) {
       const su = sky.uniforms;
