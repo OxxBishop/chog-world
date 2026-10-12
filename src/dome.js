@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { makeHome } from './home.js';
 import { DOME_R, WORLD } from './layout.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from './merge.js';
 
 const DOOR_HALF = 2.2;
@@ -67,26 +68,34 @@ export class Dome {
 
     const steel = new THREE.MeshStandardMaterial({ color: '#eceaf3', roughness: 0.32, metalness: 0.75, envMapIntensity: 1.2 });
     this.steel = steel;
-    const strutGeo = new THREE.CylinderGeometry(0.09, 0.09, 1, 6, 1, true);
-    const struts = new THREE.InstancedMesh(strutGeo, steel, edges.length);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
-    edges.forEach(([a, b], i) => {
-      const dir = b.clone().sub(a);
-      const len = dir.length();
-      q.setFromUnitVectors(up, dir.normalize());
-      m.compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, len, 1));
-      struts.setMatrixAt(i, m);
-    });
+    // Every strut baked into one geometry; `sides` lets the far version use plainer struts.
+    const lattice = (sides) => {
+      const base = new THREE.CylinderGeometry(0.09, 0.09, 1, sides, 1, true);
+      return mergeGeometries(
+        edges.map(([a, b]) => {
+          const dir = b.clone().sub(a);
+          const len = dir.length();
+          q.setFromUnitVectors(up, dir.normalize());
+          return base.clone().applyMatrix4(m.compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, len, 1)));
+        }),
+      );
+    };
+    // Close up: the full lattice with its joints. From afar (where a joint is under a pixel): a lighter one.
+    const near = new THREE.Group();
+    const far = new THREE.Group();
+    const struts = new THREE.Mesh(lattice(6), steel);
     struts.castShadow = true;
     struts.receiveShadow = true;
-    this.group.add(struts);
-
-    // Joints.
+    near.add(struts);
     const nodes = rings.flat().concat([crown]).filter((p) => !inDoor(p));
-    const nodeMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.18, 1), steel, nodes.length);
-    nodes.forEach((p, i) => nodeMesh.setMatrixAt(i, m.makeTranslation(p.x, p.y, p.z)));
-    nodeMesh.castShadow = true;
-    this.group.add(nodeMesh);
+    const nodeGeo = new THREE.IcosahedronGeometry(0.18, 1);
+    const joints = new THREE.Mesh(mergeGeometries(nodes.map((p) => nodeGeo.clone().translate(p.x, p.y, p.z))), steel);
+    joints.castShadow = true;
+    near.add(joints);
+    const farStruts = new THREE.Mesh(lattice(4), steel);
+    farStruts.castShadow = true;
+    far.add(farStruts);
 
     // Base ring, a low concrete plinth with a gap at the door.
     const plinthMat = new THREE.MeshStandardMaterial({ color: '#d9d4e2', roughness: 0.85 });
@@ -139,7 +148,16 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     const glassMesh = new THREE.Mesh(new THREE.SphereGeometry(R - 0.02, 96, 32, 0, Math.PI * 2, 0, Math.PI / 2), this.glass);
     glassMesh.renderOrder = 2;
     glassMesh.userData.keep = true;
-    this.group.add(glassMesh);
+    near.add(glassMesh);
+    // From afar only the outside of the glass shows: one side, fewer facets, half the overdraw.
+    const farGlass = new THREE.Mesh(new THREE.SphereGeometry(R - 0.02, 48, 12, 0, Math.PI * 2, 0, Math.PI / 2), this.glass.clone());
+    farGlass.material.side = THREE.FrontSide;
+    farGlass.material.onBeforeCompile = this.glass.onBeforeCompile;
+    farGlass.material.customProgramCacheKey = () => 'dome-glass-far';
+    farGlass.renderOrder = 2;
+    farGlass.userData.keep = true;
+    far.add(farGlass);
+    this.farGlass = farGlass.material;
 
     // Entrance: a steel arch frame that steps out from the dome.
     const archPts = [];
@@ -157,9 +175,11 @@ diffuseColor.a = mix(0.07, 0.8, fres);
       }
       pts.push(onDome(DOOR_HALF, postTop, out), onDome(DOOR_HALF, 0, out));
       archPts.push(pts);
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, 0.16, 8), steel);
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.16, 8), steel);
       tube.castShadow = true;
-      this.group.add(tube);
+      near.add(tube);
+      far.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.16, 4), steel));
     }
     // Ties between the two arches.
     for (let j = 0; j < archPts[0].length; j += 3) {
@@ -168,7 +188,7 @@ diffuseColor.a = mix(0.07, 0.8, fres);
       const tie = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, dir.length(), 6), steel);
       tie.position.copy(a).add(b).multiplyScalar(0.5);
       tie.quaternion.setFromUnitVectors(up, dir.normalize());
-      this.group.add(tie);
+      near.add(tie);
     }
     // Accent light strip over the door.
     this.signMat = new THREE.MeshStandardMaterial({ color: accent, emissive: new THREE.Color(accent), emissiveIntensity: 0.4 });
@@ -181,7 +201,14 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     this.home.group.position.set(0, 0, this.homeZ);
     this.group.add(this.home.group);
 
-    // Dozens of small parts become one mesh per material.
+    // Dozens of small parts become one mesh per material, separately for each level of detail.
+    const lod = new THREE.LOD();
+    for (const [level, dist] of [[near, 0], [far, 90]]) {
+      mergeByMaterial(level);
+      level.traverse((o) => (o.userData.keep = true));
+      lod.addLevel(level, dist);
+    }
+    this.group.add(lod);
     mergeByMaterial(this.group);
     this.group.updateMatrixWorld(true);
   }
