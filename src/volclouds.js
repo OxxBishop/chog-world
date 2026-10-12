@@ -106,8 +106,8 @@ float puffDensity(const in vec3 x, const in vec4 p, const in vec2 turn) {
   vec3 q = (x - p.xyz) / p.w;
   q.xz = vec2(turn.x * q.x - turn.y * q.z, turn.y * q.x + turn.x * q.z);
   float body = 0.0;
-  for (int i = 0; i < 7; i++) body = max(body, 1.0 - smoothstep(LUMPS[i].w * 0.3, LUMPS[i].w, length(q - LUMPS[i].xyz)));
-  body *= smoothstep(-0.42, -0.2, q.y);
+  for (int i = 0; i < 7; i++) body = max(body, 1.0 - smoothstep(LUMPS[i].w * 0.05, LUMPS[i].w * 1.2, length(q - LUMPS[i].xyz)));
+  body *= smoothstep(-0.5, -0.1, q.y);
   if (body <= 0.0) return 0.0;
   // Noise in the puff's own space, so it keeps its shape as it travels and slowly re-forms.
   vec3 sp = (x - p.xyz) * 0.035 + vec3(p.w * 0.37, drift, p.w * 0.11);
@@ -116,7 +116,7 @@ float puffDensity(const in vec3 x, const in vec4 p, const in vec2 turn) {
   float dens = clamp((n - (1.0 - body)) / max(body, 1e-3), 0.0, 1.0);
   // Fine wisps eat into the thin outer parts.
   float detail = texture(detailTex, (x - p.xyz) * 0.11 + vec3(0.0, drift * 2.0, p.w * 0.2)).r;
-  return clamp(dens - (1.0 - detail) * 0.45 * (1.0 - dens), 0.0, 1.0);
+  return clamp(dens - (1.0 - detail) * 0.6 * (1.0 - dens), 0.0, 1.0) * body;
 }
 
 // Ray against a puff's bounding ellipsoid: entry and exit distances, or none.
@@ -150,10 +150,10 @@ vec4 marchPuff(const in vec3 ro, const in vec3 rd, const in vec4 p, const in vec
     float od = 0.0;
     for (int k = 1; k <= 3; k++) od += puffDensity(x + sunDir * lightStep * float(k), p, turn);
     float powder = 1.0 - exp(-dens * 4.0);
-    float light = exp(-od * lightStep * 0.22) * mix(1.0, powder, 0.5);
+    float light = exp(-od * lightStep * 0.1) * mix(1.0, powder, 0.3);
     float h = clamp((x.y - p.y) / puffRadii(p).y * 0.5 + 0.5, 0.0, 1.0);
     vec3 S = sunCol * light * phase + mix(ambBot, ambTop, h);
-    float a = 1.0 - exp(-dens * 0.4 * ds);
+    float a = 1.0 - exp(-dens * 0.13 * ds);
     col += T * a * S;
     T *= 1.0 - a;
     if (T < 0.02) break;
