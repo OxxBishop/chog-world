@@ -246,15 +246,16 @@ export class Sky {
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x3a2d4d, 1);
     this.light = new THREE.DirectionalLight(0xffffff, 2);
     this.light.castShadow = true;
-    this.light.shadow.mapSize.set(2048, 2048);
+    // One fixed shadow box over the whole archipelago, re-rendered only when the hour moves.
+    this.light.shadow.mapSize.set(4096, 4096);
     const sc = this.light.shadow.camera;
     sc.near = 1;
-    sc.far = 400;
+    sc.far = 1200;
     this.light.shadow.bias = -0.0003;
     this.light.shadow.normalBias = 0.04;
     this.light.shadow.radius = 3;
-    this.focus = new THREE.Vector3();
-    this.focusR = 60;
+    this.focus = new THREE.Vector3(0, 2, 0);
+    this.focusR = 275;
     scene.add(this.hemi, this.light, this.light.target);
 
     // Fog blends the far water into the horizon colour.
@@ -290,11 +291,11 @@ export class Sky {
     u.uCloudLit.value.copy(WHITE).lerp(u.uHorizon.value, 0.25 + low * 0.3).lerp(NIGHT_CLOUD_LIT, night);
     u.uCloudShade.value.copy(u.uTop.value).lerp(WHITE, 0.45).lerp(NIGHT_CLOUD_SHADE, night);
 
-    // Light follows whichever body is up; the shadow box follows what the camera looks at.
+    // Light follows whichever body is up.
     const useSun = sunElev > -0.04;
     const dir = useSun ? u.uSunDir.value : u.uMoonDir.value;
     this.light.target.position.copy(this.focus);
-    this.light.position.copy(this.focus).addScaledVector(dir, 200);
+    this.light.position.copy(this.focus).addScaledVector(dir, 600);
     const sc = this.light.shadow.camera;
     if (sc.right !== this.focusR) {
       sc.left = sc.bottom = -this.focusR;

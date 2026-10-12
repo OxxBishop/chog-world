@@ -30,6 +30,7 @@ $('app').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.3, 2400);
 const sky = new Sky(scene, renderer);
+if (QUALITY === 'medium') sky.light.shadow.mapSize.set(2048, 2048);
 
 // Framed views for judging the look.
 const L = WORLD.landH;
@@ -229,7 +230,7 @@ function tunePerf(realMs, dt) {
 const timer = new THREE.Timer();
 timer.connect(document);
 let lastClock = '';
-const lastShadow = { focus: new THREE.Vector3(1e9, 0, 0), hour: -1, r: 0, frames: 0 };
+let lastShadowHour = -1;
 
 function frame() {
   const cpu0 = performance.now();
@@ -242,20 +243,14 @@ function frame() {
   if (time.live) slider.value = hour.toFixed(2);
 
   rig.update(dt);
-  // Shadows cover what the camera is looking at, sized to how far away it is.
   const dist = rig.focusDist;
-  sky.focus.copy(rig.focus);
-  sky.focusR = Math.round(Math.min(230, Math.max(24, dist * 0.55)) / 8) * 8;
   sky.fog.near = 600 + dist * 1.3;
   sky.fog.far = sky.fog.near + 2600;
   const env = sky.update(hour, camera, t);
-  lastShadow.frames++;
-  if (sky.focus.distanceTo(lastShadow.focus) > 3 || Math.abs(hour - lastShadow.hour) > 0.02 || sky.focusR !== lastShadow.r || lastShadow.frames > 90) {
+  // The shadow box covers the whole world, so only the sun moving calls for a fresh shadow map.
+  if (Math.abs(hour - lastShadowHour) > 0.02) {
     renderer.shadowMap.needsUpdate = true;
-    lastShadow.focus.copy(sky.focus);
-    lastShadow.hour = hour;
-    lastShadow.r = sky.focusR;
-    lastShadow.frames = 0;
+    lastShadowHour = hour;
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
