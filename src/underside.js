@@ -113,27 +113,39 @@ function rockNormal(isl, a, t) {
 }
 
 /*
- * Chains tying each neighbourhood to downtown: two per bridge, one each side, a little below the
- * rims. Each end is fixed to a bolt plate and ring on the rock face, and the chain sags between.
+ * Heavy chains tying each neighbourhood to downtown: two per bridge, one each side, a little below
+ * the rims, big enough to read from across the world. Each end hangs from an eye on an iron plate
+ * sunk into the rock face and held by four bolts, and the chain sags between.
  */
+const LINK = 1.5; // half the length of a link, in metres
 function chains(group) {
   const steel = new THREE.MeshStandardMaterial({ color: '#8f8aa3', roughness: 0.45, metalness: 0.8 });
-  const link = new THREE.TorusGeometry(0.42, 0.13, 6, 12).scale(1, 1.45, 1);
+  const iron = new THREE.MeshStandardMaterial({ color: '#4a4458', roughness: 0.6, metalness: 0.7 });
+  const link = new THREE.TorusGeometry(LINK / 1.45, LINK * 0.32, 8, 14).scale(1, 1.45, 1);
   const linkMats = [];
   const fixings = [];
+  const plates = [];
   const hub = ISLANDS[0];
   const up = new THREE.Vector3(0, 1, 0);
   const anchor = (isl, a, t) => {
     const n = rockNormal(isl, a, t);
-    const p = undersidePoint(isl, a, t).addScaledVector(n, 0.25);
-    // Bolt plate flush on the rock, and the ring standing off it.
+    const p = undersidePoint(isl, a, t);
     const q = new THREE.Quaternion().setFromUnitVectors(up, n);
-    fixings.push(new THREE.CylinderGeometry(1.3, 1.5, 0.35, 10).applyQuaternion(q).translate(p.x, p.y, p.z));
-    const ringAt = p.clone().addScaledVector(n, 0.9);
-    const ringQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(n.z, 0, -n.x).normalize());
-    fixings.push(new THREE.TorusGeometry(0.75, 0.2, 8, 16).applyQuaternion(ringQ).translate(ringAt.x, ringAt.y, ringAt.z));
-    fixings.push(new THREE.CylinderGeometry(0.22, 0.22, 0.9, 6).applyQuaternion(q).translate(...p.clone().addScaledVector(n, 0.45).toArray()));
-    return ringAt.addScaledVector(up, -0.6);
+    // An iron plate half buried in the rock, with four bolt heads round it.
+    plates.push(new THREE.CylinderGeometry(3.6, 4.2, 2.4, 8).applyQuaternion(q).translate(p.x, p.y, p.z));
+    const side = new THREE.Vector3(n.z, 0, -n.x).normalize();
+    const down = new THREE.Vector3().crossVectors(n, side).normalize();
+    for (let k = 0; k < 4; k++) {
+      const ang = (k / 4) * Math.PI * 2 + Math.PI / 4;
+      const b = p.clone().addScaledVector(n, 1.2).addScaledVector(side, Math.cos(ang) * 2.6).addScaledVector(down, Math.sin(ang) * 2.6);
+      fixings.push(new THREE.CylinderGeometry(0.5, 0.5, 0.6, 6).applyQuaternion(q).translate(b.x, b.y, b.z));
+    }
+    // A thick pin out of the plate and the eye the chain hangs from.
+    fixings.push(new THREE.CylinderGeometry(0.6, 0.7, 2.2, 8).applyQuaternion(q).translate(...p.clone().addScaledVector(n, 2.2).toArray()));
+    const eyeAt = p.clone().addScaledVector(n, 3.6);
+    const eyeQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), side);
+    fixings.push(new THREE.TorusGeometry(1.6, 0.5, 10, 18).applyQuaternion(eyeQ).translate(eyeAt.x, eyeAt.y, eyeAt.z));
+    return eyeAt.addScaledVector(up, -1.4);
   };
   for (const b of BRIDGES) {
     const hood = ISLANDS.find((i) => i.id === `hood${b.hood}`);
@@ -141,14 +153,14 @@ function chains(group) {
       const A = anchor(hub, b.angle + side * 0.2, 0.12);
       const B = anchor(hood, b.angle + Math.PI - side * 0.32, 0.14);
       const span = A.distanceTo(B);
-      const sag = span * 0.14;
+      const sag = span * 0.16;
       const at = (u) => new THREE.Vector3().lerpVectors(A, B, u).addScaledVector(up, -sag * 4 * u * (1 - u));
       // Walk along the curve placing links end to end, each turned a quarter from the last.
       let u = 0, i = 0;
       while (u < 1) {
         const p0 = at(u);
         let u1 = u, p1 = p0;
-        while (u1 < 1 && p1.distanceTo(p0) < 0.82) {
+        while (u1 < 1 && p1.distanceTo(p0) < LINK * 1.6) {
           u1 = Math.min(1, u1 + 0.002);
           p1 = at(u1);
         }
@@ -168,6 +180,10 @@ function chains(group) {
   const fix = new THREE.Mesh(mergeGeometries(fixings), steel);
   fix.castShadow = true;
   group.add(fix);
+  const plate = new THREE.Mesh(mergeGeometries(plates), iron);
+  plate.castShadow = true;
+  plate.receiveShadow = true;
+  group.add(plate);
 }
 
 function vines(isl, rng, group, clear) {
