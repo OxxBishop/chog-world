@@ -50,8 +50,8 @@ Status: `todo`, `doing`, `done`, `blocked`.
 | # | Task | Status |
 |---|---|---|
 | B1 | Plaza benches: tidy rings facing the fountain and rows along the paths, no random angles | done |
-| B2 | Load time: first frame in under 10 s on a slow laptop (show the world first and stream the clouds in after, real progress in the loader, cache assets). Today it is 40 to 60 s | doing |
-| B3 | Lobby facade: warm and welcoming like the bar and casino (it is still the grey sci-fi panel body) | todo |
+| B2 | Load time: first frame in under 10 s on a slow laptop (show the world first and stream the clouds in after, real progress in the loader, cache assets). Today it is 40 to 60 s | done |
+| B3 | Lobby facade: warm and welcoming like the bar and casino (it is still the grey sci-fi panel body) | doing |
 | B4 | Clouds: check for a grainy, dithered look in the overview at normal frame rates and fix it | todo |
 | B5 | World overview flight for the demo's opening shot (drone path over the islands at golden hour) | todo |
 | B6 | Casino (last, Oct 20 to 21, only if A1 to A6 are done): one game, free chips only, Chog traits give perks (bonus chips, re-rolls, small multipliers), leaderboard. Never wager $CHOG | todo |
