@@ -1,6 +1,6 @@
 import { chogInfo, loadChogs, DEMO_CHOG, homeFor } from './chogdata.js';
 import { makeChog } from './chog.js';
-import { playWake } from './cutscenes.js';
+import { playWake, playGreyOut } from './cutscenes.js';
 
 /*
  * Signing in and waking your Chog. Connect a wallet on Monad testnet, sign a free message, pick one of
@@ -138,10 +138,42 @@ export function initSession(world) {
       showChip();
       world.enterRoom(room);
       await playWake({ chog, name: info.name });
+      if (!session.demo) watch();
     } catch (err) {
       busy = false;
       await start(problem(err));
     }
+  }
+
+  // ---------- the sale watch ----------
+  function watch() {
+    const s = session;
+    chain().then((c) => {
+      if (session !== s) return;
+      s.stopWatch = c.watchTransfersFrom(s.address, (id) => {
+        if (session === s && id === s.id) sold();
+      });
+      // In case a transfer slipped past the log watch (a sleeping tab), check ownership now and then.
+      s.ownerCheck = setInterval(async () => {
+        if (session === s && s.id && !(await c.owns(s.address, s.id))) sold();
+      }, 30000);
+    });
+  }
+
+  async function sold() {
+    const s = session;
+    if (!s?.chog || s.leaving) return;
+    s.leaving = true;
+    s.stopWatch?.();
+    clearInterval(s.ownerCheck);
+    if (world.currentRoom() !== s.room) {
+      world.enterRoom(s.room);
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    $('chog-chip').hidden = true;
+    await playGreyOut({ chog: s.chog, name: s.info.name, room: s.room, world });
+    signOut();
+    world.leaveToOverview();
   }
 
   // ---------- signed in ----------
@@ -197,5 +229,6 @@ export function initSession(world) {
       open();
       start();
     },
+    simulateSale: () => sold(),
   };
 }

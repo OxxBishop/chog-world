@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, custom, http, parseAbi, defineChain, toHex } from 'viem';
+import { createPublicClient, createWalletClient, custom, http, parseAbi, parseAbiItem, defineChain, toHex } from 'viem';
 
 /*
  * Chog World's link to Monad testnet: finding the wallet, signing in, and reading the testnet Chog
@@ -21,7 +21,9 @@ export const EXPLORER_URL = 'https://testnet.monadexplorer.com';
 const ABI = parseAbi([
   'function tokensOf(address who) view returns (uint256[])',
   'function ownerOf(uint256 id) view returns (address)',
+  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
 ]);
+const TRANSFER = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)');
 
 export const reader = createPublicClient({ chain: MONAD_TESTNET, transport: http() });
 
@@ -109,4 +111,35 @@ export async function owns(address, id) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Watch for Chogs leaving a wallet: every few seconds, look for Transfer(from = address) in the blocks
+ * since the last look. onTransfer(id, to) runs for each one. Returns a function that stops watching.
+ */
+export function watchTransfersFrom(address, onTransfer, everyMs = 3000) {
+  let from = null;
+  let stopped = false;
+  let timer = 0;
+  const tick = async () => {
+    try {
+      const latest = await reader.getBlockNumber();
+      if (from === null) from = latest + 1n;
+      // If the tab slept, only look back a little: the ownership check covers anything older.
+      if (latest - from > 400n) from = latest - 400n;
+      if (latest >= from) {
+        const logs = await reader.getLogs({ address: CHOG_CONTRACT, event: TRANSFER, args: { from: address }, fromBlock: from, toBlock: latest });
+        from = latest + 1n;
+        for (const log of logs) onTransfer(Number(log.args.tokenId), log.args.to);
+      }
+    } catch (err) {
+      console.warn('Transfer watch:', err?.shortMessage ?? err?.message ?? err);
+    }
+    if (!stopped) timer = setTimeout(tick, everyMs);
+  };
+  timer = setTimeout(tick, 0);
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+  };
 }

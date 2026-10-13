@@ -357,3 +357,4 @@ button:disabled { opacity: 0.45; cursor: default; }
 @media (max-width: 760px) {
   .signin-btn, .chog-chip { top: 70px; }
 }
+.fade.slow { transition-duration: 1.4s; }

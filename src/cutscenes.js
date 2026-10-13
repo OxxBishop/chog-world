@@ -58,3 +58,51 @@ export async function playWake({ chog, name }) {
   chog.play('idle');
   hideCaption();
 }
+
+/**
+ * The sale: the Chog has left the wallet (sold or sent). It turns to you, its colour drains from the
+ * feet up, and it walks out of its home grey. The view is carried out to the world seen from space,
+ * the world fades, and it's gone: "Your Chog has moved on." Resolves at the end,
+ * on a dark screen; the session signs out and the world comes back from there.
+ *
+ * world: { enterSpace({ from, duration }) (B7: carries the view out to the world seen from space,
+ * resolves when it settles), blackout(text, sub) (fades to dark with a caption, resolves after it
+ * has been read) }.
+ */
+export async function playGreyOut({ chog, name, room, world }) {
+  chog.play('idle');
+  caption(`${name} left your wallet`);
+  await wait(1100);
+  // Colour drains from the feet up.
+  await tween(2600, (k) => chog.setGrey(THREE.MathUtils.smoothstep(k, 0, 1)));
+  chog.play('sad');
+  await wait(700);
+  // It walks out of the door, grey.
+  const door = new THREE.Vector3(0, 0, room.room.d / 2 - 0.6);
+  const from = chog.root.position.clone();
+  chog.root.rotation.y = Math.atan2(door.x - from.x, door.z - from.z);
+  chog.play('walk');
+  hideCaption();
+  // It fades as it goes, since the door is on the camera's side of the room.
+  await tween(2600, (k) => {
+    chog.root.position.lerpVectors(from, door, k * 0.7);
+    chog.setFade(1 - THREE.MathUtils.smoothstep(k, 0.25, 0.8));
+  });
+  chog.root.visible = false;
+  await world.enterSpace({ from: room, duration: 5 });
+  await world.blackout('Your Chog has moved on.', 'It goes grey and wanders off when it leaves your wallet. Its next owner can wake it again.');
+}
+
+// Run fn(k) for k from 0 to 1 over ms, one step a frame.
+function tween(ms, fn) {
+  const t0 = performance.now();
+  return new Promise((resolve) => {
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      fn(k);
+      if (k < 1) requestAnimationFrame(step);
+      else resolve();
+    };
+    step();
+  });
+}

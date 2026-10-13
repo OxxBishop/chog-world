@@ -192,6 +192,26 @@ async function init() {
         rig.jump('overview');
         markView('overview');
       }),
+    // The world seen from space (B7, src/space.js) plugs in here as enterSpace({ from, duration }).
+    // Until it lands the cutscene goes straight to the fade.
+    enterSpace: async () => {},
+    blackout: (title, sub) =>
+      new Promise((resolve) => {
+        $('fade').classList.add('on', 'slow');
+        const story = $('story');
+        story.querySelector('.story-title').textContent = title;
+        story.querySelector('.story-sub').textContent = sub;
+        story.hidden = false;
+        requestAnimationFrame(() => story.classList.add('on'));
+        setTimeout(() => {
+          story.classList.remove('on');
+          setTimeout(() => {
+            story.hidden = true;
+            $('fade').classList.remove('slow');
+            resolve();
+          }, 450);
+        }, 3800);
+      }),
   });
 
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
