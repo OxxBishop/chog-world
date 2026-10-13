@@ -194,9 +194,24 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 .focus-bar button { padding: 6px 12px; border-radius: 999px; }
 
-/* Phones: one scrollable row of places under the title. */
+/* The places menu button only shows on phones; it comes before the phone rules so they win. */
+.places-toggle {
+  display: none;
+  position: fixed;
+  z-index: 6;
+  top: 16px;
+  right: 16px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  font-size: 14px;
+}
+.places-toggle .caret { width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform 0.2s; }
+.places-toggle[aria-expanded="true"] .caret { transform: translateY(2px) rotate(-135deg); }
+@media (prefers-reduced-motion: reduce) { .places-toggle .caret { transition: none; } }
+
+/* Phones: the places fold into one menu under a single button. */
 @media (max-width: 760px) {
-  /* Phones: the places fold into one menu under a single button. */
   .places-toggle { display: inline-flex; }
   .top-right.places { top: 60px; right: 16px; left: auto; max-width: none; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 14px; backdrop-filter: blur(8px); overflow: visible; display: none; }
   .top-right.places.open { display: flex; }
@@ -224,18 +239,3 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 .debug label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 @media (max-width: 760px) { .debug { top: 112px; } }
-
-.places-toggle {
-  display: none;
-  position: fixed;
-  z-index: 6;
-  top: 16px;
-  right: 16px;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  font-size: 14px;
-}
-.places-toggle .caret { width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform 0.2s; }
-.places-toggle[aria-expanded="true"] .caret { transform: translateY(2px) rotate(-135deg); }
-@media (prefers-reduced-motion: reduce) { .places-toggle .caret { transition: none; } }
