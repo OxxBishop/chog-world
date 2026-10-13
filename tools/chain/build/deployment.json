@@ -1,0 +1,8 @@
+{
+ "chainId": 10143,
+ "address": "0x85a9ba85e5a3e87bab529c402140a87a72622b91",
+ "deployer": "0x8ca0E05245Bd8310C85d457a35cd59813FA6FE5f",
+ "tx": "0x44e02897e4521441d13464ca8d55eeda0da2e3da6d4a9277e5fad1e713380bf4",
+ "baseURI": "https://chog-world.vercel.app/meta/",
+ "explorer": "https://testnet.monadexplorer.com/address/0x85a9ba85e5a3e87bab529c402140a87a72622b91"
+}

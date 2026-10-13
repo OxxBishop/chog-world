@@ -7,3 +7,7 @@ dist/
 .vercel
 
 .vercel
+
+# Never commit wallet keys.
+*.key
+.chog_testnet_key

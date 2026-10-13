@@ -1,0 +1,16 @@
+{
+  "name": "chog-world-chain",
+  "private": true,
+  "type": "module",
+  "description": "Testnet Chog collection for Chog World: contract, deploy and mint scripts",
+  "scripts": {
+    "compile": "node compile.mjs",
+    "deploy": "node deploy.mjs",
+    "status": "node status.mjs"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0",
+    "solc": "^0.8.28",
+    "viem": "^2.21.54"
+  }
+}
