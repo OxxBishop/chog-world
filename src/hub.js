@@ -23,6 +23,64 @@ const WING_FRONT = 1.09 * WING_S;
 
 const PURPLE = '#8b6cf0';
 
+// Colour cells (column, row) in the kit's 8 x 4 texture atlas.
+const CELL = {
+  white: [1, 0], grey: [2, 0], dark: [3, 0], purple: [3, 1],
+  charcoal: [0, 0], taupe: [6, 1], brown: [7, 1], gold: [0, 2],
+};
+const key = ([c, r]) => `${c},${r}`;
+
+/*
+ * Give a kit piece its own colours without new textures: move each face's UVs to another cell of the
+ * atlas, keeping its place in the cell so the cell's shading gradient still reads. Faces turned up on
+ * the top half (the roof) come away into their own mesh in the roof material.
+ */
+function repaint(obj, swaps, roofMat) {
+  const map = new Map(Object.entries(swaps).map(([from, to]) => [key(CELL[from]), CELL[to]]));
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj);
+  const roofY = box.min.y + (box.max.y - box.min.y) * 0.55;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+  const meshes = [];
+  obj.traverse((o) => o.isMesh && meshes.push(o));
+  for (const o of meshes) {
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    const pos = g.attributes.position, uv = g.attributes.uv, nor = g.attributes.normal;
+    const keep = { position: [], normal: [], uv: [] };
+    const roof = { position: [], normal: [], uv: [] };
+    for (let t = 0; t < pos.count; t += 3) {
+      a.fromBufferAttribute(pos, t).applyMatrix4(o.matrixWorld);
+      b.fromBufferAttribute(pos, t + 1).applyMatrix4(o.matrixWorld);
+      c.fromBufferAttribute(pos, t + 2).applyMatrix4(o.matrixWorld);
+      n.subVectors(b, a).cross(c.clone().sub(a)).normalize();
+      const isRoof = n.y > 0.6 && (a.y + b.y + c.y) / 3 > roofY;
+      const cu = Math.floor(((uv.getX(t) + uv.getX(t + 1) + uv.getX(t + 2)) / 3) * 8);
+      const cv = Math.floor(((uv.getY(t) + uv.getY(t + 1) + uv.getY(t + 2)) / 3) * 4);
+      const to = map.get(`${cu},${cv}`);
+      const out = isRoof ? roof : keep;
+      for (let k = t; k < t + 3; k++) {
+        out.position.push(pos.getX(k), pos.getY(k), pos.getZ(k));
+        out.normal.push(nor.getX(k), nor.getY(k), nor.getZ(k));
+        if (to) out.uv.push((to[0] + (uv.getX(k) * 8 - cu)) / 8, (to[1] + (uv.getY(k) * 4 - cv)) / 4);
+        else out.uv.push(uv.getX(k), uv.getY(k));
+      }
+    }
+    const build = (d) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(d.position, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(d.normal, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(d.uv, 2));
+      return geo;
+    };
+    o.geometry = build(keep);
+    if (roof.position.length) {
+      const r = new THREE.Mesh(build(roof), roofMat);
+      r.userData.roof = true;
+      o.add(r);
+    }
+  }
+}
+
 // A lit sign: rounded dark panel, big title, optional small line under it.
 function signTexture(title, sub, accent, panel = 'rgba(40,24,52,0.94)') {
   const c = document.createElement('canvas');
@@ -210,6 +268,8 @@ export function buildHub() {
     purple: new THREE.MeshLambertMaterial({ color: PURPLE }),
     red: new THREE.MeshLambertMaterial({ color: '#c4334a' }),
     gold: new THREE.MeshStandardMaterial({ color: '#e8b84a', metalness: 0.8, roughness: 0.3 }),
+    barRoof: new THREE.MeshLambertMaterial({ color: '#3f7f58' }),
+    casinoRoof: new THREE.MeshLambertMaterial({ color: '#9e2338' }),
   };
 
   // The pods themselves, in warm cream instead of cool white and grey.
@@ -220,13 +280,17 @@ export function buildHub() {
   for (const side of [-1, 1]) {
     const wing = piece(side < 0 ? 'basemodule_A' : 'basemodule_D', WING_S);
     wing.position.x = side * WING_X;
+    // Each wing in its own colours: the bar in warm taupe and wood brown under a green roof, like
+    // a cosy pub; the casino in charcoal with gold trim under a deep red roof.
+    if (side < 0) repaint(wing, { white: 'taupe', grey: 'brown', purple: 'brown' }, mats.barRoof);
+    else repaint(wing, { white: 'charcoal', grey: 'dark', purple: 'gold' }, mats.casinoRoof);
     kit.add(wing);
     const tube = piece('tunnel_straight_A', WING_S);
     tube.position.x = side * (LOBBY_FRONT + (WING_X - 1.1 * WING_S - LOBBY_FRONT) / 2);
     kit.add(tube);
   }
   kit.traverse((o) => {
-    if (o.isMesh) o.material = warm;
+    if (o.isMesh && !o.userData.roof) o.material = warm;
   });
   group.add(kit);
 

@@ -6,11 +6,11 @@ import { piece } from './kaykit.js';
 import { mergeByMaterial } from './merge.js';
 
 /*
- * One landmark per neighbourhood, standing on the plateau in its middle, so each island can be
- * told apart from across the sky: a giant tree, a wind turbine, and a beacon tower.
+ * Landmarks standing on the plateau in the middle of a neighbourhood, so it can be told apart from
+ * across the sky: a giant tree on one, a beacon tower on another.
  */
 
-export const LANDMARK_KIT = ['windturbine_tall', 'structure_tall', 'lights'];
+export const LANDMARK_KIT = ['structure_tall', 'lights'];
 
 // The tallest of the common trees, grown huge, as plain copies of its parts.
 function giantTree(x, y, z) {
@@ -30,22 +30,6 @@ function giantTree(x, y, z) {
   g.position.set(x, y - 0.4, z);
   g.rotation.y = 0.7;
   return { group: g, update() {} };
-}
-
-function turbine(x, y, z) {
-  const g = piece('windturbine_tall', 14);
-  g.position.set(x, y, z);
-  g.rotation.y = -0.6;
-  let fan = null;
-  g.traverse((o) => {
-    if (o.name.includes('fan')) fan = o;
-  });
-  return {
-    group: g,
-    update(env, t, dt) {
-      if (fan) fan.rotation.z -= dt * 0.9;
-    },
-  };
 }
 
 function beacon(x, y, z) {
@@ -96,7 +80,7 @@ function beacon(x, y, z) {
   };
 }
 
-const BUILDERS = { tree: giantTree, turbine, beacon };
+const BUILDERS = { tree: giantTree, beacon };
 
 export function buildLandmarks(scene) {
   const marks = [];

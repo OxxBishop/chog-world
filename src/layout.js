@@ -22,7 +22,7 @@ const ACCENTS = ['#a78bfa', '#7cc7ff', '#f07fd8', '#b6f09c', '#ffb86b'];
 const HUB = { id: 'downtown', x: 0, z: 0, r: 110, y: 28, depth: 96, seed: 1, under: 'crystal', landmark: 'hub', falls: 1 };
 const HOOD_SPECS = [
   { angle: 1.62, gap: 46, r: 72, y: 0, depth: 56, seed: 3, under: 'roots', landmark: 'tree', falls: 0 },
-  { angle: 1.62 + 2.17, gap: 54, r: 70, y: 7, depth: 64, seed: 5, under: 'chains', landmark: 'turbine', falls: 0 },
+  { angle: 1.62 + 2.17, gap: 54, r: 70, y: 7, depth: 64, seed: 5, under: 'chains', landmark: null, falls: 0 },
   { angle: 1.62 + 4.22, gap: 42, r: 74, y: -6, depth: 74, seed: 7, under: 'falls', landmark: 'beacon', falls: 2 },
 ];
 
