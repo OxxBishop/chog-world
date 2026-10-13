@@ -8,6 +8,8 @@ import { createGlows } from './glows.js';
  */
 
 export const FOUNTAIN = { x: 0, z: 40 };
+// Benches are built at life size, then scaled up to match the fountain, lamps and pods around them.
+const BENCH_SCALE = 1.7;
 
 const stone = () => new THREE.MeshLambertMaterial({ color: '#efe3cf' });
 
@@ -118,13 +120,23 @@ export function buildPlaza() {
   f.group.position.set(FOUNTAIN.x, 0, FOUNTAIN.z);
   group.add(f.group);
 
-  // Benches in a ring around the fountain, facing it, with a gap toward the hub's doors.
-  for (const a of [-2.4, -1.5, -0.6, 0.6, 1.5, 2.4]) {
+  // Benches sized to the fountain and lamps: an even ring of eight facing the fountain, leaving the
+  // four walks into it clear, and two more out on the plaza between the planters, facing the hub.
+  const benchSpots = [];
+  const addBench = (x, z, faceX, faceZ) => {
     const b = bench(wood, brass);
-    b.position.set(FOUNTAIN.x + Math.sin(a) * 10.5, 0, FOUNTAIN.z + Math.cos(a) * 10.5);
-    b.rotation.y = a + Math.PI;
+    b.scale.setScalar(BENCH_SCALE);
+    b.position.set(x, 0, z);
+    // The seat faces +z before turning; turn it to face the given point.
+    b.rotation.y = Math.atan2(faceX - x, faceZ - z);
     props.add(b);
+    benchSpots.push([x, z]);
+  };
+  for (let k = 0; k < 8; k++) {
+    const a = ((k + 0.5) / 8) * Math.PI * 2;
+    addBench(FOUNTAIN.x + Math.sin(a) * 11, FOUNTAIN.z + Math.cos(a) * 11, FOUNTAIN.x, FOUNTAIN.z);
   }
+  for (const a of [0.675, -0.675]) addBench(Math.sin(a) * 44, Math.cos(a) * 44, 0, 0);
 
   // Planters at the plaza's edge, clear of the hub; island.js fills them with flowers.
   const planters = [];
@@ -141,9 +153,11 @@ export function buildPlaza() {
 
   // Lamps around the fountain and along the walk from the lobby.
   const glowSpots = [];
-  const spots = planters.map(([x, z]) => [x, z]);
+  const spots = [...planters.map(([x, z]) => [x, z]), ...benchSpots];
   const globeMat = new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.2 });
-  for (const [x, z] of [[-9.5, 21], [9.5, 21], [-16, 40], [16, 40], [-30, 30], [30, 30], [-10, 48], [10, 48]]) {
+  // Two along the walk from the lobby, two out on the plaza, and four round the fountain in the gaps between its benches.
+  const round = [1, 3, 5, 7].map((k) => [FOUNTAIN.x + Math.sin((k / 8) * Math.PI * 2) * 11.5, FOUNTAIN.z + Math.cos((k / 8) * Math.PI * 2) * 11.5]);
+  for (const [x, z] of [[-9.5, 21], [9.5, 21], [-33, 25], [33, 25], ...round]) {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 4.2, 8).translate(0, 2.1, 0), brass);
     pole.position.set(x, 0, z);
     props.add(pole);
