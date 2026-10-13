@@ -53,14 +53,14 @@ function randomOnIslands(rng) {
   return [isl.x + Math.cos(a) * r, isl.z + Math.sin(a) * r];
 }
 
-export function buildIsland(scene, rng, renderer, sky) {
+export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   const noise = sky.uniforms.uNoise.value;
   const terrain = buildTerrain(scene);
   const roads = buildRoads(scene);
   const bridges = buildBridges(scene);
   const skyRocks = buildSkyRocks(scene, rng, MODELS);
-  const falls = buildWaterfalls(scene, rng, noise);
-  const undersides = buildUndersides(scene, rng);
+  const falls = buildWaterfalls(overlay, rng, noise);
+  const undersides = buildUndersides(scene, rng, falls.falls);
   const landmarks = buildLandmarks(scene);
   const forest = new Forest();
   const props = new Scatter();
@@ -90,7 +90,8 @@ export function buildIsland(scene, rng, renderer, sky) {
   };
   // Each neighbourhood's landmark stands in a clearing on its central plateau.
   const nearLandmark = (x, z, pad) => HOODS.some((h) => Math.hypot(x - h.x, z - h.z) < 20 + pad);
-  const built = (x, z, pad) => roadDistance(x, z) < pad || nearDome(x, z, pad) || downtownDist(x, z) < DOWNTOWN.r + 4 + pad || nearLandmark(x, z, pad);
+  const built = (x, z, pad) =>
+    roadDistance(x, z) < pad || nearDome(x, z, pad) || downtownDist(x, z) < DOWNTOWN.r + 4 + pad || nearLandmark(x, z, pad) || falls.streamDistance(x, z) < pad;
 
   // Forest: jittered grid kept where a noise field says "woods", thinner in the built-up middle.
   const trees = [];
@@ -148,7 +149,7 @@ export function buildIsland(scene, rng, renderer, sky) {
     const [x, z] = randomOnIslands(rng);
     const dens = fbm(x * 0.05 + 3, z * 0.05 + 8, 3);
     if (dens < 0.44) continue;
-    if (!onLand(x, z) || roadDistance(x, z) < 0.8 + noise2(x, z) || nearDome(x, z, 1.5) || downtownDist(x, z) < DOWNTOWN.r + 1) continue;
+    if (!onLand(x, z) || roadDistance(x, z) < 0.8 + noise2(x, z) || nearDome(x, z, 1.5) || downtownDist(x, z) < DOWNTOWN.r + 1 || falls.streamDistance(x, z) < 0.6) continue;
     const tall = dens > 0.6;
     const name = tall ? (rng() < 0.7 ? 'Grass_Common_Tall' : 'Grass_Wispy_Tall') : rng() < 0.8 ? 'Grass_Common_Short' : 'Grass_Wispy_Short';
     low.add(name, x, heightAt(x, z), z, { scale: rng.range(0.6, 1.0), rotY: rng() * Math.PI * 2, tint: rng.pick(GRASS) });
@@ -169,12 +170,16 @@ export function buildIsland(scene, rng, renderer, sky) {
     shadeSpots.push([x, z, 1.8 * scale, 0.3]);
   }
 
-  // Rocks where each waterfall spills over the rim.
+  // Rocks along both banks of each stream, and a few where it rises.
   for (const f of falls.falls) {
-    for (let k = 0; k < 4; k++) {
-      const x = f.x - Math.cos(f.a) * rng.range(1, 5) + rng.range(-3, 3), z = f.z - Math.sin(f.a) * rng.range(1, 5) + rng.range(-3, 3);
-      if (!onLand(x, z, 1.0)) continue;
-      props.add(rng.pick(MODELS.rocks), x, heightAt(x, z) - 0.3, z, { scale: rng.range(0.8, 1.6), rotY: rng() * Math.PI * 2, tilt: 0.3 });
+    const ox = Math.cos(f.a), oz = Math.sin(f.a);
+    for (let k = 0; k < 7; k++) {
+      const back = k === 6 ? 13 : rng.range(0.5, 10);
+      const side = k === 6 ? rng.range(-1, 1) : k % 2 ? 1 : -1;
+      const off = k === 6 ? side * 1.5 : side * (f.w * 0.5 * (0.6 + 0.4 * (1 - back / 12)) + rng.range(0.9, 2));
+      const x = f.x - ox * back - oz * off, z = f.z - oz * back + ox * off;
+      if (!onLand(x, z, 0.99)) continue;
+      props.add(rng.pick(MODELS.rocks), x, heightAt(x, z) - 0.3, z, { scale: rng.range(0.7, 1.4), rotY: rng() * Math.PI * 2, tilt: 0.3 });
     }
   }
 

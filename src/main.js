@@ -78,7 +78,7 @@ async function init() {
   await loadAll((p) => ($('loading').querySelector('.sub').textContent = `Waking the island... ${Math.round(p * 100)}%`));
   await document.fonts.load('600 120px Fredoka').catch(() => {});
   await loadKit([...new Set([...HUB_KIT, ...LANDMARK_KIT])]);
-  island = buildIsland(scene, makeRng(1969), renderer, sky);
+  island = buildIsland(scene, makeRng(1969), renderer, sky, post.overlay);
   island.setQuality(perf.quality);
   buildPickables();
   // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
@@ -314,8 +314,12 @@ function frame() {
   }
 
   post.setNight(env.night);
-  if (debug && !debug.state.post) renderer.render(scene, camera);
-  else post.render(dt);
+  if (debug && !debug.state.post) {
+    renderer.render(scene, camera);
+    renderer.autoClear = false;
+    renderer.render(post.overlay, camera);
+    renderer.autoClear = true;
+  } else post.render(dt);
   tunePerf(realDt * 1000, realDt);
   debug?.end(realDt, performance.now() - cpu0);
 }

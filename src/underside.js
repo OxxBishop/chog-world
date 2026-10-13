@@ -51,14 +51,19 @@ function droop(top, length, rng, wander = 3) {
   return pts;
 }
 
-function crystals(isl, rng, group, glow) {
+// Whether angle a on an island is in a waterfall's path.
+const inFalls = (clear, isl, a, pad = 0.15) => clear.some((f) => f.isl === isl && Math.abs(((a - f.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < f.half + pad);
+
+function crystals(isl, rng, group, glow, clear) {
   const geos = [];
   const prism = new THREE.CylinderGeometry(1, 1, 1, 6, 1).translate(0, -0.5, 0);
   const tip = new THREE.ConeGeometry(1, 0.6, 6).rotateX(Math.PI).translate(0, -1.3, 0);
   const shard = mergeGeometries([prism, tip]);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3();
   for (let c = 0; c < 26; c++) {
-    const base = undersidePoint(isl, rng() * Math.PI * 2, rng.range(0.12, 0.75));
+    let a = rng() * Math.PI * 2;
+    for (let k = 0; k < 8 && inFalls(clear, isl, a); k++) a = rng() * Math.PI * 2;
+    const base = undersidePoint(isl, a, rng.range(0.12, 0.75));
     for (let k = 0; k < rng.range(3, 7); k++) {
       const dir = new THREE.Vector3(rng.range(-0.6, 0.6), -1, rng.range(-0.6, 0.6)).normalize();
       q.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
@@ -72,7 +77,9 @@ function crystals(isl, rng, group, glow) {
   const rock = new THREE.MeshLambertMaterial({ color: '#5e4f6a', flatShading: true });
   const spikes = [];
   for (let k = 0; k < 5; k++) {
-    const a = (k / 5) * Math.PI * 2 + rng.range(-0.3, 0.3);
+    let a = (k / 5) * Math.PI * 2 + rng.range(-0.3, 0.3);
+    // Spikes are broad: give the falls a wide berth.
+    for (let n = 0; n < 6 && inFalls(clear, isl, a, 0.35); n++) a += 0.25;
     const p = undersidePoint(isl, a, rng.range(0.25, 0.45));
     const len = rng.range(28, 46), r = rng.range(9, 14);
     const cone = new THREE.ConeGeometry(r, len, 9, 4).rotateX(Math.PI).translate(p.x, p.y - len / 2 + 4, p.z);
@@ -163,11 +170,13 @@ function chains(group) {
   group.add(fix);
 }
 
-function vines(isl, rng, group) {
+function vines(isl, rng, group, clear) {
   const geos = [];
   const leafy = [];
   for (let i = 0; i < 60; i++) {
-    const top = rimPoint(isl, rng() * Math.PI * 2, 1.0);
+    const a = rng() * Math.PI * 2;
+    if (inFalls(clear, isl, a)) continue;
+    const top = rimPoint(isl, a, 1.0);
     top.y -= 0.6;
     const pts = droop(top, rng.range(6, 22), rng, 0.8);
     geos.push(strand(pts, 0.14, 0.05, 4));
@@ -182,13 +191,13 @@ function vines(isl, rng, group) {
 }
 
 // Rocky shelves jutting from the cliffs a little below the rim, away from the bridges.
-function ledges(isl, rng, group, mat) {
+function ledges(isl, rng, group, mat, clear) {
   const avoid = BRIDGES.map((b) => (isl.id === 'downtown' ? b.angle : isl.id === `hood${b.hood}` ? b.angle + Math.PI : null)).filter((a) => a !== null);
   const gap = (a, b) => Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
   let placed = 0;
   for (let tries = 0; tries < 40 && placed < 3; tries++) {
     const a = rng() * Math.PI * 2;
-    if (avoid.some((b) => gap(a, b) < 0.5)) continue;
+    if (avoid.some((b) => gap(a, b) < 0.5) || inFalls(clear, isl, a, 0.3)) continue;
     const rim = rimPoint(isl, a, 1.0);
     const r = rng.range(6, 11);
     const rock = new THREE.Mesh(rockGeometry(r, r * rng.range(1.2, 1.8), rng() * 100), mat);
@@ -201,15 +210,15 @@ function ledges(isl, rng, group, mat) {
   }
 }
 
-export function buildUndersides(scene, rng) {
+export function buildUndersides(scene, rng, clear = []) {
   const group = new THREE.Group();
   const glow = new THREE.MeshStandardMaterial({ color: '#c9b3ff', emissive: new THREE.Color('#9b6bff'), emissiveIntensity: 0.3, roughness: 0.25, metalness: 0.1, flatShading: true });
   const ledgeMat = new THREE.MeshLambertMaterial({ vertexColors: true });
   for (const isl of ISLANDS) {
-    if (isl.under === 'crystal') crystals(isl, rng, group, glow);
+    if (isl.under === 'crystal') crystals(isl, rng, group, glow, clear);
     if (isl.under === 'roots') roots(isl, rng, group);
-    if (isl.under === 'falls') vines(isl, rng, group);
-    ledges(isl, rng, group, ledgeMat);
+    if (isl.under === 'falls') vines(isl, rng, group, clear);
+    ledges(isl, rng, group, ledgeMat, clear);
   }
   chains(group);
   scene.add(group);

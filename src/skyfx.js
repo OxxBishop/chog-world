@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { WORLD, ISLANDS, BRIDGES } from './layout.js';
-import { edgeR, heightAt } from './terrain.js';
+import { ISLANDS, BRIDGES } from './layout.js';
+import { edgeR, heightAt, undersidePoint } from './terrain.js';
 import { info } from './assets.js';
-import { fbm, noise2, clamp } from './util.js';
+import { fbm, noise2, clamp, smoothstep } from './util.js';
 import { mergeByMaterial } from './merge.js';
 import { createGlows } from './glows.js';
 
@@ -246,7 +246,29 @@ export function buildSkyRocks(scene, rng, models) {
   };
 }
 
-/** Waterfalls spilling off the island rims into the sky, fading as they fall. */
+/*
+ * Waterfalls: a stream runs across the grass to the rim and pours over it. The curtain arcs out the
+ * way falling water does, stays clear of the rock face all the way down, and fades into the cloud
+ * sea. Its streaks travel with the water, so they speed up as it falls.
+ */
+const G = 9.8;
+const STREAM_SPEED = 2.2;
+const LIP_SPEED = 2.6;
+// The tops of the cloud deck, and where the curtain ends, inside it.
+const CLOUD_TOP = -30;
+const FALL_END_Y = -62;
+
+// How far the rock juts out past the lip at depth fraction t, across the curtain's width.
+function rockOut(isl, a, half, lip, o, t) {
+  if (t <= 0 || t >= 1) return -Infinity;
+  let out = -Infinity;
+  for (const k of [-1, -0.5, 0, 0.5, 1]) {
+    const p = undersidePoint(isl, a + k * half, t);
+    out = Math.max(out, (p.x - lip.x) * o.x + (p.z - lip.z) * o.z);
+  }
+  return out;
+}
+
 export function buildWaterfalls(scene, rng, noise) {
   const uniforms = { uTime: { value: 0 }, uNoise: { value: noise }, uNight: { value: 0 } };
   const mat = new THREE.ShaderMaterial({
@@ -254,84 +276,166 @@ export function buildWaterfalls(scene, rng, noise) {
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
+    defines: { CLOUD_TOP: CLOUD_TOP.toFixed(1) },
     vertexShader: /* glsl */ `
+attribute float aFlow;
+attribute float aFade;
+attribute float aMist;
 varying vec2 vUv;
+varying float vFlow, vFade, vMist, vY;
 void main() {
   vUv = uv;
+  vY = position.y;
+  vFlow = aFlow;
+  vFade = aFade;
+  vMist = aMist;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`,
     fragmentShader: /* glsl */ `
 uniform float uTime, uNight;
 uniform sampler2D uNoise;
 varying vec2 vUv;
+varying float vFlow, vFade, vMist, vY;
 void main() {
-  // Streaks rushing down, broken up by noise.
-  float s1 = texture2D(uNoise, vec2(vUv.x * 1.6, vUv.y * 0.35 + uTime * 0.35)).b;
-  float s2 = texture2D(uNoise, vec2(vUv.x * 3.1 + 0.4, vUv.y * 0.6 + uTime * 0.55)).r;
-  float streak = smoothstep(0.35, 0.75, s1 * 0.6 + s2 * 0.5);
-  float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
-  float fall = 1.0 - smoothstep(0.35, 1.0, vUv.y);
-  vec3 col = mix(vec3(0.55, 0.85, 0.95), vec3(1.0), streak);
+  // vFlow is how long the water has been travelling, so (vFlow - uTime) moves with it.
+  float y = (vFlow - uTime) * 0.55;
+  float s1 = texture2D(uNoise, vec2(vUv.x * 1.3, y * 0.5)).b;
+  float s2 = texture2D(uNoise, vec2(vUv.x * 2.9 + 0.4, y * 0.9 + 0.3)).r;
+  float streak = smoothstep(0.3, 0.8, s1 * 0.6 + s2 * 0.5);
+  float edge = smoothstep(0.0, 0.14, vUv.x) * smoothstep(1.0, 0.86, vUv.x);
+  // White water where it tips over the lip and as it breaks into spray lower down.
+  float foam = smoothstep(0.4, 0.0, abs(vFlow - 0.1));
+  vec3 col = mix(vec3(0.5, 0.8, 0.95), vec3(1.0), clamp(streak * 0.75 + foam * 0.5 + vMist * 0.5, 0.0, 1.0));
   col = mix(col, col * vec3(0.45, 0.4, 0.7), uNight * 0.7);
-  float a = edge * fall * (0.45 + 0.5 * streak);
+  float a = edge * vFade * mix(0.55 + 0.45 * streak, 0.3 + 0.3 * streak, vMist);
+  // Drawn after the clouds, so it melts into the deck as it reaches the cloud tops.
+  a *= smoothstep(CLOUD_TOP - 26.0, CLOUD_TOP + 4.0, vY);
   gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
 }`,
   });
 
   const falls = [];
+  const gap = (a, b) => Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
   for (const isl of ISLANDS) {
     for (let n = 0; n < (isl.falls ?? 0); n++) {
-      // Pick a rim spot away from the bridges.
-      let a = 0;
-      for (let tries = 0; tries < 40; tries++) {
-        a = rng() * Math.PI * 2;
-        const px = isl.x + Math.cos(a) * isl.r, pz = isl.z + Math.sin(a) * isl.r;
-        const nearBridge = BRIDGES.some((b) => Math.hypot(px - b.ax, pz - b.az) < 30 || Math.hypot(px - b.bx, pz - b.bz) < 30);
-        if (!nearBridge) break;
-      }
-      const e = edgeR(isl, a);
-      const ox = Math.cos(a), oz = Math.sin(a);
-      const topX = isl.x + ox * e * 0.995, topZ = isl.z + oz * e * 0.995;
-      const topY = heightAt(isl.x + ox * e * 0.98, isl.z + oz * e * 0.98);
       // Islands known for their falls get wide ones.
       const width = isl.under === 'falls' ? rng.range(6, 9) : rng.range(3, 5.5);
-      // Long enough to pour into the cloud sea below.
-      const H = topY - WORLD.cloudSeaY + 4;
-      // A curtain that arcs out over the lip, then drops and widens.
-      const rows = 24;
-      const pos = [], uv = [], idx = [];
-      const tx = -oz, tz = ox;
-      for (let i = 0; i <= rows; i++) {
-        const v = i / rows;
-        const out = Math.sqrt(v) * 9 + 1.2;
-        const y = topY + 0.3 - v * v * H;
-        const w = width * (1 + v * 1.8);
-        for (const side of [-1, 1]) {
-          pos.push(topX + ox * out + tx * side * w * 0.5, y, topZ + oz * out + tz * side * w * 0.5);
-          uv.push(side < 0 ? 0 : 1, v);
+      // Of a few rim spots away from the bridges and other falls, take the one where the rock
+      // below tucks in furthest, so the water drops clear instead of running down a leaning face.
+      let best = null;
+      for (let tries = 0; tries < 24; tries++) {
+        const a = rng() * Math.PI * 2;
+        const e = edgeR(isl, a);
+        const px = isl.x + Math.cos(a) * e, pz = isl.z + Math.sin(a) * e;
+        if (BRIDGES.some((b) => Math.hypot(px - b.ax, pz - b.az) < 34 || Math.hypot(px - b.bx, pz - b.bz) < 34)) continue;
+        if (falls.some((f) => f.isl === isl && gap(f.a, a) < 0.7)) continue;
+        const o = { x: Math.cos(a), z: Math.sin(a) };
+        const lip = { x: isl.x + o.x * e * 0.995, z: isl.z + o.z * e * 0.995 };
+        const half = (width * 1.6) / e;
+        let jut = -Infinity;
+        for (let t = 0.05; t < 1; t += 0.05) jut = Math.max(jut, rockOut(isl, a, half, lip, o, t));
+        if (!best || jut < best.jut) best = { a, e, o, lip, half, jut };
+      }
+      if (!best) continue;
+      const { a, o, lip, half } = best;
+      const tx = -o.z, tz = o.x;
+      const lipY = heightAt(lip.x, lip.z);
+
+      const pos = [], uv = [], flow = [], fade = [], mist = [], idx = [];
+      const COLS = 6;
+      // Index a grid of rows just pushed, COLS + 1 vertices each.
+      const strip = (rows) => {
+        const base = pos.length / 3 - (rows + 1) * (COLS + 1);
+        for (let i = 0; i < rows; i++) {
+          for (let c = 0; c < COLS; c++) {
+            const k = base + i * (COLS + 1) + c, k2 = k + COLS + 1;
+            idx.push(k, k + 1, k2, k + 1, k2 + 1, k2);
+          }
         }
-        if (i > 0) {
-          const k = (i - 1) * 2;
-          idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+      };
+
+      // The stream across the grass, narrow at its head and widening to the lip.
+      const L = 12;
+      const SR = 10;
+      for (let i = 0; i <= SR; i++) {
+        const dist = L * (1 - i / SR);
+        const w = width * (0.55 + 0.45 * (1 - dist / L));
+        for (let c = 0; c <= COLS; c++) {
+          const s = (c / COLS) * 2 - 1;
+          const x = lip.x - o.x * dist + tx * s * w * 0.5, z = lip.z - o.z * dist + tz * s * w * 0.5;
+          pos.push(x, heightAt(x, z) + 0.07, z);
+          uv.push(c / COLS, 0);
+          flow.push(-dist / STREAM_SPEED);
+          fade.push(0.8 * smoothstep(L, L * 0.55, dist));
+          mist.push(0);
         }
       }
+      strip(SR);
+
+      // The curtain, row by row in time since the water left the lip.
+      const H = lipY - FALL_END_Y;
+      const F = Math.sqrt((2 * H) / G);
+      const ROWS = 30;
+      const rows = [];
+      for (let i = 0; i <= ROWS; i++) {
+        const f = F * (i / ROWS);
+        const d = 0.5 * G * f * f;
+        const t = d / isl.depth;
+        const need = rockOut(isl, a, half, lip, o, t) + 1.8 + d * 0.04;
+        rows.push({ f, d, out: Math.max(LIP_SPEED * f, need) });
+      }
+      // Never curl back in, and round off the bends where the rock pushed the water out.
+      for (let i = 1; i <= ROWS; i++) rows[i].out = Math.max(rows[i].out, rows[i - 1].out);
+      for (let pass = 0; pass < 3; pass++) {
+        const sm = rows.map((r, i) => (i === 0 || i === ROWS ? r.out : (rows[i - 1].out + r.out * 2 + rows[i + 1].out) / 4));
+        rows.forEach((r, i) => (r.out = Math.max(r.out, sm[i])));
+      }
+      for (const r of rows) {
+        const v = r.d / H;
+        const w = width * (1 + v * 1.1);
+        const bulge = w * 0.08;
+        for (let c = 0; c <= COLS; c++) {
+          const s = (c / COLS) * 2 - 1;
+          const out = r.out + bulge * (1 - s * s) * Math.min(1, r.f * 2);
+          pos.push(lip.x + o.x * out + tx * s * w * 0.5, lipY + 0.07 - r.d, lip.z + o.z * out + tz * s * w * 0.5);
+          uv.push(c / COLS, v);
+          flow.push(r.f);
+          fade.push(1 - smoothstep(0.5, 1.0, v));
+          mist.push(smoothstep(0.25, 0.9, v));
+        }
+      }
+      strip(ROWS);
+
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setAttribute('aFlow', new THREE.Float32BufferAttribute(flow, 1));
+      g.setAttribute('aFade', new THREE.Float32BufferAttribute(fade, 1));
+      g.setAttribute('aMist', new THREE.Float32BufferAttribute(mist, 1));
       g.setIndex(idx);
       const mesh = new THREE.Mesh(g, mat);
       mesh.renderOrder = 3;
       scene.add(mesh);
-      falls.push({ x: topX, z: topZ, a });
+      falls.push({ isl, a, half, x: lip.x, z: lip.z, w: width, head: [lip.x - o.x * L, lip.z - o.z * L] });
     }
   }
   return {
     falls,
+    // Distance from a point to the nearest stream bank, to keep trees and props off the water.
+    streamDistance(x, z) {
+      let best = Infinity;
+      for (const f of falls) {
+        const [hx, hz] = f.head;
+        const dx = f.x - hx, dz = f.z - hz;
+        const u = clamp(((x - hx) * dx + (z - hz) * dz) / (dx * dx + dz * dz), 0, 1);
+        best = Math.min(best, Math.hypot(x - hx - dx * u, z - hz - dz * u) - f.w * 0.5);
+      }
+      return best;
+    },
     update(env, t) {
       uniforms.uTime.value = t;
       uniforms.uNight.value = env.night;
     },
   };
 }
-
