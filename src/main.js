@@ -14,6 +14,9 @@ import { loadKit } from './kaykit.js';
 import { HUB_KIT } from './hub.js';
 import { LANDMARK_KIT } from './landmarks.js';
 import { FURNITURE_KIT } from './interior.js';
+import { initSession } from './session.js';
+import { buildNpcs } from './npcs.js';
+import { READY } from './traitmap.js';
 import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
 
@@ -109,6 +112,8 @@ post.setPixelRatio(renderer.getPixelRatio());
 
 let island;
 let clouds;
+let session = null;
+let npcs = null;
 let debug = null;
 
 // Time of day: live local clock, or a scrubbed hour from the slider.
@@ -202,8 +207,43 @@ async function init() {
     markView(params.get('view'));
   } else rig.jump('overview');
   renderer.setAnimationLoop(loop);
+  // Signing in, and the Chogs who live round the world.
+  session = initSession({
+    camera,
+    homes: island.rooms.filter((r) => r.id.startsWith('home')),
+    enterRoom: (r) => enterRoom(r),
+    currentRoom: () => island.rooms.find((r) => r.pod === rig.room) ?? null,
+    leaveToOverview: () =>
+      fadeThrough(() => {
+        leaveRoomUI();
+        rig.jump('overview');
+        markView('overview');
+      }),
+    // The world seen from space (B7, src/space.js) plugs in here as enterSpace({ from, duration }).
+    // Until it lands the cutscene goes straight to the fade.
+    enterSpace: async () => {},
+    blackout: (title, sub) =>
+      new Promise((resolve) => {
+        $('fade').classList.add('on', 'slow');
+        const story = $('story');
+        story.querySelector('.story-title').textContent = title;
+        story.querySelector('.story-sub').textContent = sub;
+        story.hidden = false;
+        requestAnimationFrame(() => story.classList.add('on'));
+        setTimeout(() => {
+          story.classList.remove('on');
+          setTimeout(() => {
+            story.hidden = true;
+            $('fade').classList.remove('slow');
+            resolve();
+          }, 450);
+        }, 3800);
+      }),
+  });
+  // The Chogs about town wait for their models; ?npcs shows their slots with stand-ins.
+  if (READY.size || params.has('npcs')) buildNpcs({ scene, plaza: island.plaza }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; } };
 }
 
 // UI.
@@ -440,6 +480,8 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
+  session?.update(dt);
+  npcs?.update(dt, camera);
   clouds?.update(env, sky, t);
 
   const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);

@@ -244,8 +244,120 @@ button:disabled { opacity: 0.45; cursor: default; }
 @media (max-width: 760px) { .debug { top: 112px; } }
 
 /* A quick dip to dusk when stepping indoors or out. */
-.fade { position: fixed; inset: 0; z-index: 5; background: #160c2c; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+.fade { position: fixed; inset: 0; z-index: 7; background: #160c2c; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
 .fade.on { opacity: 1; }
+
+/* ---------- Signing in ---------- */
+.signin-btn {
+  position: fixed;
+  z-index: 6;
+  top: 74px;
+  left: 16px;
+  padding: 8px 16px;
+  font: 600 14px var(--body);
+  background: var(--accent);
+  color: #1a1030;
+  border: none;
+}
+.chog-chip {
+  position: fixed;
+  z-index: 6;
+  top: 74px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 6px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  max-width: calc(100vw - 32px);
+}
+.chog-chip[hidden] { display: none; }
+.chog-chip img { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; }
+.chog-chip div { display: flex; flex-direction: column; margin-right: 4px; }
+.chog-chip strong { font: 600 14px var(--display); }
+.chog-chip button { padding: 6px 10px; font-size: 13px; }
+.chog-chip .sale { background: #c4334a; border-color: transparent; }
+
+.signin {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(12, 6, 28, 0.55);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.signin.on { opacity: 1; }
+.signin[hidden] { display: none; }
+.signin-card {
+  position: relative;
+  width: min(440px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  touch-action: pan-y;
+  -webkit-user-select: text;
+  user-select: text;
+  padding: 22px 20px 20px;
+  background: #1d1336;
+  border: 1px solid var(--panel-line);
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+.signin-close { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; padding: 0; font-size: 20px; line-height: 1; }
+.signin h2 { margin: 0 32px 8px 0; font: 600 22px var(--display); }
+.signin p { margin: 0 0 12px; line-height: 1.45; }
+.signin .muted { color: var(--muted); }
+.signin .small { font-size: 13px; }
+.signin .note { padding: 8px 10px; border-radius: 10px; background: rgba(240, 120, 150, 0.14); color: #ffd2dd; font-size: 14px; }
+.signin a { color: #cdb8ff; }
+.signin button { width: 100%; margin-top: 8px; padding: 11px 14px; font: 600 15px var(--body); }
+.signin button.primary { background: var(--accent); color: #1a1030; border: none; }
+.signin button.ghost { background: transparent; }
+.signin-close.signin-close { width: 34px; margin: 0; }
+.wallets { display: flex; flex-direction: column; gap: 0; }
+.wallet { display: flex; align-items: center; gap: 10px; justify-content: flex-start; }
+.wallet img { width: 24px; height: 24px; border-radius: 6px; }
+.signin-step { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 18px 0 6px; }
+.spinner { width: 34px; height: 34px; margin-bottom: 14px; border-radius: 50%; border: 3px solid rgba(196, 176, 255, 0.25); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+.chog-cards { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+.chog-card { display: flex; flex-direction: column; padding: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-line); border-radius: 14px; }
+.chog-card img { width: 100%; aspect-ratio: 1; border-radius: 10px; object-fit: cover; background: #2a1c4a; }
+.chog-card div { display: flex; flex-direction: column; gap: 1px; margin: 8px 0 4px; }
+.chog-card strong { font: 600 15px var(--display); }
+.chog-card .tier { font-size: 12px; color: var(--muted); }
+.chog-card p { margin: 0 0 4px; min-height: 2.8em; }
+.chog-card button { margin-top: auto; padding: 8px; }
+
+/* Captions for the wake and grey-out moments. */
+.story {
+  position: fixed;
+  z-index: 8;
+  left: 50%;
+  top: 22%;
+  transform: translate(-50%, 8px);
+  width: min(560px, calc(100vw - 32px));
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  text-shadow: 0 2px 14px rgba(10, 4, 30, 0.7);
+}
+.story.on { opacity: 1; transform: translate(-50%, 0); }
+.story[hidden] { display: none; }
+.story-title { font: 600 clamp(22px, 4vw, 34px) var(--display); }
+.story-sub { margin-top: 6px; font-size: 15px; color: #e6dcff; }
+@media (max-width: 760px) {
+  .signin-btn, .chog-chip { top: 70px; }
+}
+.fade.slow { transition-duration: 1.4s; }
 
 /* Agent B: the loading bar. */
 .load-bar { width: min(240px, 60vw); height: 4px; margin: 10px auto 4px; border-radius: 2px; background: rgba(196, 176, 255, 0.18); overflow: hidden; }
