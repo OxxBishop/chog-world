@@ -12,8 +12,9 @@ const ROOT = `${import.meta.env.BASE_URL}assets/`;
 const kit = new Map();
 const shared = new Map();
 
-export async function loadKit(names, dir = 'kaykit') {
+export async function loadKit(names, dir = 'kaykit', onProgress) {
   const loader = new GLTFLoader();
+  let done = 0;
   await Promise.all(
     names.map(async (name) => {
       const gltf = await loader.loadAsync(`${ROOT}${dir}/${name}.gltf`);
@@ -23,6 +24,7 @@ export async function loadKit(names, dir = 'kaykit') {
         o.material = shared.get(dir);
       });
       kit.set(name, gltf.scene);
+      onProgress?.(++done / names.length);
     }),
   );
 }

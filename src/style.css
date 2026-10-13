@@ -246,3 +246,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* A quick dip to dusk when stepping indoors or out. */
 .fade { position: fixed; inset: 0; z-index: 5; background: #160c2c; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
 .fade.on { opacity: 1; }
+
+/* Agent B: the loading bar. */
+.load-bar { width: min(240px, 60vw); height: 4px; margin: 10px auto 4px; border-radius: 2px; background: rgba(196, 176, 255, 0.18); overflow: hidden; }
+.load-bar i { display: block; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform 0.25s ease-out; }
