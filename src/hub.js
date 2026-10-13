@@ -303,20 +303,17 @@ export function buildHub() {
     signs.push(name);
   }
 
-  // Lobby: a wooden welcome arch out on the walk to the door, far enough forward that the LOBBY
-  // sign shows through it, with the WELCOME sign riding on its crown. Banners, and a Chog statue.
+  // Lobby: a wooden arch out on the walk to the door carries its sign on the crown, so nothing
+  // stands in front of it. Banners, and a Chog statue.
   const archZ = LOBBY_FRONT + 10;
-  for (const sx of [-6, 6]) {
+  for (const sx of [-7, 7]) {
     props.add(box(0.9, 7, 0.9, mats.wood, sx, 3.5, archZ));
     props.add(box(1.2, 0.4, 1.2, mats.brass, sx, 7.1, archZ));
   }
-  props.add(new THREE.Mesh(new THREE.TorusGeometry(6, 0.45, 10, 32, Math.PI).translate(0, 7.1, archZ), mats.wood));
-  const welcome = signMesh(signTexture('WELCOME', 'to the Chog Hub', '#b89cff', 'rgba(70,40,30,0.95)'), 7, 0.5);
-  welcome.position.set(0, 14.8, archZ);
+  props.add(new THREE.Mesh(new THREE.TorusGeometry(7, 0.45, 10, 32, Math.PI).translate(0, 7.1, archZ), mats.wood));
+  const welcome = signMesh(signTexture('LOBBY', 'welcome to the Chog Hub', '#b89cff', 'rgba(70,40,30,0.95)'), 8, 0.5);
+  welcome.position.set(0, 16, archZ);
   signs.push(welcome);
-  const lobbySign = signMesh(signTexture('LOBBY', null, '#b89cff'), 8.5);
-  lobbySign.position.set(0, 9.4, LOBBY_FRONT + 0.15);
-  signs.push(lobbySign);
   const banners = [];
   const bannerTex = (() => {
     const c = document.createElement('canvas');
