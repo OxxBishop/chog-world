@@ -1,15 +1,21 @@
 import * as THREE from 'three';
-import { makeHome } from './home.js';
+import { piece, repaint } from './kaykit.js';
+import { buildHomeRoom } from './interior.js';
+import { createGlows } from './glows.js';
 import { DOME_R, WORLD } from './layout.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from './merge.js';
 
 const DOOR_HALF = 2.2;
+// The home pod's size, and its trim colour (an atlas cell) in each biome.
+const HOME_S = 7;
+const POD_TRIM = { meadow: 'green', frost: 'sky', grove: 'pink' };
 const DOOR_H = 5.2;
 
 /**
  * A geodesic-style glass dome: triangulated steel lattice on rings, PBR glass that reflects
- * the sky, an arched doorway with a short entrance frame, and a modern home inside.
+ * the sky, an arched doorway with a short entrance frame, and a Chog's home inside: a KayKit pod
+ * in the dome's biome colours, with its room inside.
  * Plants inside are added by the island builder so they share the instanced batches.
  */
 export class Dome {
@@ -195,11 +201,19 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     const sign = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(archPts[1].map((p) => p.clone().multiplyScalar(1.004))), 48, 0.06, 6), this.signMat);
     this.group.add(sign);
 
-    // Home at the back, facing the door.
-    this.home = makeHome({ accent });
+    // Home at the back, facing the door: the same pods as the hub, its trim in the biome's colour.
+    const pod = piece('basemodule_B', HOME_S);
+    repaint(pod, { purple: POD_TRIM[biome] ?? 'purple' });
     this.homeZ = -R * 0.38;
-    this.home.group.position.set(0, 0, this.homeZ);
-    this.group.add(this.home.group);
+    pod.position.set(0, 0, this.homeZ);
+    this.group.add(pod);
+    this.home = { halfW: 7.6, back: -7.8, front: 8.6, center: this.homeZ + 0.35 };
+    // A lamp by its door, lit after dark.
+    const lampAt = new THREE.Vector3(3.2, 3.6, this.homeZ + 8.9);
+    this.group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.6, 6).translate(lampAt.x, 1.8, lampAt.z), this.lampPost ??= new THREE.MeshStandardMaterial({ color: '#cfa84e', metalness: 0.7, roughness: 0.4 })));
+    this.lampMat = new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.2 });
+    this.group.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8).translate(lampAt.x, lampAt.y, lampAt.z), this.lampMat));
+    this.lampGlow = createGlows([lampAt], { size: 2, minPx: 4 });
 
     // Dozens of small parts become one mesh per material, separately for each level of detail.
     const lod = new THREE.LOD();
@@ -210,6 +224,12 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     }
     this.group.add(lod);
     mergeByMaterial(this.group);
+    this.group.add(this.lampGlow.points);
+    // The room inside the home, drawn only while the camera is in it.
+    this.room = buildHomeRoom(biome);
+    this.room.group.position.set(0, 0.2, this.home.center);
+    this.room.group.visible = false;
+    this.group.add(this.room.group);
     this.group.updateMatrixWorld(true);
   }
 
@@ -228,9 +248,11 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     return this.group.localToWorld(new THREE.Vector3(lx, 0, lz));
   }
 
-  update(env) {
+  update(env, renderer) {
     const n = env.night;
-    this.home.setNight(n);
+    this.lampGlow.update(env, renderer);
+    if (this.room.group.visible) this.room.update(env, renderer);
+    this.lampMat.emissiveIntensity = 0.2 + n * 2.2;
     this.signMat.emissiveIntensity = 0.4 + n * 3;
   }
 }

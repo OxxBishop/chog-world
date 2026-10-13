@@ -48,7 +48,7 @@ const VIEWS = {
   downtown: { pos: new THREE.Vector3(20, T + 14, 70), target: new THREE.Vector3(0, T + 8, 0) },
   neighbourhood: { pos: new THREE.Vector3(hood.x + 40, H + 38, hood.z + 70), target: new THREE.Vector3(hood.x, H + 2, hood.z - 10) },
   dome: { pos: fwd(home, DOME_R + 18).setY(home.y + 3), target: new THREE.Vector3(home.x, home.y + 4, home.z) },
-  inside: { pos: fwd(home, DOME_R - 3).setY(home.y), target: fwd(home, -4).setY(home.y + 1.3), enter: true },
+  inside: { pos: fwd(home, DOME_R - 3).setY(home.y), target: fwd(home, 5).setY(home.y + 2), enter: true },
   ground: { pos: new THREE.Vector3(2, T + 1.8, 56), target: new THREE.Vector3(10, T + 3.5, 130) },
   sky: { pos: new THREE.Vector3(-20, T + 3, 60), target: new THREE.Vector3(-60, T + 70, -100) },
 };
@@ -82,8 +82,9 @@ async function init() {
   island = buildIsland(scene, makeRng(1969), renderer, sky, post.overlay);
   island.setQuality(perf.quality);
   rig.solids = island.solids;
-  // Each room is a view too: ?view=lobby, ?view=bar.
+  // Each room is a view too: ?view=lobby, ?view=bar, ?view=home (the home in the Dome view's dome).
   for (const r of island.rooms) VIEWS[r.id] = r.view;
+  VIEWS.home = VIEWS[`home${DOMES.indexOf(home)}`];
   buildPickables();
   // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
   $('loading').querySelector('.sub').textContent = 'Gathering clouds...';
@@ -192,7 +193,7 @@ function buildPickables() {
     const m = new THREE.Mesh(new THREE.SphereGeometry(DOME_R, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), proxyMat);
     m.position.set(d.x, d.y, d.z);
     const label = { meadow: 'Meadow dome', frost: 'Frost dome', grove: 'Grove dome' }[d.biome];
-    add(m, { id: `dome${i}`, name: label, center: new THREE.Vector3(d.x, d.y + 4, d.z), radius: DOME_R + 3, theta: d.facing, phi: 1.12 });
+    add(m, { id: `dome${i}`, name: label, center: new THREE.Vector3(d.x, d.y + 4, d.z), radius: DOME_R + 3, theta: d.facing, phi: 1.12, rooms: [`home${i}`] });
   });
   const hub = island.hub;
   const box = new THREE.Mesh(new THREE.BoxGeometry(hub.width, hub.height, hub.depth), proxyMat);
@@ -215,7 +216,7 @@ rig.onTap = (x, y) => {
   if (rig.focused && (!place || place.id === rig.focused.id)) rig.exitFocus();
   else if (place) rig.focusOn(place);
 };
-// While visiting a place, the pill offers its rooms (the Hub's lobby and bar). Inside a
+// While visiting a place, the pill offers its rooms (the Hub's lobby and bar, a dome's home). Inside a
 // room, Back returns to the place it belongs to.
 let inRoom = null;
 function showBar(name, rooms = []) {

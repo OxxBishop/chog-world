@@ -90,10 +90,13 @@ export class Pod {
  * The camera never passes through an island or dips into the clouds: swing low and it stops at the
  * grass or the cloud tops, and further swiping tilts the view up to the sky from there.
  */
-/** A room the camera can be inside: a box w by d, h tall, turned by rot, on a floor at y. */
+/**
+ * A room the camera can be inside: a box w by d, h tall, turned by rot, on a floor at y. Its door is
+ * in the front wall (local +z), doorHalf wide each side, and the view can walk in through it.
+ */
 export class RoomBox extends Pod {
-  constructor({ x, y, z, w, d, h, rot = 0, margin = 0.5, within = [], parent = null }) {
-    super({ x, y, z, r: Math.hypot(w, d) / 2, wall: h, cap: 0.01, margin, enterable: true, within, parent });
+  constructor({ x, y, z, w, d, h, rot = 0, doorHalf = 1.2, margin = 0.5, within = [], parent = null }) {
+    super({ x, y, z, r: Math.hypot(w, d) / 2, wall: h, cap: 0.01, margin, facing: rot, doorHalf, enterable: true, within, parent });
     Object.assign(this, { hw: w / 2, hd: d / 2, h, cos: Math.cos(rot), sin: Math.sin(rot) });
     this.c.set(x, y + h / 2, z);
     this.reach = this.r + h;
@@ -103,6 +106,13 @@ export class RoomBox extends Pod {
     const dx = p.x - this.x, dz = p.z - this.z;
     const lx = dx * this.cos - dz * this.sin, lz = dx * this.sin + dz * this.cos;
     return Math.abs(lx) <= this.hw + grow && Math.abs(lz) <= this.hd + grow && p.y <= this.y + this.h + grow && p.y >= this.y - 2 - grow;
+  }
+
+  // In front of the door: just outside the front wall, within the door's width.
+  atDoor(p) {
+    const dx = p.x - this.x, dz = p.z - this.z;
+    const lx = dx * this.cos - dz * this.sin, lz = dx * this.sin + dz * this.cos;
+    return lz > this.hd - 0.5 && lz < this.hd + 4 && Math.abs(lx) < this.doorHalf + 0.8;
   }
 }
 

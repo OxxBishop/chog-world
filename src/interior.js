@@ -465,3 +465,43 @@ export function buildBarRoom() {
   for (const [x, z] of [[-3, -3.2], [0, -3.2], [3, -3.2], [-2.2, 0.6], [2.4, 0.2], [0.4, 3.4], [-5.4, 4.4]]) room.pendant(x, z, 1.4);
   return room.finish();
 }
+
+// Each dome's biome colours its home: wall paint, the blanket and the rug.
+const HOME_STYLE = {
+  meadow: { wall: '#e3efd2', wainscot: '#8fb86a', swaps: { '2,1': '7,2' } },
+  frost: { wall: '#dfeaf5', wainscot: '#8eb3d6', swaps: { '0,1': '5,1' } },
+  grove: { wall: '#f5dce8', wainscot: '#c97aa8', swaps: { '2,1': '7,1' } },
+};
+
+/**
+ * Inside a Chog's home in its dome: a bed, a table and chair by the window looking out over the island,
+ * a shelf, a rug, a lamp. The same room in every dome, coloured by the dome's biome. This is where your
+ * Chog lives, and where the sign-in and sign-out scenes play.
+ */
+export function buildHomeRoom(biome) {
+  warmFurniture();
+  const style = HOME_STYLE[biome] ?? HOME_STYLE.meadow;
+  const room = new Room({
+    w: 9.4, d: 9.4, h: 4.6,
+    wall: style.wall, wainscot: style.wainscot, floor: planks('#c99a6a', '#7a5638'), trim: '#7a5638',
+    openings: [
+      { wall: 'front', x: 0, y: 0, w: 2.4, h: 3.4, kind: 'door' },
+      { wall: 'back', x: 1.7, y: 1.3, w: 3.8, h: 2.3 },
+    ],
+  });
+  // A desk and chair under the window, looking out over the island; the bed along the side wall.
+  room.put('table_small', 1.7, -3.7, 0, { scale: S * 1.15 });
+  room.put('chair_A_wood', 1.7, -2.5, Math.PI);
+  room.put('lamp_table', 2.6, -3.9, 0, { y: S * 1.15, scale: S * 0.7 });
+  room.put('bed_single_A', -2.7, 0.2, Math.PI / 2, { swaps: style.swaps });
+  room.put('cabinet_small_decorated', -4.0, -2.9, Math.PI / 2, { scale: S * 0.8 });
+  room.put('lamp_table', -4.0, -2.9, 0, { y: 1.62 * S * 0.8, scale: S * 0.85 });
+  room.put('rug_oval_A', 0.8, 0.6, Math.PI / 2, { swaps: style.swaps });
+  room.put('pillow_A', 1.6, 2.6, 0.4, { swaps: style.swaps });
+  room.put('cactus_small_A', 4.0, 3.9, 0);
+  room.hang('right', 'shelf_B_small_decorated', 0.4, 2.4);
+  room.hang('left', 'pictureframe_large_B', 0.2, 2.9, { scale: S * 0.8 });
+  room.hang('back', 'pictureframe_medium', -2.6, 2.7);
+  room.pendant(0, 0.4, 1.0);
+  return room.finish();
+}

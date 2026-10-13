@@ -263,12 +263,17 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
     rooms.push({ id, name, room, pod, place, view: { pos: at(w * 0.34, h * 0.68, d * 0.4), target: at(-w * 0.08, h * 0.28, -d * 0.18), enter: true } });
     solids.push(pod);
   };
-  for (const d of domes) {
+  domes.forEach((d, i) => {
     const p = d.group.position;
-    solids.push(new Pod({ x: p.x, y: p.y, z: p.z, r: d.radius, cap: d.radius, facing: d.group.rotation.y, doorHalf: 2.2, enterable: true }));
-    const h = d.toWorld(0, d.homeZ + 0.4);
-    solids.push(new Pod({ x: h.x, y: p.y, z: h.z, r: 5.4, wall: 6.6, cap: 0.6, margin: 0.8 }));
-  }
+    const dome = new Pod({ x: p.x, y: p.y, z: p.z, r: d.radius, cap: d.radius, facing: d.group.rotation.y, doorHalf: 2.2, enterable: true });
+    solids.push(dome);
+    const h = d.toWorld(0, d.home.center);
+    const house = new Pod({ x: h.x, y: p.y, z: h.z, r: 7.8, wall: 4.8, cap: 2.6, margin: 0.8 });
+    solids.push(house);
+    const { w, d: dd, h: hh } = d.room;
+    const room = new RoomBox({ x: h.x, y: p.y + 0.2, z: h.z, w, d: dd, h: hh, rot: d.group.rotation.y, within: [house, dome], parent: dome });
+    addRoom(`home${i}`, 'Home', d.room, room, `dome${i}`);
+  });
   const hp = hub.group.position;
   const lobbyPod = new Pod({ x: hp.x, y: hp.y, z: hp.z, r: 17.8, wall: 11, cap: 14, margin: 1.5 });
   solids.push(lobbyPod);
@@ -279,7 +284,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
     const c = r.at.clone().add(hp);
     const { w, d, h } = r.room;
     const shell = r.shell === 'lobby' ? lobbyPod : wings[0];
-    const pod = new RoomBox({ x: c.x, y: c.y, z: c.z, w, d, h, within: [shell] });
+    const pod = new RoomBox({ x: c.x, y: c.y, z: c.z, w, d, h, doorHalf: r.id === 'lobby' ? 1.8 : 1.6, within: [shell] });
     addRoom(r.id, r.name, r.room, pod, 'hub');
   }
 
@@ -297,7 +302,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
       forest.update(forest.last, true);
     },
     update(env, t, camera, dt = 0.016) {
-      for (const d of domes) d.update(env, t);
+      for (const d of domes) d.update(env, renderer);
       // A room draws only while the camera is in it; from outside its building hides it anyway.
       for (const r of rooms) r.room.group.visible = r.pod.inside(camera.position, 1.5);
       roads.update(env, renderer);

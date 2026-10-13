@@ -14,7 +14,7 @@ import { buildLobbyRoom, buildBarRoom } from './interior.js';
  * giant die and chip on its roof. KayKit pods in warm cream, with wood, brass and the purple.
  */
 
-export const HUB_KIT = ['basemodule_E', 'basemodule_A', 'basemodule_D', 'tunnel_straight_A'];
+export const HUB_KIT = ['basemodule_E', 'basemodule_A', 'basemodule_D', 'tunnel_straight_A', 'basemodule_B'];
 
 // Where the rooms sit inside the pods (hub space): floor heights just above each pod's base.
 const LOBBY_ROOM = { x: 0, y: 0.6, z: 0 };
