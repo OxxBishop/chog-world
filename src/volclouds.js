@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Effect, EffectAttribute } from 'postprocessing';
 import { CloudsEffect, CLOUD_SHAPE_TEXTURE_SIZE, CLOUD_SHAPE_DETAIL_TEXTURE_SIZE } from '@takram/three-clouds';
 import { AtmosphereParameters, PrecomputedTexturesGenerator } from '@takram/three-atmosphere';
-import { Ellipsoid, Geodetic, radians, DataTextureLoader, parseUint8Array, STBNLoader, DEFAULT_STBN_URL } from '@takram/three-geospatial';
+import { Ellipsoid, Geodetic, radians, DataTextureLoader, parseUint8Array } from '@takram/three-geospatial';
 
 /*
  * The sea of clouds: physically based volumetric clouds (Takram's three-clouds, MIT).
@@ -315,6 +315,36 @@ function cubeSphereUv(p) {
   return new THREE.Vector2(ux * 0.5 + 0.5, uy * 0.5 + 0.5);
 }
 
+// Our own blue noise (generated offline, void and cluster), stacked into 64 frames with golden-ratio
+// shifts: blue in space, evenly spread over time. It jitters the cloud ray march. Used instead of the
+// library's noise texture, which is fetched from GitHub at load and sometimes fails, leaving no clouds.
+async function ownBlueNoise() {
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = `${ASSETS}bluenoise128.png`;
+  });
+  const S = 128, FRAMES = 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, S, S).data;
+  const data = new Uint8Array(S * S * FRAMES);
+  for (let z = 0; z < FRAMES; z++) {
+    const shift = Math.floor(((z * 0.6180339887) % 1) * 256);
+    for (let i = 0; i < S * S; i++) data[z * S * S + i] = (px[i * 4] + shift) & 255;
+  }
+  const t = new THREE.Data3DTexture(data, S, S, FRAMES);
+  t.format = THREE.RedFormat;
+  t.type = THREE.UnsignedByteType;
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.wrapS = t.wrapT = t.wrapR = THREE.RepeatWrapping;
+  t.needsUpdate = true;
+  return t;
+}
+
 function loadTexture(url) {
   return new Promise((resolve, reject) =>
     new THREE.TextureLoader().load(
@@ -355,7 +385,7 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
     load3D(`${ASSETS}shape.bin`, CLOUD_SHAPE_TEXTURE_SIZE),
     load3D(`${ASSETS}shape_detail.bin`, CLOUD_SHAPE_DETAIL_TEXTURE_SIZE),
     loadTexture(`${ASSETS}turbulence.png`),
-    new STBNLoader().loadAsync(DEFAULT_STBN_URL),
+    ownBlueNoise(),
   ]);
   Object.assign(clouds, { localWeatherTexture: localWeather, shapeTexture: shape, shapeDetailTexture: shapeDetail, turbulenceTexture: turbulence, stbnTexture: stbn });
 
