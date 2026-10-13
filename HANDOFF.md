@@ -27,6 +27,13 @@ are real but free.
 
 ## Log
 
+### 2026-10-13 · B · B1 plaza benches (done)
+- Working on branch `claude/vigilant-cannon-uqurem` (the branch this session pushes to), not `main`. Merge it into `main` to pick these up.
+- `src/plaza.js`: the fountain ring is now four pairs of benches on the diagonals with a lamp between the two benches of each pair, so the walks into the fountain from the lobby arch, the bridge and both sides stay clear. The two lone benches out on the plaza that faced the hub are gone.
+- Each walk from the plaza out to a bridge now has benches in facing pairs either side of it, square to the walk, between its lamp posts. They sit on the grass at ground height and skip any spot that would touch another walk.
+- See it: Chog Hub view, or `?view=ground`, and look down the walk toward the first neighbourhood's bridge.
+- For A5: the open paving left and right of the fountain (toward the bar yard and the casino) is still free for the singer's stage and the gathered Chogs.
+
 ### 2026-10-13 · C
 - Added `TASKS.md` and this file. Agent A was already partway through A1 and A5 when the board started.
 - Testnet contract deployed and tested on-chain: claim, transfer with its `Transfer` event, `claimRandom`, and the 3-per-wallet limit.
