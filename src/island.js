@@ -66,6 +66,11 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   const forest = new Forest();
   const props = new Scatter();
   const low = new Scatter();
+  // Flowers get their own batches that draw much further out than grass, so the colour in the
+  // meadows doesn't wink out as you zoom away.
+  const bloom = new Scatter();
+  const FLOWERS = new Set(MODELS.flowers);
+  const plant = (name, ...rest) => (FLOWERS.has(name) ? bloom : low).add(name, ...rest);
   const shadeSpots = [];
 
   const domes = DOMES.map((d) => {
@@ -159,7 +164,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
     const [x, z] = randomOnIslands(rng);
     if (noise2(x * 0.06 - 9, z * 0.06 + 2) < 0.62) continue;
     if (!onLand(x, z) || roadDistance(x, z) < 1 || nearDome(x, z, 1.5) || downtownDist(x, z) < DOWNTOWN.r + 1) continue;
-    low.add(rng.pick(MODELS.flowers), x, heightAt(x, z), z, { scale: rng.range(0.6, 1.0), rotY: rng() * Math.PI * 2 });
+    bloom.add(rng.pick(MODELS.flowers), x, heightAt(x, z), z, { scale: rng.range(0.6, 1.0), rotY: rng() * Math.PI * 2 });
   }
   // Boulders on the hills and near the rims.
   for (let i = 0; i < 200; i++) {
@@ -198,7 +203,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   for (const [px, pz, h] of plaza.planters) {
     const w = plaza.group.localToWorld(new THREE.Vector3(px, h, pz));
     low.add(rng.pick(MODELS.bush), w.x, w.y, w.z, { scale: 0.8, rotY: rng() * Math.PI * 2, tint: rng.pick(GREENS) });
-    for (let k = 0; k < 3; k++) low.add(rng.pick(MODELS.flowers), w.x + rng.range(-0.6, 0.6), w.y, w.z + rng.range(-0.6, 0.6), { scale: 0.9, rotY: rng() * Math.PI * 2 });
+    for (let k = 0; k < 3; k++) bloom.add(rng.pick(MODELS.flowers), w.x + rng.range(-0.6, 0.6), w.y, w.z + rng.range(-0.6, 0.6), { scale: 0.9, rotY: rng() * Math.PI * 2 });
   }
 
   // Dome gardens.
@@ -235,7 +240,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
       shadeSpots.push([w.x, w.z, 3 * scale, 0.35]);
       planted++;
     }
-    place(b.underCount, 0.3, 2, (x, z) => low.add(rng.pick(b.under), x, y, z, { scale: rng.range(0.6, 1.1), rotY: rng() * Math.PI * 2, tint: rng.pick(dome.biome === 'frost' ? b.tints : GREENS) }));
+    place(b.underCount, 0.3, 2, (x, z) => plant(rng.pick(b.under), x, y, z, { scale: rng.range(0.6, 1.1), rotY: rng() * Math.PI * 2, tint: rng.pick(dome.biome === 'frost' ? b.tints : GREENS) }));
     place(b.grass, 0, 1, (x, z) => low.add(rng() < 0.6 ? 'Grass_Common_Short' : 'Grass_Common_Tall', x, y, z, { scale: rng.range(0.5, 0.85), rotY: rng() * Math.PI * 2, tint: dome.biome === 'grove' ? '#6fbf55' : rng.pick(GRASS) }));
     for (let lz = DOME_R - 1; lz > dome.homeZ + dome.home.front; lz -= 1.3) {
       const w = dome.toWorld(Math.sin(lz * 0.25) * 0.8 + rng.range(-0.3, 0.3), lz);
@@ -246,11 +251,14 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   forest.build(scene, renderer);
   props.build(scene, { shadows: true, chunk: 64 });
   const lowMeshes = low.build(scene, { shadows: false, chunk: 40 });
+  const bloomMeshes = bloom.build(scene, { shadows: false, chunk: 70 });
   terrain.shade(shadeSpots);
 
   // Small plants only draw near the camera.
   const lowChunks = lowMeshes.map((m) => ({ mesh: m, c: m.boundingSphere.center.clone(), r: m.boundingSphere.radius }));
+  const bloomChunks = bloomMeshes.map((m) => ({ mesh: m, c: m.boundingSphere.center.clone(), r: m.boundingSphere.radius }));
   let lowDist = 85;
+  let bloomDist = 270;
 
   // What the camera keeps out of: each dome and the house in it, and the hub's three pods and tunnels.
   const solids = [];
@@ -299,6 +307,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
       forest.lodDist = [45, 65, 90][q];
       forest.maxNear = [70, 120, 200][q];
       lowDist = [55, 85, 120][q];
+      bloomDist = [230, 270, 320][q];
       forest.update(forest.last, true);
     },
     update(env, t, camera, dt = 0.016) {
@@ -318,6 +327,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
       forest.update(camera.position);
       const cp = camera.position;
       for (const ch of lowChunks) ch.mesh.visible = ch.c.distanceTo(cp) - ch.r < lowDist;
+      for (const ch of bloomChunks) ch.mesh.visible = ch.c.distanceTo(cp) - ch.r < bloomDist;
     },
   };
 }
