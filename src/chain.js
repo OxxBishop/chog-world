@@ -16,11 +16,14 @@ export const MONAD_TESTNET = defineChain({
 });
 
 export const CHOG_CONTRACT = '0x85a9ba85e5a3e87bab529c402140a87a72622b91';
+export const FAUCET_URL = 'https://faucet.monad.xyz';
 export const EXPLORER_URL = 'https://testnet.monadexplorer.com';
 
 const ABI = parseAbi([
   'function tokensOf(address who) view returns (uint256[])',
   'function ownerOf(uint256 id) view returns (address)',
+  'function claims(address who) view returns (uint256)',
+  'function claimRandom() returns (uint256)',
   'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
 ]);
 const TRANSFER = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)');
@@ -111,6 +114,24 @@ export async function owns(address, id) {
   } catch {
     return false;
   }
+}
+
+/** How many more Chogs this wallet may claim (three each). */
+export async function claimsLeft(address) {
+  return Math.max(0, 3 - Number(await read('claims', [address])));
+}
+
+/** Claim a random free testnet Chog. Needs a little testnet MON for gas. Resolves to its id. */
+export async function claimRandom({ wallet, address }) {
+  await toTestnet(wallet);
+  const hash = await wallet.writeContract({ account: address, chain: MONAD_TESTNET, address: CHOG_CONTRACT, abi: ABI, functionName: 'claimRandom' });
+  const receipt = await reader.waitForTransactionReceipt({ hash });
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== CHOG_CONTRACT) continue;
+    // Transfer(from 0, to, id): the id is the third topic.
+    if (log.topics.length === 4 && BigInt(log.topics[1]) === 0n) return Number(BigInt(log.topics[3]));
+  }
+  throw new Error('Claimed, but the new Chog could not be read from the receipt.');
 }
 
 /**

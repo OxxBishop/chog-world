@@ -52,13 +52,15 @@ export function initSession(world) {
     const wallets = await findWallets();
     const list = wallets.length
       ? wallets.map((w, i) => `<button class="wallet" data-i="${i}">${w.icon ? `<img src="${esc(w.icon)}" alt="">` : ''}<span>${esc(w.name)}</span></button>`).join('')
-      : '<p class="muted">No wallet found in this browser.</p>';
+      : '<p class="muted">No wallet found in this browser. You can still try a demo Chog.</p>';
     const el = view(`
       <h2>Bring your Chog home</h2>
       <p>Connect a wallet on Monad testnet to wake the Chogs you hold. Signing in is free and never sends a transaction.</p>
       ${note ? `<p class="note">${esc(note)}</p>` : ''}
-      <div class="wallets">${list}</div>`);
+      <div class="wallets">${list}</div>
+      <button class="ghost demo">Try a demo Chog</button>`);
     el.querySelectorAll('.wallet').forEach((b) => b.addEventListener('click', () => signIn(wallets[Number(b.dataset.i)].provider)));
+    el.querySelector('.demo').addEventListener('click', () => demo());
   }
 
   // ---------- signing in ----------
@@ -88,8 +90,16 @@ export function initSession(world) {
 
   // ---------- picking a Chog ----------
   async function picker(ids) {
+    const { FAUCET_URL } = await chain();
     if (!ids.length) {
-      view(`<h2>No Chogs here yet</h2><p>${esc(short(session.address))} doesn't hold a testnet Chog.</p>`);
+      const el = view(`
+        <h2>No Chogs here yet</h2>
+        <p>${esc(short(session.address))} doesn't hold a testnet Chog. Claim one free, or try the demo.</p>
+        <button class="primary claim">Claim a Chog</button>
+        <p class="muted small">Claiming is a testnet transaction, so it needs a little testnet MON for gas. <a href="${FAUCET_URL}" target="_blank" rel="noopener">Get MON from the faucet</a>.</p>
+        <button class="ghost demo">Try a demo Chog</button>`);
+      el.querySelector('.claim').addEventListener('click', claim);
+      el.querySelector('.demo').addEventListener('click', () => demo());
       return;
     }
     const infos = await Promise.all(ids.map(chogInfo));
@@ -108,6 +118,26 @@ export function initSession(world) {
       <p class="muted">${esc(short(session.address))} on Monad Testnet. Pick one to wake in its home.</p>
       <ul class="chog-cards">${cards}</ul>`);
     el.querySelectorAll('.wake').forEach((b) => b.addEventListener('click', () => wake(Number(b.dataset.id))));
+  }
+
+  async function claim() {
+    busy = true;
+    try {
+      const c = await chain();
+      step('Confirm the claim in your wallet', 'A free testnet Chog. Gas is paid in testnet MON.');
+      const id = await c.claimRandom(session);
+      step(`Chog #${id} is yours`, 'Loading your Chogs');
+      busy = false;
+      await picker(await c.tokensOf(session.address));
+    } catch (err) {
+      busy = false;
+      const { FAUCET_URL } = await chain();
+      const el = view(`<h2>Couldn't claim</h2><p class="note">${esc(problem(err))}</p>
+        <p class="muted small"><a href="${FAUCET_URL}" target="_blank" rel="noopener">Get testnet MON from the faucet</a></p>
+        <button class="primary claim">Try again</button><button class="ghost demo">Try a demo Chog</button>`);
+      el.querySelector('.claim').addEventListener('click', claim);
+      el.querySelector('.demo').addEventListener('click', () => demo());
+    }
   }
 
   // ---------- waking ----------
@@ -176,19 +206,27 @@ export function initSession(world) {
     world.leaveToOverview();
   }
 
+  // ---------- guests ----------
+  async function demo() {
+    session = { address: null, demo: true };
+    await wake(DEMO_CHOG);
+  }
+
   // ---------- signed in ----------
   function showChip() {
     const chip = $('chog-chip');
     const s = session;
     chip.innerHTML = `
       ${s.info.image ? `<img src="${esc(s.info.image)}" alt="">` : ''}
-      <div><strong>${esc(s.info.name)}</strong><span class="muted small">${esc(short(s.address))}</span></div>
+      <div><strong>${esc(s.info.name)}</strong><span class="muted small">${s.demo ? 'Demo Chog' : esc(short(s.address))}</span></div>
       <button class="home">Home</button>
+      ${s.demo ? '<button class="sale">Simulate sale</button>' : ''}
       <button class="out">Sign out</button>`;
     chip.hidden = false;
     $('btn-signin').hidden = true;
     chip.querySelector('.home').addEventListener('click', () => world.enterRoom(s.room));
     chip.querySelector('.out').addEventListener('click', () => signOut());
+    chip.querySelector('.sale')?.addEventListener('click', () => sold());
   }
 
   function signOut(note) {
