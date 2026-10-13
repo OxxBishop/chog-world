@@ -94,6 +94,8 @@ export class CameraRig {
         else this.rotate(dx, dy);
       } else {
         this.zoomAt(gesture.d / now.d, now.x, now.y);
+        // Zooming shifts the target toward the fingers; only the drag part should glide.
+        before.target.copy(this.goal.target);
         let dAng = now.ang - gesture.ang;
         if (dAng > Math.PI) dAng -= Math.PI * 2;
         if (dAng < -Math.PI) dAng += Math.PI * 2;
@@ -102,7 +104,8 @@ export class CameraRig {
         if (this.focused) this.rotate(dx, 0);
         else this.pan(dx, dy);
       }
-      const t = performance.now();
+      // Event timestamps, not handler time: on a slow frame moves arrive late and bunched together.
+      const t = e.timeStamp;
       const span = Math.max(8, Math.min(60, t - lastMove)) / 1000;
       lastMove = t;
       const k = 0.45;
@@ -121,7 +124,7 @@ export class CameraRig {
       const quick = performance.now() - p.t < TAP_MS && far < TAP_PX;
       if (quick && pts.size === 0 && gesture?.n === 1 && p.button === 0) this.onTap?.(e.clientX, e.clientY);
       // No glide after a tap or after a finger paused before lifting.
-      if (pts.size === 0 && (quick || performance.now() - lastMove > 90)) {
+      if (pts.size === 0 && (quick || e.timeStamp - lastMove > 90)) {
         fling.theta = fling.phi = 0;
         fling.pan.set(0, 0, 0);
       }
