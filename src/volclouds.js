@@ -198,16 +198,22 @@ const WHITE = new THREE.Color(1, 1, 1);
 // swings from one to the other. t is 0 for full sun, 1 for full moon; the light never drops out.
 // The light never comes in lower than MIN_UP: a grazing sun stretches the deck's shadow map into long
 // streaks across it. The warmth of a lower sun is put back by sunTint.
+// Sunlight lingers on the clouds for a while after the sun drops below the horizon, as the sky glows
+// on, turning to the sky's afterglow colour (glow), and hands over to the moon as the sky darkens (t).
 const MIN_UP = 0.17;
 const _light = new THREE.Vector3();
+const _glow = new THREE.Color();
 function cloudLight(env, sky) {
-  const t = THREE.MathUtils.smoothstep(-env.sunElev, -0.07, 0.04);
+  const t = THREE.MathUtils.smoothstep(-env.sunElev, 0.02, 0.22);
   const sun = sky.uniforms.uSunDir.value;
   _light.set(sun.x, Math.max(sun.y, MIN_UP), sun.z).normalize().lerp(sky.moonLight, t);
   // Sun and moon can sit almost opposite each other: never let the blend shrink to nothing.
   if (_light.lengthSq() < 0.04) _light.copy(t < 0.5 ? sun : sky.moonLight).setY(Math.max(_light.y, 0.2));
   _light.normalize();
-  return { dir: _light, t };
+  // The afterglow tint: the horizon's colour at full strength.
+  const h = sky.uniforms.uHorizon.value;
+  _glow.copy(h).multiplyScalar(1 / Math.max(h.r, h.g, h.b, 1e-3));
+  return { dir: _light, t, glow: THREE.MathUtils.smoothstep(-env.sunElev, -0.01, 0.12), glowTint: _glow };
 }
 
 // Moonlight on the drifting clouds, at full night.
@@ -296,8 +302,10 @@ class CloudComposite extends Effect {
     const sun = su.uSunDir.value;
     const am = airmass(sun.y);
     col.setRGB(Math.exp(-SKY_EXT[0] * am), Math.exp(-SKY_EXT[1] * am), Math.exp(-SKY_EXT[2] * am)).multiplyScalar(SUN_GAIN);
+    col.lerp(light.glowTint.clone().multiplyScalar(SUN_GAIN * 0.55), light.glow);
     col.lerp(MOON_LIGHT.clone().multiplyScalar(Math.max(env.night, 0.5)), light.t);
-    const day = 1 - env.night;
+    // Sky light on them fades with the same twilight as the deck's, so they never glow brighter than it.
+    const day = THREE.MathUtils.lerp(1, 0.1, light.t);
     u.get('ambTop').value.copy(su.uTop.value).lerp(WHITE, 0.55).multiplyScalar(0.42 * day + 0.06);
     u.get('ambBot').value.copy(su.uHorizon.value).lerp(WHITE, 0.3).multiplyScalar(0.3 * day + 0.04);
     u.get('hazeCol').value.copy(sky.fog.color);
@@ -450,6 +458,7 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
   const moonTint = new THREE.Vector3(0.62, 0.5, 1.0);
   const tint = new THREE.Vector3();
   const warmth = new THREE.Vector3();
+  const glowVec = new THREE.Vector3();
   const dir = new THREE.Vector3();
 
   const composite = new CloudComposite(camera, clouds, deck.altitude + deck.height - ALTITUDE + 2, shape, shapeDetail);
@@ -493,7 +502,10 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
       const sunY = sky.uniforms.uSunDir.value.y;
       const extra = sunY < MIN_UP ? airmass(sunY) - airmass(MIN_UP) : 0;
       warmth.set(Math.exp(-SKY_EXT[0] * extra), Math.exp(-SKY_EXT[1] * extra), Math.exp(-SKY_EXT[2] * extra));
-      atmosphere.solarIrradiance.copy(sunIrradiance).multiply(tint.copy(warmth).lerp(moonTint, light.t));
+      // Once the sun is down the light is the sky's afterglow, pink and soft, not the red of direct sun.
+      const g = light.glowTint;
+      tint.copy(warmth).lerp(glowVec.set(g.r * 0.7, g.g * 0.7, g.b * 0.7), light.glow).lerp(moonTint, light.t);
+      atmosphere.solarIrradiance.copy(sunIrradiance).multiply(tint);
     },
   };
 }
