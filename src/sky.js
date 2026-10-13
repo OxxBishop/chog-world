@@ -17,6 +17,15 @@ const KEYS = [
 ];
 const keyColors = KEYS.map(([h, top, hor]) => [h, new THREE.Color(top), new THREE.Color(hor)]);
 
+// Angular radius of the sun disc, in radians. Drawn larger than life so it reads.
+const SUN_RADIUS = 0.034;
+
+// Direction of the sun at an hour: rises in the east, arcs over the south.
+function arcDir(hour, out, tilt = -0.45) {
+  const a = ((hour - 6) / 12) * Math.PI;
+  return out.set(Math.cos(a), Math.sin(a) * 0.9, tilt).normalize();
+}
+
 const vert = /* glsl */ `
 varying vec3 vDir;
 void main() {
@@ -65,9 +74,21 @@ void main() {
     ? mix(uHorizon, uTop, pow(smoothstep(0.0, 0.65, h), 0.8))
     : mix(uHorizon, uBottom, smoothstep(0.0, -0.25, h));
 
-  // Sun: hard toon disc plus a soft glow.
+  // The sea line: the sun and moon sink behind it as they set.
+  float aboveSea = smoothstep(-0.003, 0.002, h);
+
+  // Sun: a bright disc, darker toward its rim, in a glow that takes on the sky's colour. Low in the
+  // sky it turns gold, then deep orange as it touches the sea.
   float sd = dot(d, uSunDir);
-  col += uSunColor * (smoothstep(0.9985, 0.9991, sd) * 1.4 + pow(max(sd, 0.0), 40.0) * 0.3) * (1.0 - uNight);
+  float sunUp = clamp(uSunDir.y, 0.0, 1.0);
+  vec3 sunTint = mix(vec3(1.0, 0.45, 0.2), vec3(1.0, 0.97, 0.9), smoothstep(0.0, 0.4, sunUp));
+  float sunR = acos(clamp(sd, -1.0, 1.0)) / SUN_RADIUS;
+  float disc = (1.0 - smoothstep(0.9, 1.0, sunR)) * (0.75 + 0.25 * sqrt(max(0.0, 1.0 - sunR * sunR)));
+  float sunFade = smoothstep(-0.12, 0.02, uSunDir.y);
+  vec3 halo = mix(uHorizon, sunTint, 0.6);
+  // Dimmer when low, so its colour survives the tone mapping instead of burning to white.
+  col = mix(col, sunTint * mix(1.5, 7.0, smoothstep(0.02, 0.35, sunUp)), disc * aboveSea * sunFade);
+  col += halo * (pow(max(sd, 0.0), 900.0) * 1.6 + pow(max(sd, 0.0), 60.0) * 0.45 + pow(max(sd, 0.0), 8.0) * 0.12 * (1.0 - sunUp)) * sunFade;
 
   // Moon.
   float md = dot(d, uMoonDir);
@@ -251,6 +272,7 @@ export class Sky {
         uniforms: this.uniforms,
         vertexShader: vert,
         fragmentShader: frag,
+        defines: { SUN_RADIUS: SUN_RADIUS.toFixed(4) },
         side: THREE.BackSide,
         depthWrite: false,
       }),
@@ -299,9 +321,9 @@ export class Sky {
     u.uTop.value.lerpColors(t0, t1, k);
     u.uHorizon.value.lerpColors(z0, z1, k);
 
+    const sunElev = Math.sin(((hour - 6) / 12) * Math.PI);
+    arcDir(hour, u.uSunDir.value);
     const a = ((hour - 6) / 12) * Math.PI;
-    const sunElev = Math.sin(a);
-    u.uSunDir.value.set(Math.cos(a), Math.sin(a) * 0.9, -0.45).normalize();
     u.uMoonDir.value.set(-Math.cos(a), -Math.sin(a) * 0.9 + 0.15, -0.55).normalize();
     const night = 1 - THREE.MathUtils.smoothstep(sunElev, -0.2, 0.06);
     u.uNight.value = night;
