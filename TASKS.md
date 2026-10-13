@@ -49,7 +49,7 @@ Status: `todo`, `doing`, `done`, `blocked`.
 ### Agent B: world polish, load time, casino
 | # | Task | Status |
 |---|---|---|
-| B1 | Plaza benches: tidy rings facing the fountain and rows along the paths, no random angles | todo |
+| B1 | Plaza benches: tidy rings facing the fountain and rows along the paths, no random angles | doing |
 | B2 | Load time: first frame in under 10 s on a slow laptop (show the world first and stream the clouds in after, real progress in the loader, cache assets). Today it is 40 to 60 s | todo |
 | B3 | Lobby facade: warm and welcoming like the bar and casino (it is still the grey sci-fi panel body) | todo |
 | B4 | Clouds: check for a grainy, dithered look in the overview at normal frame rates and fix it | todo |
