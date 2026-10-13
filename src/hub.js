@@ -4,7 +4,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from './merge.js';
 import { createGlows } from './glows.js';
-import { buildLobbyRoom } from './interior.js';
+import { buildLobbyRoom, buildBarRoom } from './interior.js';
 
 /*
  * The Chog Hub: one building on the downtown plaza with three doors, each wing with its own
@@ -16,8 +16,9 @@ import { buildLobbyRoom } from './interior.js';
 
 export const HUB_KIT = ['basemodule_E', 'basemodule_A', 'basemodule_D', 'tunnel_straight_A'];
 
-// Where the lobby room sits inside its pod (hub space): its floor just above the pod's base.
+// Where the rooms sit inside the pods (hub space): floor heights just above each pod's base.
 const LOBBY_ROOM = { x: 0, y: 0.6, z: 0 };
+const BAR_ROOM = { x: -37, y: 0.45, z: 0.6 };
 
 const LOBBY_S = 15;
 const WING_S = 10;
@@ -436,11 +437,14 @@ export function buildHub() {
     }
   });
 
-  // The room inside the lobby pod. The casino stays shut.
+  // The rooms inside: the lobby in the middle pod, the bar in the left wing. The casino stays shut.
   const lobby = buildLobbyRoom();
   lobby.group.position.set(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z);
+  const bar = buildBarRoom();
+  bar.group.position.set(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z);
   const rooms = [
     { id: 'lobby', name: 'Lobby', room: lobby, at: new THREE.Vector3(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z), shell: 'lobby' },
+    { id: 'bar', name: 'Bar', room: bar, at: new THREE.Vector3(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z), shell: 'bar' },
   ];
   for (const r of rooms) {
     r.room.group.visible = false;

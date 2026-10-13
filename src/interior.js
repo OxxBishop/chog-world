@@ -380,3 +380,88 @@ export function buildLobbyRoom() {
   for (const [x, z] of [[-5, -3], [5, -3], [-5, 5], [5, 5]]) room.pendant(x, z, 1.6);
   return room.finish();
 }
+
+/**
+ * The bar, where Chogs hang out and talk: a counter with stools and bottles behind it, tables, warm
+ * lights, a little stage and a jukebox in the corners. Fits inside the bar's pod.
+ */
+export function buildBarRoom() {
+  warmFurniture();
+  const room = new Room({
+    w: 15, d: 13, h: 6.6,
+    wall: '#f3dfc6', wainscot: '#6e4630', floor: planks('#a8744a', '#5a3a24'), trim: '#4a2e1e', ceiling: '#e9d6bd',
+    openings: [
+      { wall: 'front', x: 0, y: 0, w: 3.2, h: 4.4, kind: 'door' },
+      { wall: 'front', x: -4.8, y: 2, w: 2.8, h: 2.8 },
+      { wall: 'left', x: 0, y: 2, w: 3.6, h: 2.8 },
+      { wall: 'right', x: 0, y: 2, w: 3.6, h: 2.8 },
+    ],
+  });
+  // Counter along the back, stools in front of it, shelves of bottles behind.
+  for (const x of [-3.6, -1.2, 1.2, 3.6]) room.put('cabinet_medium', x, -4.6, 0);
+  room.group.add(new THREE.Mesh(new THREE.BoxGeometry(10.2, 0.22, 1.7).translate(0, 1.32, -4.6), room.mats.trim));
+  for (const x of [-3.9, -1.3, 1.3, 3.9]) room.put('chair_stool_wood', x, -3.0, 0);
+  room.hang('back', 'shelf_A_big', -2.6, 3.1);
+  room.hang('back', 'shelf_A_big', 2.6, 3.1);
+  room.hang('back', 'shelf_A_big', -2.6, 4.4);
+  room.hang('back', 'shelf_A_big', 2.6, 4.4);
+  // Bottles in a few colours on the shelves.
+  const bottleGeo = new THREE.CylinderGeometry(0.11, 0.13, 0.55, 8).translate(0, 0.27, 0);
+  const neckGeo = new THREE.CylinderGeometry(0.04, 0.06, 0.22, 6).translate(0, 0.65, 0);
+  const colours = ['#3f7f58', '#8a3a2a', '#c99b3a', '#4a5fa8', '#7a3a8a'];
+  const back = room.onWall('back');
+  for (const [sx, sy] of [[-2.6, 3.12], [2.6, 3.12], [-2.6, 4.42], [2.6, 4.42]]) {
+    for (let i = 0; i < 7; i++) {
+      const mat = new THREE.MeshLambertMaterial({ color: colours[(i + Math.round(sx + sy * 3)) % colours.length] });
+      room.lit.push(mat);
+      for (const geo of [bottleGeo, neckGeo]) {
+        const b = new THREE.Mesh(geo, mat);
+        b.position.set(sx - 0.9 + i * 0.3, sy, 0.3);
+        back.add(b);
+      }
+    }
+  }
+  // Tables with chairs in the middle, on a striped rug.
+  room.put('rug_rectangle_stripes_A', 0.6, 1.4, 0, { scale: S * 1.6 });
+  for (const [x, z] of [[-2.2, 0.6], [2.4, 0.2], [0.4, 3.4]]) {
+    room.put('table_small', x, z, 0);
+    room.put('chair_A_wood', x - 1.1, z, Math.PI / 2);
+    room.put('chair_A_wood', x + 1.1, z, -Math.PI / 2);
+  }
+  // The stage: a low wooden platform in a corner with a microphone under a spot.
+  const stageMat = room.mats.trim;
+  room.group.add(new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.45, 3.4).translate(-5.4, 0.22, 4.6), stageMat));
+  room.group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.7, 6).translate(-5.4, 1.3, 4.4), room.mats.brass));
+  room.group.add(new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8).translate(-5.4, 2.2, 4.4), new THREE.MeshLambertMaterial({ color: '#2a2a2a' })));
+  // The jukebox: a rounded cabinet with glowing bands, in the other corner.
+  const juke = screen((g, w, h) => {
+    g.fillStyle = '#3a1f2a';
+    g.fillRect(0, 0, w, h);
+    const bands = ['#ff7ac8', '#ffd27a', '#7ef0e4', '#b89cff'];
+    bands.forEach((c, i) => {
+      g.strokeStyle = c;
+      g.lineWidth = 14;
+      g.beginPath();
+      g.arc(w / 2, h * 0.42, w * 0.42 - i * 26, Math.PI, 0);
+      g.stroke();
+    });
+    g.fillStyle = '#ffd27a';
+    g.fillRect(w * 0.2, h * 0.55, w * 0.6, h * 0.18);
+    g.fillStyle = '#3a1f2a';
+    for (let i = 0; i < 6; i++) g.fillRect(w * 0.23 + i * w * 0.093, h * 0.58, w * 0.06, h * 0.12);
+  }, 1.9, 2.8, 256);
+  juke.position.set(5.6, 1.4, 5.3);
+  juke.rotation.y = Math.PI + 0.5;
+  room.group.add(juke);
+  const jukeBody = new THREE.Mesh(new THREE.BoxGeometry(2.1, 2.9, 1.0).translate(0, 1.45, 0), stageMat);
+  jukeBody.position.set(5.86, 0, 5.75);
+  jukeBody.rotation.y = 0.5;
+  room.group.add(jukeBody);
+  room.put('lamp_standing', -6.6, -5.4, 0);
+  room.put('lamp_standing', 6.6, -5.4, 0);
+  room.hang('left', 'pictureframe_medium', 3.5, 3.5);
+  room.hang('right', 'pictureframe_medium', -3.5, 3.5);
+  room.hang('front', 'pictureframe_large_A', 4.6, 3.7);
+  for (const [x, z] of [[-3, -3.2], [0, -3.2], [3, -3.2], [-2.2, 0.6], [2.4, 0.2], [0.4, 3.4], [-5.4, 4.4]]) room.pendant(x, z, 1.4);
+  return room.finish();
+}

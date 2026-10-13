@@ -278,7 +278,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   for (const r of hub.rooms) {
     const c = r.at.clone().add(hp);
     const { w, d, h } = r.room;
-    const shell = lobbyPod;
+    const shell = r.shell === 'lobby' ? lobbyPod : wings[0];
     const pod = new RoomBox({ x: c.x, y: c.y, z: c.z, w, d, h, within: [shell] });
     addRoom(r.id, r.name, r.room, pod, 'hub');
   }

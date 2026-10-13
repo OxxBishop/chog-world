@@ -82,7 +82,7 @@ async function init() {
   island = buildIsland(scene, makeRng(1969), renderer, sky, post.overlay);
   island.setQuality(perf.quality);
   rig.solids = island.solids;
-  // Each room is a view too: ?view=lobby.
+  // Each room is a view too: ?view=lobby, ?view=bar.
   for (const r of island.rooms) VIEWS[r.id] = r.view;
   buildPickables();
   // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
@@ -197,7 +197,7 @@ function buildPickables() {
   const hub = island.hub;
   const box = new THREE.Mesh(new THREE.BoxGeometry(hub.width, hub.height, hub.depth), proxyMat);
   box.position.set(DOWNTOWN.x, T + hub.height / 2, DOWNTOWN.z);
-  add(box, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(DOWNTOWN.x, T + 7, DOWNTOWN.z), radius: hub.width * 0.42, theta: 0.25, phi: 1.2, rooms: ['lobby'] });
+  add(box, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(DOWNTOWN.x, T + 7, DOWNTOWN.z), radius: hub.width * 0.42, theta: 0.25, phi: 1.2, rooms: ['lobby', 'bar'] });
   island.terrain.tops.forEach((top, i) => {
     const isl = ISLANDS[i];
     const name = isl.id === 'downtown' ? 'Downtown' : `Neighbourhood ${Number(isl.id.slice(4)) + 1}`;
@@ -215,7 +215,7 @@ rig.onTap = (x, y) => {
   if (rig.focused && (!place || place.id === rig.focused.id)) rig.exitFocus();
   else if (place) rig.focusOn(place);
 };
-// While visiting a place, the pill offers its rooms (the Hub's lobby). Inside a
+// While visiting a place, the pill offers its rooms (the Hub's lobby and bar). Inside a
 // room, Back returns to the place it belongs to.
 let inRoom = null;
 function showBar(name, rooms = []) {
