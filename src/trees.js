@@ -46,12 +46,17 @@ const impostorFrag = /* glsl */ `
 uniform sampler2D uColor;
 uniform sampler2D uMask;
 uniform vec3 uLight;
+uniform vec2 uAtlas;
 varying vec2 vUv;
 varying vec3 vTint;
 #include <fog_pars_fragment>
 void main() {
   vec4 c = texture2D(uColor, vUv);
-  if (c.a < 0.4) discard;
+  // Smaller mip levels average the leaves with the gaps between them, so a hard cut thins far trees
+  // until they vanish. Scale coverage back up by mip level so they keep their shape.
+  vec2 px = vUv * uAtlas;
+  float mip = max(0.0, 0.5 * log2(max(dot(dFdx(px), dFdx(px)), dot(dFdy(px), dFdy(px)))));
+  if (c.a * (1.0 + mip * 0.32) < 0.4) discard;
   float leaf = texture2D(uMask, vUv).r / max(c.a, 0.001);
   vec3 col = mix(c.rgb, c.rgb * vTint, clamp(leaf, 0.0, 1.0)) / max(c.a, 0.001);
   gl_FragColor = vec4(col * uLight, 1.0);
@@ -122,7 +127,7 @@ export class Forest {
     this.impostorMat = new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.merge([
         THREE.UniformsLib.fog,
-        { uLight: { value: new THREE.Color(1, 1, 1) }, uCols: { value: ATLAS_COLS }, uRows: { value: this.rows } },
+        { uLight: { value: new THREE.Color(1, 1, 1) }, uCols: { value: ATLAS_COLS }, uRows: { value: this.rows }, uAtlas: { value: new THREE.Vector2(CELL * ATLAS_COLS, CELL * this.rows) } },
       ]),
       vertexShader: impostorVert,
       fragmentShader: impostorFrag,
