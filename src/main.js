@@ -88,13 +88,17 @@ async function init() {
   buildPickables();
   // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
   $('loading').querySelector('.sub').textContent = 'Gathering clouds...';
-  // If the clouds can't load (offline, blocked download), the world still opens without them.
-  try {
-    clouds = await createVolumetricClouds(renderer, camera);
-    clouds.setQuality(QUALITY === 'auto' ? 'high' : QUALITY);
-    post.addClouds(clouds.effects);
-  } catch (err) {
-    console.error('Clouds unavailable', err);
+  // A dropped request shouldn't cost the clouds, so a failed load is tried once more. If they still
+  // can't load (offline, blocked download), the world opens without them.
+  for (let attempt = 1; attempt <= 2 && !clouds; attempt++) {
+    try {
+      clouds = await createVolumetricClouds(renderer, camera);
+      clouds.setQuality(QUALITY === 'auto' ? 'high' : QUALITY);
+      post.addClouds(clouds.effects);
+    } catch (err) {
+      const why = err?.message ?? `${err?.type ?? err} ${err?.target?.src ?? err?.target?.responseURL ?? ''}`;
+      console.error(`Clouds unavailable (attempt ${attempt}):`, why);
+    }
   }
   $('loading').querySelector('.sub').textContent = 'Lighting the sky...';
   for (const r of island.rooms) r.room.group.visible = true;
