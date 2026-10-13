@@ -194,6 +194,8 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
 }`;
 
 const WHITE = new THREE.Color(1, 1, 1);
+// How fast the cloud deck drifts past the islands, metres per second (world x, z).
+const DRIFT = new THREE.Vector2(0.55, 0.4);
 // Brightness of direct sunlight on the drifting clouds, matched by eye to the deck.
 const SUN_GAIN = 2.1;
 // Optical depth of the air above the islands, per airmass (red, green, blue): Rayleigh plus a little haze.
@@ -253,13 +255,13 @@ class CloudComposite extends Effect {
     const u = this.uniforms;
     u.get('puffs').value.forEach((v, i) => {
       const p = this.paths[i];
-      const turn = p.phase + t * 0.01;
+      const turn = p.phase + t * 0.002;
       u.get('puffTurn').value[i].set(Math.cos(turn), Math.sin(turn));
-      // Drift round the world, bob gently, and swell or shrink a little over time.
+      // Drift round the world and bob gently. Their shapes change far too slowly to see.
       const a = p.a0 + t * p.w;
-      const bob = Math.sin(t * 0.25 + p.phase) * 3;
-      const r = p.r + Math.sin(t * 0.05 + p.phase) * 12;
-      v.set(Math.cos(a) * r, p.y + bob, Math.sin(a) * r, p.size * (1 + Math.sin(t * 0.07 + p.phase * 2) * 0.08));
+      const bob = Math.sin(t * 0.12 + p.phase) * 2.5;
+      const r = p.r + Math.sin(t * 0.03 + p.phase) * 12;
+      v.set(Math.cos(a) * r, p.y + bob, Math.sin(a) * r, p.size * (1 + Math.sin(t * 0.01 + p.phase * 2) * 0.03));
     });
     // Lit like the deck: sunlight that turns golden as it crosses more air near the horizon,
     // or the dim lilac moon at night, plus a soft sky glow from above and the deck below.
@@ -280,8 +282,24 @@ class CloudComposite extends Effect {
     u.get('ambBot').value.copy(su.uHorizon.value).lerp(WHITE, 0.3).multiplyScalar(0.3 * day + 0.04);
     u.get('hazeCol').value.copy(sky.fog.color);
     u.get('hazeRange').value.set(sky.fog.near, sky.fog.far);
-    u.get('drift').value = t * 0.01;
+    u.get('drift').value = t * 0.002;
   }
+}
+
+// The library's cube-sphere mapping from a point on the globe to weather-map coordinates.
+function cubeSphereUv(p) {
+  const n = p.clone().normalize();
+  const f = [Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)];
+  const mx = Math.max(...f);
+  let m;
+  if (f[1] > f[0] && f[1] > f[2]) m = n.y / mx > 0 ? [-n.x, n.z] : [n.x, n.z];
+  else if (f[0] > f[1] && f[0] > f[2]) m = n.x / mx > 0 ? [n.y, n.z] : [-n.y, n.z];
+  else m = n.z / mx > 0 ? [n.x, n.y] : [n.x, -n.y];
+  const m2 = [m[0] * m[0], m[1] * m[1]];
+  const q = -2 * m2[0] + 2 * m2[1] - 3;
+  const ux = Math.sqrt(1.5 + m2[0] - m2[1] - 0.5 * Math.sqrt(-24 * m2[0] + q * q)) * (m[0] > 0 ? 1 : -1);
+  const uy = Math.sqrt(6 / (3 - ux * ux)) * m[1];
+  return new THREE.Vector2(ux * 0.5 + 0.5, uy * 0.5 + 0.5);
 }
 
 function loadTexture(url) {
@@ -352,7 +370,27 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
   clouds.shapeDetailRepeat.setScalar(0.012);
   atmosphere.sunRadianceToRelativeLuminance.multiplyScalar(EXPOSURE);
   atmosphere.skyRadianceToRelativeLuminance.multiplyScalar(EXPOSURE);
-  clouds.localWeatherVelocity.set(0.0004, 0.0001);
+  // The deck drifts slowly as one piece. The library would slide the weather map under fixed cloud
+  // shapes (and stir the shapes up and down as it goes), which makes heaps visibly thin out and swell
+  // while you watch. Instead the weather map, the shapes and their detail all move together.
+  clouds.localWeatherVelocity.set(0, 0);
+  const originECEF = new THREE.Vector3().setFromMatrixPosition(clouds.worldToECEFMatrix);
+  const up = originECEF.clone().normalize();
+  const uv0 = cubeSphereUv(originECEF);
+  // Weather-map coordinates per metre north (world x) and east (world z).
+  const perX = cubeSphereUv(originECEF.clone().add(new THREE.Vector3(1, 0, 0).applyMatrix3(toECEF))).sub(uv0);
+  const perZ = cubeSphereUv(originECEF.clone().add(new THREE.Vector3(0, 0, 1).applyMatrix3(toECEF))).sub(uv0);
+  const driftECEF = new THREE.Vector3();
+  const setDrift = (t) => {
+    const dx = DRIFT.x * t, dz = DRIFT.y * t;
+    const w = clouds.localWeatherOffset;
+    w.set(-(perX.x * dx + perZ.x * dz), -(perX.y * dx + perZ.y * dz)).multiply(clouds.localWeatherRepeat);
+    driftECEF.set(dx, 0, dz).applyMatrix3(toECEF);
+    // Cancel the library's height shift tied to how far the weather map has moved.
+    const lift = w.length() * 2e4;
+    clouds.shapeOffset.copy(driftECEF).negate().addScaledVector(up, lift).multiply(clouds.shapeRepeat);
+    clouds.shapeDetailOffset.copy(driftECEF).negate().multiply(clouds.shapeDetailRepeat);
+  };
 
   const sunIrradiance = atmosphere.solarIrradiance.clone();
   const sunLum = atmosphere.sunRadianceToRelativeLuminance.clone();
@@ -384,6 +422,7 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
     },
     update(env, sky, t) {
       composite.setEnv(env, sky, t);
+      setDrift(t);
       const su = sky.uniforms;
       // By day the sun lights the clouds; at night a dim lilac moon takes its place.
       const useSun = env.sunElev > -0.04;
