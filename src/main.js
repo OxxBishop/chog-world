@@ -14,6 +14,7 @@ import { loadKit } from './kaykit.js';
 import { HUB_KIT } from './hub.js';
 import { LANDMARK_KIT } from './landmarks.js';
 import { FURNITURE_KIT } from './interior.js';
+import { initSession } from './session.js';
 import { rng as makeRng } from './util.js';
 
 const $ = (id) => document.getElementById(id);
@@ -108,6 +109,7 @@ post.setPixelRatio(renderer.getPixelRatio());
 
 let island;
 let clouds;
+let session = null;
 let debug = null;
 
 // Time of day: live local clock, or a scrubbed hour from the slider.
@@ -178,8 +180,22 @@ async function init() {
     markView(params.get('view'));
   } else rig.jump('overview');
   renderer.setAnimationLoop(loop);
+  // Signing in, and the Chogs who live round the world.
+  session = initSession({
+    camera,
+    homes: island.rooms.filter((r) => r.id.startsWith('home')),
+    enterRoom: (r) => enterRoom(r),
+    currentRoom: () => island.rooms.find((r) => r.pod === rig.room) ?? null,
+    leaveToOverview: () =>
+      fadeThrough(() => {
+        leaveRoomUI();
+        rig.jump('overview');
+        markView('overview');
+      }),
+  });
+
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; } };
 }
 
 // UI.
@@ -416,6 +432,7 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
+  session?.update(dt);
   clouds?.update(env, sky, t);
 
   const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);

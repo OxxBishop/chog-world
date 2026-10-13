@@ -20,6 +20,20 @@
       <div class="mark">Chog World</div>
       <div class="tag">prototype · <span id="fps">-- fps</span></div>
     </div>
+    <button id="btn-signin" class="signin-btn">Sign in</button>
+    <div id="chog-chip" class="chog-chip" hidden></div>
+
+    <div id="signin" class="signin" role="dialog" aria-modal="true" aria-label="Sign in" hidden>
+      <div class="signin-card">
+        <button class="signin-close" aria-label="Close">&times;</button>
+        <div class="signin-body"></div>
+      </div>
+    </div>
+
+    <div id="story" class="story" aria-live="polite" hidden>
+      <div class="story-title"></div>
+      <div class="story-sub"></div>
+    </div>
 
     <button id="places-toggle" class="places-toggle" aria-expanded="false" aria-controls="places"><span id="places-current">Overview</span><span class="caret" aria-hidden="true"></span></button>
     <div id="places" class="hud top-right places">
