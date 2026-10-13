@@ -300,6 +300,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
     domes,
     solids,
     rooms,
+    plaza: plaza.group,
     terrain,
     forest,
     hub,
