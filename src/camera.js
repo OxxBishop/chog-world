@@ -4,11 +4,19 @@ import { heightAt, isVoid, cameraFloor } from './terrain.js';
 
 const MIN_DIST = 8;
 const MAX_DIST = 750;
-const TARGET_LIMIT = 420;
+// The view's centre stays over the archipelago (the far neighbourhood rims are about 320 out).
+const TARGET_LIMIT = 330;
 const TAP_MS = 300;
 const TAP_PX = 10;
-// How fast a flung swing or drag dies away after the finger lifts (per second).
-const FRICTION = 3.2;
+// How fast a flung swing or drag dies away after the finger lifts (per second), and the fastest
+// it may glide, so a quick swipe eases on a little instead of spinning what you were looking at away.
+const FRICTION = 4.5;
+const FLING_MAX = { theta: 1.2, phi: 0.6 };
+// On touch a swipe across the whole screen turns the view this far (radians), whatever its size.
+const SWIPE_TURN = 1.1;
+const SWIPE_TILT = 1.0;
+// How far the view may tilt up past the point where the camera stops low, so the island never leaves the frame.
+const TILT_ROOM = 0.26;
 const _pos = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const _u = new THREE.Vector3();
@@ -188,7 +196,7 @@ export class CameraRig {
       const before = { theta: this.goal.theta, phi: this.goal.phi, target: this.goal.target.clone() };
       if (now.n === 1) {
         if (gesture.move && !this.focused) this.pan(dx, dy);
-        else this.rotate(dx, dy);
+        else this.rotate(dx, dy, e.pointerType === 'touch');
       } else {
         this.zoomAt(gesture.d / now.d, now.x, now.y);
         // Zooming shifts the target toward the fingers; only the drag part should glide.
@@ -198,7 +206,7 @@ export class CameraRig {
         if (dAng < -Math.PI) dAng += Math.PI * 2;
         this.goal.theta -= dAng;
         // Two fingers dragging together move around (or circle, while visiting a place).
-        if (this.focused) this.rotate(dx, 0);
+        if (this.focused) this.rotate(dx, 0, true);
         else this.pan(dx, dy);
       }
       // Event timestamps, not handler time: on a slow frame moves arrive late and bunched together.
@@ -206,9 +214,11 @@ export class CameraRig {
       const span = Math.max(8, Math.min(60, t - lastMove)) / 1000;
       lastMove = t;
       const k = 0.45;
-      fling.theta += ((this.goal.theta - before.theta) / span - fling.theta) * k;
-      fling.phi += ((this.goal.phi - before.phi) / span - fling.phi) * k;
+      fling.theta = clamp(fling.theta + ((this.goal.theta - before.theta) / span - fling.theta) * k, -FLING_MAX.theta, FLING_MAX.theta);
+      fling.phi = clamp(fling.phi + ((this.goal.phi - before.phi) / span - fling.phi) * k, -FLING_MAX.phi, FLING_MAX.phi);
       fling.pan.lerp(this.goal.target.clone().sub(before.target).divideScalar(span), k);
+      // A drag glides on at most a third of the view's width per second.
+      fling.pan.clampLength(0, this.goal.dist * 0.3);
       gesture = { ...now, move: gesture.move };
     });
     const end = (e) => {
@@ -267,9 +277,17 @@ export class CameraRig {
     this.goal.target.addScaledVector(right, -dx * k).addScaledVector(fwd, dy * k * Math.min(vy, 2.2));
   }
 
-  rotate(dx, dy) {
-    this.goal.theta -= dx * 0.006;
-    this.goal.phi = clamp(this.goal.phi - dy * 0.005, 0.15, this.maxPhi());
+  rotate(dx, dy, touch = false) {
+    // A finger moves further than a mouse for the same intent: scale touch swipes to the screen.
+    const kx = touch ? SWIPE_TURN / this.dom.clientWidth : 0.006;
+    const ky = touch ? SWIPE_TILT / this.dom.clientHeight : 0.005;
+    this.goal.theta -= dx * kx;
+    this.goal.phi = clamp(this.goal.phi - dy * ky, 0.15, this.tiltLimit());
+  }
+
+  // Swinging low stops the camera at the grass; past that the view may tilt up only a little.
+  tiltLimit() {
+    return Math.min(this.maxPhi(), (this.phiClear ?? this.maxPhi()) + TILT_ROOM);
   }
 
   // Zoom by a factor, pulling the target toward whatever is under the screen point.
@@ -427,6 +445,7 @@ export class CameraRig {
   apply() {
     // Swing down only as far as the camera stays clear of the grass and the clouds.
     let phi = this.phi;
+    this.phiClear = this.maxPhi();
     if (!this.clearAt(phi)) {
       let hi = phi;
       let lo = phi;
@@ -440,6 +459,7 @@ export class CameraRig {
         else hi = mid;
       }
       phi = lo;
+      this.phiClear = lo;
     }
     const pos = this.orbit(phi, _pos);
     pos.y = Math.max(pos.y, cameraFloor(pos.x, pos.z));
@@ -478,7 +498,7 @@ export class CameraRig {
     const f = this.fling;
     if (!this.touching && (Math.abs(f.theta) + Math.abs(f.phi) > 1e-3 || f.pan.lengthSq() > 1e-3)) {
       this.goal.theta += f.theta * dt;
-      this.goal.phi = clamp(this.goal.phi + f.phi * dt, 0.15, this.maxPhi());
+      this.goal.phi = clamp(this.goal.phi + f.phi * dt, 0.15, this.tiltLimit());
       if (!this.focused) this.goal.target.addScaledVector(f.pan, dt);
       const decay = Math.exp(-FRICTION * dt);
       f.theta *= decay;
