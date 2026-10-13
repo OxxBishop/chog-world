@@ -5,7 +5,7 @@ import { createVolumetricClouds } from './volclouds.js';
 import { Post } from './post.js';
 import { createDebug } from './debug.js';
 import { buildIsland } from './island.js';
-import { CameraRig } from './camera.js';
+import { CameraRig, RoomBox } from './camera.js';
 import { wind } from './foliage.js';
 import { DOMES, DOME_R, HOODS, ISLANDS, DOWNTOWN, baseY } from './layout.js';
 import { loadKit } from './kaykit.js';
@@ -335,6 +335,12 @@ function frame() {
   if (time.live) slider.value = hour.toFixed(2);
 
   rig.update(dt);
+  // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
+  const fov = rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : 42;
+  if (Math.abs(camera.fov - fov) > 0.05) {
+    camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
+    camera.updateProjectionMatrix();
+  }
   const dist = rig.focusDist;
   sky.fog.near = 600 + dist * 1.3;
   sky.fog.far = sky.fog.near + 2600;
