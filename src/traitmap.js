@@ -156,3 +156,18 @@ export function personalityFor(traits = {}) {
   energy = Math.min(1, Math.max(0.1, energy));
   return { energy, mood, wander: 1.5 + energy * 3.5, idleSpeed: 0.6 + energy * 0.9 };
 }
+
+/*
+ * How a Chog shows a mood from a chat: the move it makes (a name chog.js plays, or a clip in CLIPS),
+ * the little badge over its head, and for rigged models the face morph target to blend in.
+ * Moods come from the brain: happy, excited, calm, curious, surprised, sleepy, sad.
+ */
+export const MOODS = {
+  happy: { act: 'wave', badge: '♥', colour: '#ff8fb5', face: 'Happy' },
+  excited: { act: 'cheer', badge: '!!', colour: '#ffd166', face: 'Excited' },
+  calm: { act: 'idle', badge: '~', colour: '#9fd8ff', face: 'Calm' },
+  curious: { act: 'sniff', badge: '?', colour: '#c8a2ff', face: 'Curious' },
+  surprised: { act: 'cheer', badge: '!', colour: '#ffe066', face: 'Surprised' },
+  sleepy: { act: 'sleepy', badge: 'z', colour: '#b8b0e0', face: 'Sleepy' },
+  sad: { act: 'sad', badge: '…', colour: '#8fa8d8', face: 'Sad' },
+};

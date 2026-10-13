@@ -1,6 +1,8 @@
 import { chogInfo, loadChogs, DEMO_CHOG, homeFor } from './chogdata.js';
 import { makeChog } from './chog.js';
 import { playWake, playGreyOut } from './cutscenes.js';
+import { createChat } from './chat.js';
+import * as THREE from 'three';
 
 /*
  * Signing in and waking your Chog. Connect a wallet on Monad testnet, sign a free message, pick one of
@@ -21,6 +23,15 @@ export function initSession(world) {
   const body = panel.querySelector('.signin-body');
   let session = null; // { address, wallet, provider, demo, id, chog, room, stopWatch }
   let busy = false;
+  // Where the Chog is, for the brain to know what it's looking at.
+  const placeName = () => {
+    const here = world.currentRoom();
+    if (here && here === session?.room) return 'at home in its dome';
+    if (here) return `in the ${here.name}`;
+    return 'out on the islands of Chog World';
+  };
+  const chat = createChat({ camera: world.camera, getSession: () => session, placeName });
+  const ray = new THREE.Raycaster();
 
   const open = () => {
     panel.hidden = false;
@@ -194,6 +205,7 @@ export function initSession(world) {
     const s = session;
     if (!s?.chog || s.leaving) return;
     s.leaving = true;
+    chat.close();
     s.stopWatch?.();
     clearInterval(s.ownerCheck);
     if (world.currentRoom() !== s.room) {
@@ -219,11 +231,13 @@ export function initSession(world) {
     chip.innerHTML = `
       ${s.info.image ? `<img src="${esc(s.info.image)}" alt="">` : ''}
       <div><strong>${esc(s.info.name)}</strong><span class="muted small">${s.demo ? 'Demo Chog' : esc(short(s.address))}</span></div>
+      <button class="talk">Talk</button>
       <button class="home">Home</button>
       ${s.demo ? '<button class="sale">Simulate sale</button>' : ''}
       <button class="out">Sign out</button>`;
     chip.hidden = false;
     $('btn-signin').hidden = true;
+    chip.querySelector('.talk').addEventListener('click', () => (chat.isOpen ? chat.close() : chat.open()));
     chip.querySelector('.home').addEventListener('click', () => world.enterRoom(s.room));
     chip.querySelector('.out').addEventListener('click', () => signOut());
     chip.querySelector('.sale')?.addEventListener('click', () => sold());
@@ -232,6 +246,7 @@ export function initSession(world) {
   function signOut(note) {
     const s = session;
     session = null;
+    chat.reset();
     if (s) {
       s.stopWatch?.();
       clearInterval(s.ownerCheck);
@@ -258,7 +273,18 @@ export function initSession(world) {
   return {
     update(dt) {
       if (session?.chog && session.room.room.group.visible) session.chog.update(dt, world.camera);
+      chat.update(dt);
     },
+    // A tap on your Chog opens the chat. True if the tap was on it.
+    tapChog(x, y) {
+      const root = session?.chog?.root;
+      if (!root || !root.visible || !session.room.room.group.visible) return false;
+      ray.setFromCamera(new THREE.Vector2((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1), world.camera);
+      if (!ray.intersectObject(root, true).length) return false;
+      chat.open();
+      return true;
+    },
+    chat,
     get active() {
       return session;
     },

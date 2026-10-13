@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { lookFor, personalityFor, CLIPS, ATTACH } from './traitmap.js';
+import { lookFor, personalityFor, CLIPS, ATTACH, MOODS } from './traitmap.js';
 
 /*
  * A Chog in the world. Its rigged model (with its head item, outfit and accessory, per traitmap.js)
@@ -83,6 +83,39 @@ function standee(image) {
   return { body, card, stand, mat };
 }
 
+// A mood badge over the head: a round tag with the mood's glyph, drawn once per mood.
+const badgeTextures = new Map();
+function badgeTexture(mood) {
+  if (badgeTextures.has(mood)) return badgeTextures.get(mood);
+  const m = MOODS[mood] ?? MOODS.calm;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(30, 18, 52, 0.92)';
+  g.beginPath();
+  g.arc(64, 60, 50, 0, Math.PI * 2);
+  g.fill();
+  g.beginPath();
+  g.moveTo(52, 104);
+  g.lineTo(64, 124);
+  g.lineTo(76, 104);
+  g.fill();
+  g.lineWidth = 6;
+  g.strokeStyle = m.colour;
+  g.beginPath();
+  g.arc(64, 60, 47, 0, Math.PI * 2);
+  g.stroke();
+  g.fillStyle = m.colour;
+  g.font = '700 58px Fredoka, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(m.badge, 64, 62);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  badgeTextures.set(mood, t);
+  return t;
+}
+
 // The aura: a soft ring of light at the feet, pulsing gently.
 function auraRing(colour, strength) {
   const mat = new THREE.ShaderMaterial({
@@ -156,6 +189,16 @@ export async function makeChog({ traits = {}, image = null } = {}) {
     aura = auraRing(look.aura, look.glow);
     root.add(aura);
   }
+  // The mood badge pops up over the head when the Chog reacts to something said.
+  const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
+  badge.scale.setScalar(0.62);
+  badge.position.y = CHOG_HEIGHT + 0.45;
+  badge.renderOrder = 6;
+  badge.visible = false;
+  root.add(badge);
+  let moodT = 0;
+  let moodLeft = 0;
+  let resumeAct = 'idle';
 
   // Grey-out for a model's own materials: each mesh drains from the feet up by its height.
   const original = tintables.map((o) => o.material.color.clone());
@@ -189,6 +232,29 @@ export async function makeChog({ traits = {}, image = null } = {}) {
         current = next;
       }
     },
+    /**
+     * React to a mood from a chat: the mood's move for a few seconds, its badge over the head, and
+     * for a rigged model its face morph. Then it settles back into what it was doing.
+     */
+    setMood(mood, seconds = 4) {
+      const m = MOODS[mood];
+      if (!m) return;
+      if (moodLeft <= 0) resumeAct = state;
+      badge.material.map = badgeTexture(mood);
+      badge.material.needsUpdate = true;
+      badge.visible = true;
+      moodT = 0;
+      moodLeft = seconds;
+      chog.play(m.act);
+      if (model) {
+        model.traverse((o) => {
+          if (!o.morphTargetDictionary) return;
+          o.morphTargetInfluences.fill(0);
+          const i = o.morphTargetDictionary[m.face];
+          if (i !== undefined) o.morphTargetInfluences[i] = 1;
+        });
+      }
+    },
     // Fade the Chog out (1 is solid, 0 gone), for walking off.
     setFade(k) {
       if (stand) stand.mat.uniforms.uFade.value = k;
@@ -210,6 +276,19 @@ export async function makeChog({ traits = {}, image = null } = {}) {
       t += dt;
       stateT += dt;
       if (aura) aura.material.uniforms.uTime.value = t;
+      if (moodLeft > 0) {
+        moodT += dt;
+        moodLeft -= dt;
+        // The badge pops in, bobs, and fades away at the end.
+        const pop = Math.min(1, moodT * 6);
+        badge.scale.setScalar(0.62 * (pop + Math.sin(Math.min(1, moodT * 6) * Math.PI) * 0.15));
+        badge.position.y = CHOG_HEIGHT + 0.45 + Math.sin(moodT * 3) * 0.05;
+        badge.material.opacity = Math.min(1, moodLeft * 2);
+        if (moodLeft <= 0) {
+          badge.visible = false;
+          chog.play(resumeAct);
+        }
+      }
       if (mixer) return mixer.update(dt);
       act(stand, state, t * speed, stateT);
       // The card turns to face the camera (about its upright axis), whatever way the Chog is facing.
@@ -270,6 +349,10 @@ function act(s, state, t, st) {
     case 'sad':
       card.rotation.x = 0.22;
       card.position.y = 0.3;
+      break;
+    case 'sleepy':
+      card.rotation.z = Math.sin(t * 0.9) * 0.12;
+      card.rotation.x = 0.1 + Math.sin(t * 0.45) * 0.06;
       break;
     case 'sleep':
       card.rotation.x = -Math.PI / 2;
