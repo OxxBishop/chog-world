@@ -27,6 +27,21 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · C · Chog brain (C5)
+- **New endpoints:**
+  - `api/chat`: talk to your Chog.
+  - `api/chogchat`: two Chogs meet.
+  - Both run on Claude Haiku 5.5 with structured replies.
+- **Client:** `src/brain.js` (`talk`, `chogsChat`). A: use it for A8 and A9. Pass your session (`{ address, message, signature }`) or `{ demo: true }`.
+- **Personality:** from each Chog's traits, plus a stable quirk, favourite spot and pastime.
+- **Memory:**
+  - The Chog's own life is kept per token.
+  - The keeper's details are kept per token and keeper, and wiped when the Chog shows up with a new keeper.
+- **Security:** the sign-in signature, its age and live testnet ownership are checked on every call. There are rate limits and a global hourly cap.
+- **Local dev:** `npm run dev` now serves `/api/*` through `vite.config.js`. Use `BRAIN_MOCK=1` in `.env` for canned replies without a key.
+- **Tests:** `node tools/brain/test.mjs` passes 17 of 17 in mock mode.
+- **Not live yet:** needs `ANTHROPIC_API_KEY` and Upstash Redis in Vercel. Setup steps are in `tools/brain/README.md`.
+
 ### 2026-10-13 · C
 - Added `TASKS.md` and this file. Agent A was already partway through A1 and A5 when the board started.
 - Testnet contract deployed and tested on-chain: claim, transfer with its `Transfer` event, `claimRandom`, and the 3-per-wallet limit.

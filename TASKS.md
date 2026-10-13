@@ -76,7 +76,7 @@ doesn't yet, stub it and move on, then come back.
 | Order | # | Task | Target | Needs | Status |
 |---|---|---|---|---|---|
 | — | C1 | Testnet Chog collection (deployed `0x85a9ba85e5a3e87bab529c402140a87a72622b91`) and trait extraction (`tools/`) | | | done |
-| 1 | C5 | **Chog brain**: a Vercel function (`api/chat`) on Claude Haiku 5.5. It gives each Chog a personality from its traits and remembers by token (places, friends) and by owner (mannerisms, chats), with owner memories wiped on transfer. Plus `src/brain.js` for A | Oct 15 | the user's API key | todo |
+| 1 | C5 | **Chog brain**: a Vercel function (`api/chat`) on Claude Haiku 5.5. It gives each Chog a personality from its traits and remembers by token (places, friends) and by owner (mannerisms, chats), with owner memories wiped on transfer. Plus `src/brain.js` for A. **Code done and tested (mock mode); live once the key and Upstash Redis are set in Vercel** | Oct 15 | the user's API key | doing |
 | ongoing | C2 | Prep each Tripo model the user exports: check the rig, slim it for the web, drop it into `public/models/`, note it in `HANDOFF.md` | as they come | | doing |
 | ongoing | C3 | Review every push against this board, and keep the board current | daily | | doing |
 | 2 | C6 | Sound: the singer's song in the square, ambient island sound, UI and cutscene stings (all royalty-free), in `src/audio.js` | Oct 17 | | todo |
