@@ -473,6 +473,10 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
       s.maxStepSize *= STEP;
       // One shadow cascade covers our view distance; three cost a lot and look the same here.
       s.cascadeCount = 1;
+      // The clouds are drawn a sixteenth at a time and built up over frames. Under a quick swipe the
+      // library threw that history away too eagerly, and the deck thinned to see-through for a moment.
+      // A looser check keeps it whole; any ghosting is hard to see on clouds.
+      clouds.cloudsPass.resolveMaterial.uniforms.varianceGamma.value = 5;
     },
     update(env, sky, t) {
       composite.setEnv(env, sky, t);
