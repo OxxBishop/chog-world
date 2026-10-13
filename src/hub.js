@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { piece, kitMaterial } from './kaykit.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from './merge.js';
 import { createGlows } from './glows.js';
 
@@ -115,6 +117,75 @@ function stringOfBulbs(a, b, spacing, sag, out) {
     out.push(new THREE.Vector3().lerpVectors(a, b, u).add(new THREE.Vector3(0, -sag * 4 * u * (1 - u), 0)));
   }
 }
+
+// Casino chips: [base, stripe] colours. Red, black and gold.
+const CHIPS = [['#c4334a', '#fff0dc'], ['#2a1a2e', '#e8b84a'], ['#e8b84a', '#7a1f2e']];
+
+// Chip sides (one row of edge stripes per colour) and faces (one square per colour), in two atlases.
+function chipTextures() {
+  const side = document.createElement('canvas');
+  side.width = 256;
+  side.height = 16 * CHIPS.length;
+  const sc = side.getContext('2d');
+  const face = document.createElement('canvas');
+  face.width = 128 * CHIPS.length;
+  face.height = 128;
+  const fc = face.getContext('2d');
+  CHIPS.forEach(([base, stripe], i) => {
+    sc.fillStyle = base;
+    sc.fillRect(0, i * 16, 256, 16);
+    sc.fillStyle = stripe;
+    for (let k = 0; k < 8; k++) sc.fillRect(k * 32 + 8, i * 16, 14, 16);
+    const cx = i * 128 + 64;
+    fc.fillStyle = base;
+    fc.fillRect(i * 128, 0, 128, 128);
+    // Edge spots round the rim and a ring inside, like a real chip.
+    fc.fillStyle = stripe;
+    for (let k = 0; k < 8; k++) {
+      fc.save();
+      fc.translate(cx, 64);
+      fc.rotate((k / 8) * Math.PI * 2);
+      fc.fillRect(-7, -63, 14, 16);
+      fc.restore();
+    }
+    fc.strokeStyle = stripe;
+    fc.lineWidth = 5;
+    fc.beginPath();
+    fc.arc(cx, 64, 34, 0, Math.PI * 2);
+    fc.stroke();
+  });
+  const tex = (c) => {
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+  };
+  return { side: tex(side), face: tex(face) };
+}
+
+// One chip: an open side and two caps, with UVs pointing at its colour in the atlases.
+function chipGeometry(r, h, colour) {
+  const n = CHIPS.length;
+  const side = new THREE.CylinderGeometry(r, r, h, 40, 1, true);
+  const suv = side.attributes.uv;
+  for (let i = 0; i < suv.count; i++) suv.setY(i, (colour + 0.1 + suv.getY(i) * 0.8) / n);
+  const caps = [new THREE.CircleGeometry(r, 40).rotateX(-Math.PI / 2).translate(0, h / 2, 0), new THREE.CircleGeometry(r, 40).rotateX(Math.PI / 2).translate(0, -h / 2, 0)];
+  for (const c of caps) {
+    const uv = c.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setX(i, (colour + uv.getX(i)) / n);
+  }
+  return { side, caps: mergeGeometries(caps) };
+}
+
+// Pip layouts on a die face, in steps of a third of the face.
+const PIPS = {
+  1: [[0, 0]],
+  2: [[-1, -1], [1, 1]],
+  3: [[-1, -1], [0, 0], [1, 1]],
+  4: [[-1, -1], [-1, 1], [1, -1], [1, 1]],
+  5: [[-1, -1], [-1, 1], [1, -1], [1, 1], [0, 0]],
+  6: [[-1, -1], [-1, 0], [-1, 1], [1, -1], [1, 0], [1, 1]],
+};
 
 const box = (w, h, d, mat, x, y, z) => {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -286,37 +357,61 @@ export function buildHub() {
   // A closed door: dark panel with a brass bar across it.
   props.add(box(4.2, 5.4, 0.2, mats.darkWood, cx, 2.7, WING_FRONT + 0.25));
   props.add(box(4.6, 0.25, 0.3, mats.brass, cx, 3.2, WING_FRONT + 0.4));
-  // The die: cream with purple pips, tipped onto one corner; the chip leaning beside it.
+  // A giant die resting on the roof: rounded cream cube, every face pipped properly (opposite faces
+  // add up to seven), the six toward the plaza.
   const die = new THREE.Group();
-  die.add(new THREE.Mesh(new THREE.BoxGeometry(5, 5, 5), mats.cream));
-  const pip = new THREE.SphereGeometry(0.42, 12, 8).scale(1, 1, 0.35);
-  const faces = [
-    [[0, 0]], // 1 on the front
-    [[-1.2, -1.2], [1.2, 1.2]],
-    [[-1.3, -1.3], [0, 0], [1.3, 1.3]],
+  const D = 5;
+  die.add(new THREE.Mesh(new RoundedBoxGeometry(D, D, D, 4, 0.45), mats.cream));
+  const pip = new THREE.SphereGeometry(0.46, 14, 10).scale(1, 1, 0.3);
+  const pipMat = new THREE.MeshLambertMaterial({ color: '#3a1f4a' });
+  // Face value and how to place a point (u, v) on that face.
+  const faceAt = [
+    [6, (u, v) => [u, v, D / 2]],
+    [1, (u, v) => [-u, v, -D / 2]],
+    [3, (u, v) => [D / 2, v, -u]],
+    [4, (u, v) => [-D / 2, v, u]],
+    [5, (u, v) => [u, D / 2, -v]],
+    [2, (u, v) => [u, -D / 2, v]],
   ];
-  const facing = [
-    (u, v) => new THREE.Vector3(u, v, 2.52),
-    (u, v) => new THREE.Vector3(2.52, v, u),
-    (u, v) => new THREE.Vector3(u, 2.52, v),
-  ];
-  faces.forEach((list, f) => {
-    for (const [u, v] of list) {
-      const m = new THREE.Mesh(pip, mats.purple);
-      m.position.copy(facing[f](u, v));
+  for (const [value, at] of faceAt) {
+    for (const [u, v] of PIPS[value]) {
+      const m = new THREE.Mesh(pip, pipMat);
+      m.position.set(...at(u * D * 0.27, v * D * 0.27));
       m.lookAt(m.position.clone().multiplyScalar(2));
       die.add(m);
     }
-  });
-  die.position.set(cx + 3.5, WING_S + 3.6, -2);
-  die.rotation.set(0.35, 0.6, 0.2);
+  }
+  die.position.set(cx + 4.5, WING_S + D / 2, -1);
+  die.rotation.y = 0.45;
   props.add(die);
-  const chipTex = stripes('#c4334a', '#fff0dc', 16);
-  const chip = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.8, 32), [new THREE.MeshLambertMaterial({ map: chipTex }), mats.red, mats.red]);
-  chip.position.set(cx - 4.5, WING_S + 2.6, 1.5);
-  chip.rotation.set(0.2, 0, 1.15);
-  chip.userData.keep = true;
-  group.add(chip);
+
+  // Stacks of chips lying flat beside it.
+  const chipTex = chipTextures();
+  const sides = [], caps = [];
+  const CH = 0.6, CR = 2.3;
+  const stacks = [
+    { x: cx - 4, z: 1.5, colours: [0, 1, 2, 0, 1] },
+    { x: cx - 0.5, z: 4.2, colours: [2, 0] },
+  ];
+  for (const s of stacks) {
+    s.colours.forEach((c, k) => {
+      const g = chipGeometry(CR, CH, c);
+      const m = new THREE.Matrix4().compose(
+        new THREE.Vector3(s.x + Math.sin(k * 2.1) * 0.18, WING_S + CH / 2 + k * CH, s.z + Math.cos(k * 1.7) * 0.18),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, k * 0.7, 0)),
+        new THREE.Vector3(1, 1, 1),
+      );
+      sides.push(g.side.applyMatrix4(m));
+      caps.push(g.caps.applyMatrix4(m));
+    });
+  }
+  const chipSide = new THREE.Mesh(mergeGeometries(sides), new THREE.MeshLambertMaterial({ map: chipTex.side }));
+  const chipFace = new THREE.Mesh(mergeGeometries(caps), new THREE.MeshLambertMaterial({ map: chipTex.face }));
+  for (const m of [chipSide, chipFace]) {
+    m.userData.keep = true;
+    m.castShadow = true;
+    group.add(m);
+  }
 
   for (const s of signs) group.add(s);
   props.traverse((o) => {
