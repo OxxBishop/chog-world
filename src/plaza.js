@@ -7,7 +7,7 @@ import { createGlows } from './glows.js';
  * it, planters and a few lamps. Positions are on the plaza, in plaza space (y = 0 is the paving).
  */
 
-export const FOUNTAIN = { x: 0, z: 36 };
+export const FOUNTAIN = { x: 0, z: 40 };
 
 const stone = () => new THREE.MeshLambertMaterial({ color: '#efe3cf' });
 
@@ -143,7 +143,7 @@ export function buildPlaza() {
   const glowSpots = [];
   const spots = planters.map(([x, z]) => [x, z]);
   const globeMat = new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.2 });
-  for (const [x, z] of [[-7, 24], [7, 24], [-16, 40], [16, 40], [-30, 30], [30, 30], [-10, 48], [10, 48]]) {
+  for (const [x, z] of [[-9.5, 21], [9.5, 21], [-16, 40], [16, 40], [-30, 30], [30, 30], [-10, 48], [10, 48]]) {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 4.2, 8).translate(0, 2.1, 0), brass);
     pole.position.set(x, 0, z);
     props.add(pole);
