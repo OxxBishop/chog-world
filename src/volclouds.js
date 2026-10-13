@@ -194,6 +194,22 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
 }`;
 
 const WHITE = new THREE.Color(1, 1, 1);
+// What lights the clouds: the sun by day, the moon by night, and through twilight a blend that
+// swings from one to the other. t is 0 for full sun, 1 for full moon; the light never drops out.
+const _light = new THREE.Vector3();
+function cloudLight(env, sky) {
+  const t = THREE.MathUtils.smoothstep(-env.sunElev, -0.07, 0.04);
+  const sun = sky.uniforms.uSunDir.value;
+  _light.set(sun.x, Math.max(sun.y, 0.035), sun.z).normalize().lerp(sky.moonLight, t);
+  // Sun and moon can sit almost opposite each other: never let the blend shrink to nothing.
+  if (_light.lengthSq() < 0.04) _light.copy(t < 0.5 ? sun : sky.moonLight).setY(Math.max(_light.y, 0.2));
+  _light.normalize();
+  return { dir: _light, t };
+}
+
+// Moonlight on the drifting clouds, at full night.
+const MOON_LIGHT = new THREE.Color(0.62 * 0.22, 0.5 * 0.22, 0.22);
+
 // How fast the cloud deck drifts past the islands, metres per second (world x, z).
 const DRIFT = new THREE.Vector2(0.55, 0.4);
 // Brightness of direct sunlight on the drifting clouds, matched by eye to the deck.
@@ -266,17 +282,14 @@ class CloudComposite extends Effect {
     // Lit like the deck: sunlight that turns golden as it crosses more air near the horizon,
     // or the dim lilac moon at night, plus a soft sky glow from above and the deck below.
     const su = sky.uniforms;
-    const useSun = env.sunElev > -0.04;
-    const dir = u.get('sunDir').value.copy(useSun ? su.uSunDir.value : su.uMoonDir.value);
+    const light = cloudLight(env, sky);
+    u.get('sunDir').value.copy(light.dir);
     const col = u.get('sunCol').value;
-    if (useSun) {
-      const elev = Math.max(Math.asin(Math.min(1, dir.y)) * (180 / Math.PI), -2);
-      const airmass = 1 / (Math.max(dir.y, 0) + 0.15 * Math.pow(elev + 3.885, -1.253));
-      const k = SUN_GAIN * THREE.MathUtils.smoothstep(dir.y, -0.04, 0.1);
-      col.setRGB(Math.exp(-SKY_EXT[0] * airmass) * k, Math.exp(-SKY_EXT[1] * airmass) * k, Math.exp(-SKY_EXT[2] * airmass) * k);
-    } else {
-      col.setRGB(0.62, 0.5, 1.0).multiplyScalar(0.22 * env.night);
-    }
+    const sun = su.uSunDir.value;
+    const elev = Math.max(Math.asin(Math.min(1, Math.max(sun.y, 0.035))) * (180 / Math.PI), -2);
+    const airmass = 1 / (Math.max(sun.y, 0.035) + 0.15 * Math.pow(elev + 3.885, -1.253));
+    col.setRGB(Math.exp(-SKY_EXT[0] * airmass), Math.exp(-SKY_EXT[1] * airmass), Math.exp(-SKY_EXT[2] * airmass)).multiplyScalar(SUN_GAIN);
+    col.lerp(MOON_LIGHT.clone().multiplyScalar(Math.max(env.night, 0.5)), light.t);
     const day = 1 - env.night;
     u.get('ambTop').value.copy(su.uTop.value).lerp(WHITE, 0.55).multiplyScalar(0.42 * day + 0.06);
     u.get('ambBot').value.copy(su.uHorizon.value).lerp(WHITE, 0.3).multiplyScalar(0.3 * day + 0.04);
@@ -396,6 +409,7 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
   const sunLum = atmosphere.sunRadianceToRelativeLuminance.clone();
   const skyLum = atmosphere.skyRadianceToRelativeLuminance.clone();
   const moonTint = new THREE.Vector3(0.62, 0.5, 1.0);
+  const tint = new THREE.Vector3();
   const dir = new THREE.Vector3();
 
   const composite = new CloudComposite(camera, clouds, deck.altitude + deck.height - ALTITUDE + 2, shape, shapeDetail);
@@ -423,17 +437,15 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
     update(env, sky, t) {
       composite.setEnv(env, sky, t);
       setDrift(t);
-      const su = sky.uniforms;
-      // By day the sun lights the clouds; at night a dim lilac moon takes its place.
-      const useSun = env.sunElev > -0.04;
-      dir.copy(useSun ? su.uSunDir.value : su.uMoonDir.value).applyMatrix3(toECEF).normalize();
+      // By day the sun lights the clouds; at night a dim lilac moon takes its place, which is the
+      // same light far dimmer (sky glow included) and tinted lilac. Twilight blends the two.
+      const light = cloudLight(env, sky);
+      dir.copy(light.dir).applyMatrix3(toECEF).normalize();
       clouds.sunDirection.copy(dir);
-      // Moonlight is the same light, far dimmer (sky glow included) and tinted lilac.
-      const k = useSun ? 1 : 0.1;
+      const k = THREE.MathUtils.lerp(1, 0.1, light.t);
       atmosphere.sunRadianceToRelativeLuminance.copy(sunLum).multiplyScalar(k);
       atmosphere.skyRadianceToRelativeLuminance.copy(skyLum).multiplyScalar(k);
-      atmosphere.solarIrradiance.copy(sunIrradiance);
-      if (!useSun) atmosphere.solarIrradiance.multiply(moonTint);
+      atmosphere.solarIrradiance.copy(sunIrradiance).multiply(tint.set(1, 1, 1).lerp(moonTint, light.t));
     },
   };
 }

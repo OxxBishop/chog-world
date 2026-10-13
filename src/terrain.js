@@ -345,7 +345,7 @@ export function buildTerrain(scene) {
       const su = sky.uniforms;
       const low = 1 - smoothstep(0.02, 0.4, env.sunElev);
       rim.value.copy(su.uSunColor.value).multiplyScalar(low * (1 - env.night) * 0.9).add(lilac.clone().multiplyScalar(0.12 * env.night));
-      sunView.value.copy(env.sunElev > -0.04 ? su.uSunDir.value : su.uMoonDir.value).transformDirection(camera.matrixWorldInverse);
+      sunView.value.copy(env.sunElev > -0.04 ? su.uSunDir.value : sky.moonLight).transformDirection(camera.matrixWorldInverse);
     },
   };
 }
