@@ -8,6 +8,8 @@ import { buildIsland } from './island.js';
 import { CameraRig, RoomBox } from './camera.js';
 import { wind } from './foliage.js';
 import { DOMES, DOME_R, HOODS, ISLANDS, DOWNTOWN, baseY } from './layout.js';
+import { rimPoint } from './terrain.js';
+import { setGlowFov } from './glows.js';
 import { loadKit } from './kaykit.js';
 import { HUB_KIT } from './hub.js';
 import { LANDMARK_KIT } from './landmarks.js';
@@ -32,9 +34,27 @@ renderer.toneMapping = THREE.NoToneMapping;
 $('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.3, 2400);
+const camera = new THREE.PerspectiveCamera(outdoorFov(), window.innerWidth / window.innerHeight, 0.3, 2600);
 const sky = new Sky(scene, renderer);
 if (QUALITY === 'medium') sky.light.shadow.mapSize.set(2048, 2048);
+
+// The lens: 42 degrees top to bottom, opened up on a tall phone screen so its width still takes in
+// at least 36 degrees.
+function outdoorFov() {
+  const aspect = window.innerWidth / window.innerHeight;
+  const needed = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(18)) / aspect));
+  return Math.min(70, Math.max(42, needed));
+}
+
+// A quick dip to dusk and back, for stepping indoors and out.
+function fadeThrough(fn) {
+  const f = $('fade');
+  f.classList.add('on');
+  setTimeout(() => {
+    fn();
+    requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on')));
+  }, 220);
+}
 
 // Framed views for judging the look.
 const T = DOWNTOWN.y;
@@ -53,6 +73,36 @@ const VIEWS = {
   sky: { pos: new THREE.Vector3(-20, T + 3, 60), target: new THREE.Vector3(-60, T + 70, -100) },
 };
 const rig = new CameraRig(camera, renderer.domElement, VIEWS);
+
+/*
+ * The overview: every island whole and centred, whatever the screen. Fitted to each island's rim and
+ * the lip of its cliffs (the land is what gets centred; the undersides hang below), from a tilt that
+ * suits the screen's shape. It stays whole and centred as the view idles round.
+ */
+const OVERVIEW_THETA = 0.72;
+let overviewPoints = null;
+function fitOverview(theta) {
+  if (!overviewPoints) {
+    overviewPoints = [];
+    for (const isl of ISLANDS) {
+      for (let k = 0; k < 24; k++) {
+        const p = rimPoint(isl, (k / 24) * Math.PI * 2, 1.0);
+        overviewPoints.push(p, p.clone().setY(p.y - 12));
+      }
+    }
+    overviewPoints.push(new THREE.Vector3(DOWNTOWN.x, T + 28, DOWNTOWN.z));
+  }
+  camera.fov = outdoorFov();
+  camera.updateProjectionMatrix();
+  const phi = camera.aspect < 0.8 ? 0.78 : 1.02;
+  const fit = rig.fitAll(overviewPoints, phi, camera.aspect < 0.8 ? 0.93 : 0.86);
+  const target = rig.overviewAim(theta);
+  const s = Math.sin(phi);
+  VIEWS.overview = {
+    pos: new THREE.Vector3(s * Math.sin(theta), Math.cos(phi), s * Math.cos(theta)).multiplyScalar(fit.dist).add(target),
+    target,
+  };
+}
 const post = new Post(renderer, scene, camera);
 post.setPixelRatio(renderer.getPixelRatio());
 
@@ -82,6 +132,7 @@ async function init() {
   island = buildIsland(scene, makeRng(1969), renderer, sky, post.overlay);
   island.setQuality(perf.quality);
   rig.solids = island.solids;
+  fitOverview(OVERVIEW_THETA);
   // Each room is a view too: ?view=lobby, ?view=bar, ?view=home (the home in the Dome view's dome).
   for (const r of island.rooms) VIEWS[r.id] = r.view;
   VIEWS.home = VIEWS[`home${DOMES.indexOf(home)}`];
@@ -125,7 +176,7 @@ async function init() {
     rig.jump(params.get('view'));
     // Highlight the view it opened on, not Overview.
     markView(params.get('view'));
-  }
+  } else rig.jump('overview');
   renderer.setAnimationLoop(loop);
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
   if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf };
@@ -164,6 +215,8 @@ document.querySelectorAll('[data-view]').forEach((b) =>
     const place = placeId && pickables.find((m) => m.userData.place.id === placeId)?.userData.place;
     leaveRoomUI();
     if (place) rig.focusOn(place);
+    // Going indoors is a quick fade; everywhere else the camera flies.
+    else if (VIEWS[b.dataset.view].enter || rig.room) fadeThrough(() => rig.jump(b.dataset.view));
     else rig.go(b.dataset.view);
     markView(b.dataset.view);
     setMenu(false);
@@ -175,7 +228,13 @@ document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventD
 
 function resize() {
   camera.aspect = window.innerWidth / window.innerHeight;
+  if (!(rig.room instanceof RoomBox)) camera.fov = outdoorFov();
   camera.updateProjectionMatrix();
+  // Turned the phone, or resized the window, while looking at the whole world: fit it again.
+  if (island && rig.view === 'overview' && !rig.focused) {
+    fitOverview(rig.goal.theta);
+    rig.jump('overview');
+  }
   renderer.setPixelRatio(BASE_DPR * perf.scale);
   renderer.setSize(window.innerWidth, window.innerHeight);
   post.setPixelRatio(renderer.getPixelRatio());
@@ -240,7 +299,7 @@ function showBar(name, rooms = []) {
 }
 function enterRoom(r) {
   const place = pickables.find((m) => m.userData.place.id === r.place)?.userData.place;
-  rig.go(r.id, 1.6);
+  fadeThrough(() => rig.jump(r.id));
   inRoom = { room: r, place };
   showBar(r.name);
   markView(null);
@@ -264,7 +323,7 @@ $('btn-back').addEventListener('click', () => {
   if (inRoom?.place) {
     const { place } = inRoom;
     inRoom = null;
-    rig.focusOn(place);
+    fadeThrough(() => rig.focusOn(place, { instant: true }));
   } else rig.exitFocus();
 });
 
@@ -340,10 +399,11 @@ function frame() {
 
   rig.update(dt);
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
-  const fov = rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : 42;
+  const fov = rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov();
   if (Math.abs(camera.fov - fov) > 0.05) {
     camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
+    setGlowFov(camera.fov);
   }
   const dist = rig.focusDist;
   sky.fog.near = 600 + dist * 1.3;

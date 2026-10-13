@@ -242,3 +242,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 .debug label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 @media (max-width: 760px) { .debug { top: 112px; } }
+
+/* A quick dip to dusk when stepping indoors or out. */
+.fade { position: fixed; inset: 0; z-index: 5; background: #160c2c; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+.fade.on { opacity: 1; }

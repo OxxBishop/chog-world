@@ -36,6 +36,12 @@ void main() {
   #include <fog_fragment>
 }`;
 
+// The camera's vertical field of view, for sizing halos in pixels. main.js keeps it current.
+let tanHalfFov = Math.tan(THREE.MathUtils.degToRad(21));
+export function setGlowFov(deg) {
+  tanHalfFov = Math.tan(THREE.MathUtils.degToRad(deg / 2));
+}
+
 export function createGlows(positions, { color = '#ffd7a0', size = 2.2, minPx = 6 } = {}) {
   const geo = new THREE.BufferGeometry().setFromPoints(positions);
   const uniforms = THREE.UniformsUtils.merge([
@@ -61,7 +67,7 @@ export function createGlows(positions, { color = '#ffd7a0', size = 2.2, minPx = 
       uniforms.uStrength.value = Math.max(0, env.night - 0.15) * 1.1;
       // By day they add nothing, so skip the draw.
       points.visible = uniforms.uStrength.value > 0;
-      uniforms.uScale.value = renderer.domElement.height / 2 / Math.tan(THREE.MathUtils.degToRad(21));
+      uniforms.uScale.value = renderer.domElement.height / 2 / tanHalfFov;
     },
   };
 }

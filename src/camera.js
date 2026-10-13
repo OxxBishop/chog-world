@@ -3,7 +3,7 @@ import { damp, easeInOut, clamp, angleLerp } from './util.js';
 import { heightAt, isVoid, cameraFloor } from './terrain.js';
 
 const MIN_DIST = 8;
-const MAX_DIST = 750;
+const MAX_DIST = 1400;
 // The view's centre stays over the archipelago (the far neighbourhood rims are about 320 out).
 const TARGET_LIMIT = 330;
 const TAP_MS = 300;
@@ -21,6 +21,12 @@ const _pos = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const _u = new THREE.Vector3();
 const _p = new THREE.Vector3();
+const _fp = new THREE.Vector3();
+const _fo = new THREE.Vector3();
+const _back = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _up = new THREE.Vector3();
+const _rel = new THREE.Vector3();
 
 /**
  * A solid the camera keeps out of: a round pod with a wall of radius r up to height wall, then a
@@ -177,6 +183,7 @@ export class CameraRig {
       this.touching = pts.size;
       this.tween = null;
       this.idleSpin = false;
+      if (e.button !== 0 || pts.size > 1) this.view = null;
       fling.theta = fling.phi = 0;
       fling.pan.set(0, 0, 0);
       gesture = { ...snapshot(), move: e.button === 2 || e.ctrlKey || e.shiftKey };
@@ -193,6 +200,7 @@ export class CameraRig {
         return;
       }
       const dx = now.x - gesture.x, dy = now.y - gesture.y;
+      if (dx || dy) this.view = null;
       const before = { theta: this.goal.theta, phi: this.goal.phi, target: this.goal.target.clone() };
       if (now.n === 1) {
         if (gesture.move && !this.focused) this.pan(dx, dy);
@@ -245,6 +253,7 @@ export class CameraRig {
         e.preventDefault();
         this.tween = null;
         this.idleSpin = false;
+        this.view = null;
         this.zoomAt(Math.pow(1.0018, e.deltaY), e.clientX, e.clientY);
       },
       { passive: false },
@@ -334,6 +343,7 @@ export class CameraRig {
   jump(name) {
     if (this.focused) this.clearFocus();
     this.tween = null;
+    this.view = name;
     const v = this.views[name];
     this.setState(this.fromPosTarget(v.pos, v.target));
     this.target.copy(this.goal.target);
@@ -344,11 +354,78 @@ export class CameraRig {
     this.apply();
   }
 
-  go(name, duration = 1.8) {
+  go(name, duration) {
     if (this.focused) this.clearFocus();
+    this.view = name;
     const v = this.views[name];
     this.flyTo(this.fromPosTarget(v.pos, v.target), duration);
     this.enterFor(v);
+  }
+
+  /**
+   * The whole archipelago in view and centred, from every direction round it. For each direction,
+   * the aim that centres it on screen; one distance that fits it from all of them, so the slow idle
+   * circling keeps it whole and centred without zooming in and out.
+   */
+  fitAll(points, phi, margin = 0.86) {
+    const c0 = new THREE.Box3().setFromPoints(points).getCenter(new THREE.Vector3());
+    const tanV = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
+    const tanH = tanV * this.camera.aspect;
+    const basis = (a) => {
+      _back.set(Math.sin(phi) * Math.sin(a), Math.cos(phi), Math.sin(phi) * Math.cos(a));
+      _right.set(Math.cos(a), 0, -Math.sin(a));
+      _up.crossVectors(_back, _right);
+    };
+    // From aim c at distance d: the distance needed, and how far off-centre the picture sits.
+    const measure = (c, d) => {
+      let need = 0, x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const p of points) {
+        _rel.subVectors(p, c);
+        const z = _rel.dot(_back), x = _rel.dot(_right), y = _rel.dot(_up);
+        need = Math.max(need, z + Math.abs(x) / (tanH * margin), z + Math.abs(y) / (tanV * margin));
+        const depth = Math.max(d - z, 1);
+        x0 = Math.min(x0, x / (depth * tanH));
+        x1 = Math.max(x1, x / (depth * tanH));
+        y0 = Math.min(y0, y / (depth * tanV));
+        y1 = Math.max(y1, y / (depth * tanV));
+      }
+      return { need, mx: (x0 + x1) / 2, my: (y0 + y1) / 2 };
+    };
+    // Centre per direction; the farthest any direction needs becomes the one distance.
+    const aims = [];
+    let dist = 0;
+    const N = 36;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      basis(a);
+      const c = c0.clone();
+      let d = measure(c, 0).need;
+      for (let k = 0; k < 5; k++) {
+        const m = measure(c, d);
+        c.addScaledVector(_right, m.mx * d * tanH).addScaledVector(_up, m.my * d * tanV);
+        d = measure(c, d).need;
+      }
+      aims.push(c);
+      dist = Math.max(dist, d);
+    }
+    // With the one (larger) distance, centre each direction once more.
+    for (let i = 0; i < N; i++) {
+      basis((i / N) * Math.PI * 2);
+      for (let k = 0; k < 3; k++) {
+        const m = measure(aims[i], dist);
+        aims[i].addScaledVector(_right, m.mx * dist * tanH).addScaledVector(_up, m.my * dist * tanV);
+      }
+    }
+    this.overview = { aims, dist: clamp(dist, MIN_DIST, MAX_DIST * 3), phi };
+    return this.overview;
+  }
+
+  // The overview's aim for a direction, eased between the fitted ones.
+  overviewAim(theta, out = new THREE.Vector3()) {
+    const { aims } = this.overview;
+    const f = ((((theta / (Math.PI * 2)) % 1) + 1) % 1) * aims.length;
+    const i = Math.floor(f) % aims.length;
+    return out.lerpVectors(aims[i], aims[(i + 1) % aims.length], f - Math.floor(f));
   }
 
   // A view marked enter goes inside the innermost dome or room around its target; any other view stays outside.
@@ -391,26 +468,58 @@ export class CameraRig {
     return pos;
   }
 
-  flyTo(state, duration = 1.4) {
+  /**
+   * Fly there like a drone: the camera glides along a straight line that lifts gently in the middle,
+   * and its gaze turns onto the new spot a little ahead of the move, rather than swinging round an
+   * orbit. Longer trips take a little longer.
+   */
+  flyTo(state, duration) {
+    const fromPos = this.orbit(this.phi, new THREE.Vector3());
+    const s = Math.sin(state.phi);
+    const toPos = new THREE.Vector3(s * Math.sin(state.theta), Math.cos(state.phi), s * Math.cos(state.theta)).multiplyScalar(state.dist).add(state.target);
+    const span = fromPos.distanceTo(toPos) + this.target.distanceTo(state.target) * 0.5;
     this.tween = {
       t: 0,
-      duration,
-      from: { target: this.target.clone(), dist: this.dist, theta: this.theta, phi: this.phi },
-      to: state,
+      duration: duration ?? clamp(0.8 + span / 500, 0.9, 2.0),
+      fromPos,
+      toPos,
+      fromLook: this.target.clone(),
+      lift: Math.min(span * 0.06, 24),
+      to: { ...state, target: state.target.clone() },
     };
+    this.fling.theta = this.fling.phi = 0;
+    this.fling.pan.set(0, 0, 0);
     this.setState(state);
   }
 
-  /** Frame an object: { center, radius, name, theta?, phi? }. */
-  focusOn(obj) {
-    if (!this.focused) this.saved = { target: this.goal.target.clone(), dist: this.goal.dist, theta: this.goal.theta, phi: this.goal.phi, room: this.room };
+  /**
+   * Frame an object: { center, radius, name, theta?, phi? }. The camera keeps roughly the direction
+   * it is looking from, turning at most 45 degrees toward the object's best side, so the trip reads
+   * as flying over rather than swinging round. instant skips the flight.
+   */
+  focusOn(obj, { instant = false } = {}) {
+    if (!this.focused) this.saved = { target: this.goal.target.clone(), dist: this.goal.dist, theta: this.goal.theta, phi: this.goal.phi, room: this.room, view: this.view };
     this.focused = obj;
     this.room = null;
+    this.view = null;
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
     // On a tall phone screen let the sides crop a little, so places still fill the view.
     const fit = obj.radius / Math.sin(Math.max(Math.min(vfov, hfov), vfov * 0.62) / 2);
-    this.flyTo({ target: obj.center.clone(), dist: clamp(fit * 1.05, MIN_DIST, MAX_DIST), theta: obj.theta ?? this.theta, phi: obj.phi ?? 1.05 });
+    let theta = this.goal.theta;
+    if (obj.theta !== undefined) {
+      const turn = Math.atan2(Math.sin(obj.theta - theta), Math.cos(obj.theta - theta));
+      theta += clamp(turn, -0.8, 0.8);
+    }
+    const state = { target: obj.center.clone(), dist: clamp(fit * 1.05, MIN_DIST, MAX_DIST), theta, phi: clamp(obj.phi ?? this.goal.phi, 0.95, 1.2) };
+    if (instant) {
+      this.tween = null;
+      this.setState(state);
+      this.target.copy(state.target);
+      this.dist = state.dist;
+      this.theta = state.theta;
+      this.phi = state.phi;
+    } else this.flyTo(state);
     this.onFocusChange?.(obj);
   }
 
@@ -424,8 +533,9 @@ export class CameraRig {
     const back = this.saved;
     this.clearFocus();
     if (back) {
-      this.flyTo(back, 1.2);
+      this.flyTo(back);
       this.room = back.room ?? null;
+      this.view = back.view ?? null;
     }
   }
 
@@ -481,7 +591,10 @@ export class CameraRig {
     const turn = (k.has('e') ? 1 : 0) - (k.has('q') ? 1 : 0);
     const zoom = (k.has('-') || k.has('_') ? 1 : 0) - (k.has('=') || k.has('+') ? 1 : 0);
     const speed = this.goal.dist * 0.9 * dt;
-    if (f || s || turn || zoom) this.idleSpin = false;
+    if (f || s || turn || zoom) {
+      this.idleSpin = false;
+      this.view = null;
+    }
     if (f || s) {
       this.tween = null;
       const right = new THREE.Vector3(Math.cos(this.theta), 0, -Math.sin(this.theta));
@@ -506,6 +619,10 @@ export class CameraRig {
       f.pan.multiplyScalar(decay);
     }
     if (this.idleSpin && !this.focused && !this.tween) this.goal.theta += dt * 0.05;
+    if (this.view === 'overview' && this.overview && !this.tween && !this.focused) {
+      this.overviewAim(this.goal.theta, this.goal.target);
+      this.goal.dist = this.overview.dist;
+    }
     if (!this.tween) this.guardTarget();
     else this._lastTarget.copy(this.goal.target);
     // Stay over the archipelago.
@@ -517,14 +634,24 @@ export class CameraRig {
 
     if (this.tween) {
       const tw = this.tween;
-      tw.t += dt / tw.duration;
-      const k = easeInOut(Math.min(tw.t, 1));
-      this.target.lerpVectors(tw.from.target, tw.to.target, k);
-      // Arc out a little mid-flight so the move reads as a glide.
-      this.dist = THREE.MathUtils.lerp(tw.from.dist, tw.to.dist, k) * (1 + Math.sin(k * Math.PI) * 0.15);
-      this.theta = angleLerp(tw.from.theta, tw.to.theta, k);
-      this.phi = THREE.MathUtils.lerp(tw.from.phi, tw.to.phi, k);
-      if (tw.t >= 1) this.tween = null;
+      tw.t = Math.min(1, tw.t + dt / tw.duration);
+      const k = easeInOut(tw.t);
+      // The gaze settles on the new spot a little before the camera arrives.
+      const g = easeInOut(Math.min(1, tw.t * 1.3));
+      _fp.lerpVectors(tw.fromPos, tw.toPos, k);
+      _fp.y += Math.sin(Math.PI * k) * tw.lift;
+      this.target.lerpVectors(tw.fromLook, tw.to.target, g);
+      _fo.subVectors(_fp, this.target);
+      this.dist = Math.max(_fo.length(), 1);
+      this.theta = Math.atan2(_fo.x, _fo.z);
+      this.phi = Math.acos(clamp(_fo.y / this.dist, -1, 1));
+      if (tw.t >= 1) {
+        this.tween = null;
+        this.target.copy(tw.to.target);
+        this.dist = tw.to.dist;
+        this.theta = tw.to.theta;
+        this.phi = tw.to.phi;
+      }
     } else {
       const a = damp(12, dt);
       this.target.lerp(this.goal.target, a);
