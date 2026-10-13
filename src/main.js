@@ -11,6 +11,7 @@ import { DOMES, DOME_R, HOODS, ISLANDS, DOWNTOWN, baseY } from './layout.js';
 import { loadKit } from './kaykit.js';
 import { HUB_KIT } from './hub.js';
 import { LANDMARK_KIT } from './landmarks.js';
+import { FURNITURE_KIT } from './interior.js';
 import { rng as makeRng } from './util.js';
 
 const $ = (id) => document.getElementById(id);
@@ -77,10 +78,12 @@ function phaseName(h, night) {
 async function init() {
   await loadAll((p) => ($('loading').querySelector('.sub').textContent = `Waking the island... ${Math.round(p * 100)}%`));
   await document.fonts.load('600 120px Fredoka').catch(() => {});
-  await loadKit([...new Set([...HUB_KIT, ...LANDMARK_KIT])]);
+  await Promise.all([loadKit([...new Set([...HUB_KIT, ...LANDMARK_KIT])]), loadKit(FURNITURE_KIT, 'furniture')]);
   island = buildIsland(scene, makeRng(1969), renderer, sky, post.overlay);
   island.setQuality(perf.quality);
   rig.solids = island.solids;
+  // Each room is a view too: ?view=lobby.
+  for (const r of island.rooms) VIEWS[r.id] = r.view;
   buildPickables();
   // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
   $('loading').querySelector('.sub').textContent = 'Gathering clouds...';
@@ -93,7 +96,9 @@ async function init() {
     console.error('Clouds unavailable', err);
   }
   $('loading').querySelector('.sub').textContent = 'Lighting the sky...';
+  for (const r of island.rooms) r.room.group.visible = true;
   await renderer.compileAsync(scene, camera).catch(() => {});
+  for (const r of island.rooms) r.room.group.visible = false;
   frame();
   frame();
   // Wait for the GPU to finish that first work (shader builds, texture uploads) while the loader
@@ -152,6 +157,7 @@ document.querySelectorAll('[data-view]').forEach((b) =>
   b.addEventListener('click', () => {
     const placeId = PLACE_FOR_VIEW[b.dataset.view];
     const place = placeId && pickables.find((m) => m.userData.place.id === placeId)?.userData.place;
+    leaveRoomUI();
     if (place) rig.focusOn(place);
     else rig.go(b.dataset.view);
     markView(b.dataset.view);
@@ -191,7 +197,7 @@ function buildPickables() {
   const hub = island.hub;
   const box = new THREE.Mesh(new THREE.BoxGeometry(hub.width, hub.height, hub.depth), proxyMat);
   box.position.set(DOWNTOWN.x, T + hub.height / 2, DOWNTOWN.z);
-  add(box, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(DOWNTOWN.x, T + 7, DOWNTOWN.z), radius: hub.width * 0.42, theta: 0.25, phi: 1.2 });
+  add(box, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(DOWNTOWN.x, T + 7, DOWNTOWN.z), radius: hub.width * 0.42, theta: 0.25, phi: 1.2, rooms: ['lobby'] });
   island.terrain.tops.forEach((top, i) => {
     const isl = ISLANDS[i];
     const name = isl.id === 'downtown' ? 'Downtown' : `Neighbourhood ${Number(isl.id.slice(4)) + 1}`;
@@ -209,17 +215,53 @@ rig.onTap = (x, y) => {
   if (rig.focused && (!place || place.id === rig.focused.id)) rig.exitFocus();
   else if (place) rig.focusOn(place);
 };
+// While visiting a place, the pill offers its rooms (the Hub's lobby). Inside a
+// room, Back returns to the place it belongs to.
+let inRoom = null;
+function showBar(name, rooms = []) {
+  $('focus-bar').hidden = false;
+  $('nav-hint').classList.add('faded');
+  $('focus-name').textContent = name;
+  const box = $('focus-actions');
+  box.replaceChildren(
+    ...rooms.map((id) => {
+      const r = island.rooms.find((x) => x.id === id);
+      const b = document.createElement('button');
+      b.textContent = r.name;
+      b.addEventListener('click', () => enterRoom(r));
+      return b;
+    }),
+  );
+}
+function enterRoom(r) {
+  const place = pickables.find((m) => m.userData.place.id === r.place)?.userData.place;
+  rig.go(r.id, 1.6);
+  inRoom = { room: r, place };
+  showBar(r.name);
+  markView(null);
+}
+function leaveRoomUI() {
+  if (!inRoom) return;
+  inRoom = null;
+  $('focus-bar').hidden = true;
+}
 rig.onFocusChange = (place) => {
-  $('focus-bar').hidden = !place;
-  // The pill takes the hint's spot above the time bar.
-  if (place) $('nav-hint').classList.add('faded');
-  if (place) $('focus-name').textContent = place.name;
-  if (!place) {
+  if (place) {
+    inRoom = null;
+    showBar(place.name, place.rooms);
+  } else if (!inRoom) {
+    $('focus-bar').hidden = true;
     document.querySelectorAll('[data-view]').forEach((o) => o.classList.remove('active'));
     $('places-current').textContent = 'Places';
   }
 };
-$('btn-back').addEventListener('click', () => rig.exitFocus());
+$('btn-back').addEventListener('click', () => {
+  if (inRoom?.place) {
+    const { place } = inRoom;
+    inRoom = null;
+    rig.focusOn(place);
+  } else rig.exitFocus();
+});
 
 $('nav-hint').textContent = TOUCH
   ? 'Swipe to look around · Two fingers to move · Pinch to zoom · Twist to turn · Tap a place to visit, tap again to leave'

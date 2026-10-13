@@ -19,10 +19,14 @@ const _p = new THREE.Vector3();
  * domed roof rising cap more (a glass dome is all roof). Below its floor it counts as solid all the
  * way down, so the camera is always pushed out sideways or up, never under the ground. A door
  * (facing angle and half width in metres) marks where the view may walk in.
+ *
+ * An enterable pod (a dome, a room) can hold the view: the camera then stays inside it. A room sits
+ * within other solids (its building, its dome), which stop pushing the camera out while it is in the
+ * room, and may have a parent room the view steps back into when it leaves.
  */
 export class Pod {
-  constructor({ x, y, z, r, wall = 0, cap = r, margin = 1.2, facing = null, doorHalf = 0 }) {
-    Object.assign(this, { x, y, z, r, wall, cap, margin, facing, doorHalf });
+  constructor({ x, y, z, r, wall = 0, cap = r, margin = 1.2, facing = null, doorHalf = 0, enterable = false, within = [], parent = null }) {
+    Object.assign(this, { x, y, z, r, wall, cap, margin, facing, doorHalf, enterable, within, parent });
     // Everything inside can see this point, so pushing out from it never jumps.
     this.c = new THREE.Vector3(x, y + (wall > 0 ? wall * 0.5 : cap * 0.25), z);
     this.reach = r + wall + cap + margin;
@@ -86,6 +90,22 @@ export class Pod {
  * The camera never passes through an island or dips into the clouds: swing low and it stops at the
  * grass or the cloud tops, and further swiping tilts the view up to the sky from there.
  */
+/** A room the camera can be inside: a box w by d, h tall, turned by rot, on a floor at y. */
+export class RoomBox extends Pod {
+  constructor({ x, y, z, w, d, h, rot = 0, margin = 0.5, within = [], parent = null }) {
+    super({ x, y, z, r: Math.hypot(w, d) / 2, wall: h, cap: 0.01, margin, enterable: true, within, parent });
+    Object.assign(this, { hw: w / 2, hd: d / 2, h, cos: Math.cos(rot), sin: Math.sin(rot) });
+    this.c.set(x, y + h / 2, z);
+    this.reach = this.r + h;
+  }
+
+  inside(p, grow = 0) {
+    const dx = p.x - this.x, dz = p.z - this.z;
+    const lx = dx * this.cos - dz * this.sin, lz = dx * this.sin + dz * this.cos;
+    return Math.abs(lx) <= this.hw + grow && Math.abs(lz) <= this.hd + grow && p.y <= this.y + this.h + grow && p.y >= this.y - 2 - grow;
+  }
+}
+
 export class CameraRig {
   constructor(camera, dom, views) {
     this.camera = camera;
@@ -303,16 +323,22 @@ export class CameraRig {
     this.enterFor(v);
   }
 
-  // A view marked enter goes inside the dome around its target; any other view stays outside.
+  // A view marked enter goes inside the innermost dome or room around its target; any other view stays outside.
   enterFor(v) {
-    this.room = (v.enter && this.solids.find((s) => s.facing !== null && s.inside(v.target))) || null;
+    this.room = v.enter ? this.roomAt(v.target) : null;
     this._lastTarget.copy(this.goal.target);
+  }
+
+  roomAt(p) {
+    let best = null;
+    for (const s of this.solids) if (s.enterable && s.inside(p) && (!best || s.r < best.r)) best = s;
+    return best;
   }
 
   // The view can walk into a dome only through its door, and leaves when it walks back out.
   guardTarget() {
     const t = this.goal.target;
-    if (this.room && !this.room.inside(t)) this.room = null;
+    if (this.room && !this.room.inside(t)) this.room = this.room.parent?.inside(t) ? this.room.parent : null;
     for (const s of this.solids) {
       // Only a step from outside to inside counts; a view framing the dome from outside may aim at its middle.
       if (s.facing === null || s === this.room || !s.inside(t) || s.inside(this._lastTarget)) continue;
@@ -332,7 +358,7 @@ export class CameraRig {
     for (const s of this.solids) {
       if (Math.abs(pos.x - s.x) > s.reach || Math.abs(pos.z - s.z) > s.reach) continue;
       if (s === this.room) s.keepIn(pos, this.target);
-      else s.pushOut(pos);
+      else if (!this.room?.within.includes(s)) s.pushOut(pos);
     }
     return pos;
   }

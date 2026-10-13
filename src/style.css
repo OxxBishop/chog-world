@@ -193,6 +193,9 @@ button:disabled { opacity: 0.45; cursor: default; }
   white-space: nowrap;
 }
 .focus-bar button { padding: 6px 12px; border-radius: 999px; }
+.focus-actions { display: flex; gap: 6px; }
+.focus-actions:empty { display: none; }
+.focus-actions button { background: var(--accent); }
 
 /* The places menu button only shows on phones; it comes before the phone rules so they win. */
 .places-toggle {

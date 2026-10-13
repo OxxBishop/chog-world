@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { piece, kitMaterial } from './kaykit.js';
+import { piece, kitMaterial, repaint } from './kaykit.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from './merge.js';
 import { createGlows } from './glows.js';
+import { buildLobbyRoom } from './interior.js';
 
 /*
  * The Chog Hub: one building on the downtown plaza with three doors, each wing with its own
@@ -15,6 +16,9 @@ import { createGlows } from './glows.js';
 
 export const HUB_KIT = ['basemodule_E', 'basemodule_A', 'basemodule_D', 'tunnel_straight_A'];
 
+// Where the lobby room sits inside its pod (hub space): its floor just above the pod's base.
+const LOBBY_ROOM = { x: 0, y: 0.6, z: 0 };
+
 const LOBBY_S = 15;
 const WING_S = 10;
 const WING_X = 37;
@@ -22,64 +26,6 @@ const LOBBY_FRONT = 1.14 * LOBBY_S;
 const WING_FRONT = 1.09 * WING_S;
 
 const PURPLE = '#8b6cf0';
-
-// Colour cells (column, row) in the kit's 8 x 4 texture atlas.
-const CELL = {
-  white: [1, 0], grey: [2, 0], dark: [3, 0], purple: [3, 1],
-  charcoal: [0, 0], taupe: [6, 1], brown: [7, 1], gold: [0, 2],
-};
-const key = ([c, r]) => `${c},${r}`;
-
-/*
- * Give a kit piece its own colours without new textures: move each face's UVs to another cell of the
- * atlas, keeping its place in the cell so the cell's shading gradient still reads. Faces turned up on
- * the top half (the roof) come away into their own mesh in the roof material.
- */
-function repaint(obj, swaps, roofMat) {
-  const map = new Map(Object.entries(swaps).map(([from, to]) => [key(CELL[from]), CELL[to]]));
-  obj.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(obj);
-  const roofY = box.min.y + (box.max.y - box.min.y) * 0.55;
-  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
-  const meshes = [];
-  obj.traverse((o) => o.isMesh && meshes.push(o));
-  for (const o of meshes) {
-    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
-    const pos = g.attributes.position, uv = g.attributes.uv, nor = g.attributes.normal;
-    const keep = { position: [], normal: [], uv: [] };
-    const roof = { position: [], normal: [], uv: [] };
-    for (let t = 0; t < pos.count; t += 3) {
-      a.fromBufferAttribute(pos, t).applyMatrix4(o.matrixWorld);
-      b.fromBufferAttribute(pos, t + 1).applyMatrix4(o.matrixWorld);
-      c.fromBufferAttribute(pos, t + 2).applyMatrix4(o.matrixWorld);
-      n.subVectors(b, a).cross(c.clone().sub(a)).normalize();
-      const isRoof = n.y > 0.6 && (a.y + b.y + c.y) / 3 > roofY;
-      const cu = Math.floor(((uv.getX(t) + uv.getX(t + 1) + uv.getX(t + 2)) / 3) * 8);
-      const cv = Math.floor(((uv.getY(t) + uv.getY(t + 1) + uv.getY(t + 2)) / 3) * 4);
-      const to = map.get(`${cu},${cv}`);
-      const out = isRoof ? roof : keep;
-      for (let k = t; k < t + 3; k++) {
-        out.position.push(pos.getX(k), pos.getY(k), pos.getZ(k));
-        out.normal.push(nor.getX(k), nor.getY(k), nor.getZ(k));
-        if (to) out.uv.push((to[0] + (uv.getX(k) * 8 - cu)) / 8, (to[1] + (uv.getY(k) * 4 - cv)) / 4);
-        else out.uv.push(uv.getX(k), uv.getY(k));
-      }
-    }
-    const build = (d) => {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(d.position, 3));
-      geo.setAttribute('normal', new THREE.Float32BufferAttribute(d.normal, 3));
-      geo.setAttribute('uv', new THREE.Float32BufferAttribute(d.uv, 2));
-      return geo;
-    };
-    o.geometry = build(keep);
-    if (roof.position.length) {
-      const r = new THREE.Mesh(build(roof), roofMat);
-      r.userData.roof = true;
-      o.add(r);
-    }
-  }
-}
 
 // A lit sign: rounded dark panel, big title, optional small line under it.
 function signTexture(title, sub, accent, panel = 'rgba(40,24,52,0.94)') {
@@ -490,6 +436,17 @@ export function buildHub() {
     }
   });
 
+  // The room inside the lobby pod. The casino stays shut.
+  const lobby = buildLobbyRoom();
+  lobby.group.position.set(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z);
+  const rooms = [
+    { id: 'lobby', name: 'Lobby', room: lobby, at: new THREE.Vector3(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z), shell: 'lobby' },
+  ];
+  for (const r of rooms) {
+    r.room.group.visible = false;
+    group.add(r.room.group);
+  }
+
   // Bulbs: warm string lights over the bar, gold marquee bulbs that chase round the casino door.
   const bulbGeo = new THREE.SphereGeometry(0.13, 8, 6);
   const warmBulbs = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd9a0') });
@@ -514,7 +471,9 @@ export function buildHub() {
     width: (WING_X + 1.1 * WING_S) * 2,
     depth: 2.3 * LOBBY_S,
     height: 1.65 * LOBBY_S,
+    rooms,
     update(env, t, renderer) {
+      for (const r of rooms) if (r.room.group.visible) r.room.update(env, renderer);
       const n = env.night;
       for (const s of signs) s.material.emissiveIntensity = 0.35 + n * 1.6;
       // Bulbs glow by day as decoration and properly at night.
