@@ -2,14 +2,18 @@
  * The one place the brain calls Claude. Claude Haiku 5.5: fast and cheap, and plenty for a Chog.
  * Structured output, so the app always gets { reply, mood, ... } it can act on.
  */
-import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+// The SDK loads on first real use, so mock mode (and a broken install) never blocks the module.
+let sdk = null;
+async function loadSdk() {
+  if (!sdk) {
+    const [{ default: Anthropic }, { zodOutputFormat }] = await Promise.all([import('@anthropic-ai/sdk'), import('@anthropic-ai/sdk/helpers/zod')]);
+    sdk = { Anthropic, zodOutputFormat, client: new Anthropic() };
+  }
+  return sdk;
+}
 
 export const MODEL = 'claude-haiku-5-5';
 export const MOODS = ['happy', 'excited', 'calm', 'curious', 'surprised', 'sleepy', 'sad'];
-
-let client = null;
-const anthropic = () => (client ??= new Anthropic());
 
 // BRAIN_MOCK=1 answers without calling Claude (local dev and tests, no key needed).
 const MOCK = process.env.BRAIN_MOCK === '1';
@@ -27,7 +31,8 @@ function mock(schema) {
  */
 export async function ask({ system, messages, schema, maxTokens = 1024 }) {
   if (MOCK) return { out: mock(schema), usage: null, prompt: { system, messages } };
-  const res = await anthropic().messages.parse({
+  const { client, zodOutputFormat } = await loadSdk();
+  const res = await client.messages.parse({
     model: MODEL,
     max_tokens: maxTokens,
     thinking: { type: 'disabled' },
@@ -42,6 +47,8 @@ export async function ask({ system, messages, schema, maxTokens = 1024 }) {
 
 /** Map SDK errors to a status and a message that's safe to show. */
 export function apiError(err) {
+  const Anthropic = sdk?.Anthropic;
+  if (!Anthropic) return { status: err?.status === 422 ? 200 : 500, message: err?.status === 422 ? null : 'The Chog brain had a hiccup.', refused: err?.status === 422 };
   if (err instanceof Anthropic.RateLimitError) return { status: 429, message: 'Chogs are busy right now. Try again in a moment.' };
   if (err instanceof Anthropic.AuthenticationError) return { status: 500, message: 'The Chog brain is not set up yet.' };
   if (err instanceof Anthropic.BadRequestError) return { status: 500, message: 'The Chog brain had a hiccup.' };
