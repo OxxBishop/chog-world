@@ -47,7 +47,7 @@ const VIEWS = {
   downtown: { pos: new THREE.Vector3(20, T + 14, 70), target: new THREE.Vector3(0, T + 8, 0) },
   neighbourhood: { pos: new THREE.Vector3(hood.x + 40, H + 38, hood.z + 70), target: new THREE.Vector3(hood.x, H + 2, hood.z - 10) },
   dome: { pos: fwd(home, DOME_R + 18).setY(home.y + 3), target: new THREE.Vector3(home.x, home.y + 4, home.z) },
-  inside: { pos: fwd(home, DOME_R - 3).setY(home.y), target: fwd(home, -4).setY(home.y + 1.3) },
+  inside: { pos: fwd(home, DOME_R - 3).setY(home.y), target: fwd(home, -4).setY(home.y + 1.3), enter: true },
   ground: { pos: new THREE.Vector3(2, T + 1.8, 56), target: new THREE.Vector3(10, T + 3.5, 130) },
   sky: { pos: new THREE.Vector3(-20, T + 3, 60), target: new THREE.Vector3(-60, T + 70, -100) },
 };
@@ -80,6 +80,7 @@ async function init() {
   await loadKit([...new Set([...HUB_KIT, ...LANDMARK_KIT])]);
   island = buildIsland(scene, makeRng(1969), renderer, sky, post.overlay);
   island.setQuality(perf.quality);
+  rig.solids = island.solids;
   buildPickables();
   // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
   $('loading').querySelector('.sub').textContent = 'Gathering clouds...';

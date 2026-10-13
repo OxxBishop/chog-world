@@ -11,6 +11,7 @@ import { buildUndersides } from './underside.js';
 import { buildBridges, buildSkyRocks, buildWaterfalls } from './skyfx.js';
 import { ISLANDS, HOODS, DOWNTOWN, DOMES, DOME_R, roadDistance, nearDome } from './layout.js';
 import { fbm, noise2 } from './util.js';
+import { Pod } from './camera.js';
 
 // Leaf colours: lush greens, with lilac and pink blossom trees picking up the purple sky.
 const GREENS = ['#8fd14f', '#7cc843', '#a3d85b', '#69b83b', '#9bd04a'];
@@ -251,8 +252,24 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   const lowChunks = lowMeshes.map((m) => ({ mesh: m, c: m.boundingSphere.center.clone(), r: m.boundingSphere.radius }));
   let lowDist = 85;
 
+  // What the camera keeps out of: each dome and the house in it, and the hub's three pods and tunnels.
+  const solids = [];
+  for (const d of domes) {
+    const p = d.group.position;
+    solids.push(new Pod({ x: p.x, y: p.y, z: p.z, r: d.radius, cap: d.radius, facing: d.group.rotation.y, doorHalf: 2.2 }));
+    const h = d.toWorld(0, d.homeZ + 0.4);
+    solids.push(new Pod({ x: h.x, y: p.y, z: h.z, r: 5.4, wall: 6.6, cap: 0.6, margin: 0.8 }));
+  }
+  const hp = hub.group.position;
+  solids.push(new Pod({ x: hp.x, y: hp.y, z: hp.z, r: 17.8, wall: 11, cap: 14, margin: 1.5 }));
+  for (const side of [-1, 1]) {
+    solids.push(new Pod({ x: hp.x + side * 37, y: hp.y, z: hp.z, r: 12.3, wall: 7.5, cap: 3.5, margin: 1.5 }));
+    solids.push(new Pod({ x: hp.x + side * 20.8, y: hp.y, z: hp.z, r: 5, wall: 8, cap: 0.5, margin: 1.2 }));
+  }
+
   return {
     domes,
+    solids,
     terrain,
     forest,
     hub,

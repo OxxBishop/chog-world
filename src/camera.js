@@ -11,6 +11,69 @@ const TAP_PX = 10;
 const FRICTION = 3.2;
 const _pos = new THREE.Vector3();
 const _look = new THREE.Vector3();
+const _u = new THREE.Vector3();
+const _p = new THREE.Vector3();
+
+/**
+ * A solid the camera keeps out of: a round pod with a wall of radius r up to height wall, then a
+ * domed roof rising cap more (a glass dome is all roof). Below its floor it counts as solid all the
+ * way down, so the camera is always pushed out sideways or up, never under the ground. A door
+ * (facing angle and half width in metres) marks where the view may walk in.
+ */
+export class Pod {
+  constructor({ x, y, z, r, wall = 0, cap = r, margin = 1.2, facing = null, doorHalf = 0 }) {
+    Object.assign(this, { x, y, z, r, wall, cap, margin, facing, doorHalf });
+    // Everything inside can see this point, so pushing out from it never jumps.
+    this.c = new THREE.Vector3(x, y + (wall > 0 ? wall * 0.5 : cap * 0.25), z);
+    this.reach = r + wall + cap + margin;
+  }
+
+  inside(p, grow = 0) {
+    const rr = this.r + grow;
+    const h = Math.hypot(p.x - this.x, p.z - this.z);
+    if (h > rr) return false;
+    const top = this.y + this.wall;
+    if (p.y <= top) return true;
+    const dy = (p.y - top) / (this.cap + grow);
+    return (h / rr) ** 2 + dy * dy <= 1;
+  }
+
+  // How far from origin along u until leaving the pod (grown by grow).
+  exit(origin, u, grow) {
+    let lo = 0, hi = this.reach * 2;
+    for (let i = 0; i < 18; i++) {
+      const mid = (lo + hi) / 2;
+      if (this.inside(_p.copy(origin).addScaledVector(u, mid), grow)) lo = mid;
+      else hi = mid;
+    }
+    return hi;
+  }
+
+  // Slide a point inside out onto the surface, straight away from the pod's middle.
+  pushOut(p) {
+    if (!this.inside(p, this.margin)) return p;
+    _u.subVectors(p, this.c);
+    if (_u.lengthSq() < 1e-6) _u.set(0, 1, 0);
+    _u.normalize();
+    return p.copy(this.c).addScaledVector(_u, this.exit(this.c, _u, this.margin));
+  }
+
+  // From a target inside, bring a point outside back in along the line to the target.
+  keepIn(p, target) {
+    const g = -this.margin;
+    if (this.inside(p, g) || !this.inside(target, g)) return p;
+    _u.subVectors(p, target).normalize();
+    return p.copy(target).addScaledVector(_u, this.exit(target, _u, g));
+  }
+
+  // Whether a point on the ground is in front of the door.
+  atDoor(p) {
+    if (this.facing === null) return false;
+    let az = Math.atan2(p.x - this.x, p.z - this.z) - this.facing;
+    az = Math.atan2(Math.sin(az), Math.cos(az));
+    return Math.abs(az) * this.r < this.doorHalf + 1.5;
+  }
+}
 
 /**
  * Map-style camera, built for touch first.
@@ -43,6 +106,10 @@ export class CameraRig {
     this.idleSpin = true;
     this.fling = { theta: 0, phi: 0, pan: new THREE.Vector3() };
     this.touching = 0;
+    // Solids the camera stays out of, and the dome (if any) the view has gone inside.
+    this.solids = [];
+    this.room = null;
+    this._lastTarget = new THREE.Vector3();
     this.bind();
     this.jump('overview');
   }
@@ -225,6 +292,7 @@ export class CameraRig {
     this.dist = this.goal.dist;
     this.theta = this.goal.theta;
     this.phi = this.goal.phi;
+    this.enterFor(v);
     this.apply();
   }
 
@@ -232,6 +300,41 @@ export class CameraRig {
     if (this.focused) this.clearFocus();
     const v = this.views[name];
     this.flyTo(this.fromPosTarget(v.pos, v.target), duration);
+    this.enterFor(v);
+  }
+
+  // A view marked enter goes inside the dome around its target; any other view stays outside.
+  enterFor(v) {
+    this.room = (v.enter && this.solids.find((s) => s.facing !== null && s.inside(v.target))) || null;
+    this._lastTarget.copy(this.goal.target);
+  }
+
+  // The view can walk into a dome only through its door, and leaves when it walks back out.
+  guardTarget() {
+    const t = this.goal.target;
+    if (this.room && !this.room.inside(t)) this.room = null;
+    for (const s of this.solids) {
+      // Only a step from outside to inside counts; a view framing the dome from outside may aim at its middle.
+      if (s.facing === null || s === this.room || !s.inside(t) || s.inside(this._lastTarget)) continue;
+      if (s.atDoor(this._lastTarget)) this.room = s;
+      else {
+        // Back out onto the ground just outside the glass.
+        const a = Math.atan2(t.z - s.z, t.x - s.x);
+        t.x = s.x + Math.cos(a) * (s.r + 0.5);
+        t.z = s.z + Math.sin(a) * (s.r + 0.5);
+      }
+    }
+    this._lastTarget.copy(t);
+  }
+
+  // Keep the camera out of every solid, and inside the dome the view is in.
+  collide(pos) {
+    for (const s of this.solids) {
+      if (Math.abs(pos.x - s.x) > s.reach || Math.abs(pos.z - s.z) > s.reach) continue;
+      if (s === this.room) s.keepIn(pos, this.target);
+      else s.pushOut(pos);
+    }
+    return pos;
   }
 
   flyTo(state, duration = 1.4) {
@@ -246,8 +349,9 @@ export class CameraRig {
 
   /** Frame an object: { center, radius, name, theta?, phi? }. */
   focusOn(obj) {
-    if (!this.focused) this.saved = { target: this.goal.target.clone(), dist: this.goal.dist, theta: this.goal.theta, phi: this.goal.phi };
+    if (!this.focused) this.saved = { target: this.goal.target.clone(), dist: this.goal.dist, theta: this.goal.theta, phi: this.goal.phi, room: this.room };
     this.focused = obj;
+    this.room = null;
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
     // On a tall phone screen let the sides crop a little, so places still fill the view.
@@ -265,7 +369,10 @@ export class CameraRig {
     if (!this.focused) return;
     const back = this.saved;
     this.clearFocus();
-    if (back) this.flyTo(back, 1.2);
+    if (back) {
+      this.flyTo(back, 1.2);
+      this.room = back.room ?? null;
+    }
   }
 
   // ---------- per frame ----------
@@ -300,10 +407,13 @@ export class CameraRig {
     }
     const pos = this.orbit(phi, _pos);
     pos.y = Math.max(pos.y, cameraFloor(pos.x, pos.z));
-    this.camera.position.copy(pos);
     // Any tilt beyond that turns the view upward from where the camera stopped.
     const s = Math.sin(this.phi);
     _look.set(s * Math.sin(this.theta), Math.cos(this.phi), s * Math.cos(this.theta)).multiplyScalar(-this.dist).add(pos);
+    // Slide off domes and buildings, still looking at the same spot.
+    this.collide(pos);
+    pos.y = Math.max(pos.y, cameraFloor(pos.x, pos.z));
+    this.camera.position.copy(pos);
     this.camera.lookAt(_look);
   }
 
@@ -340,6 +450,8 @@ export class CameraRig {
       f.pan.multiplyScalar(decay);
     }
     if (this.idleSpin && !this.focused && !this.tween) this.goal.theta += dt * 0.05;
+    if (!this.tween) this.guardTarget();
+    else this._lastTarget.copy(this.goal.target);
     // Stay over the archipelago.
     const r = Math.hypot(this.goal.target.x, this.goal.target.z);
     if (r > TARGET_LIMIT) {
