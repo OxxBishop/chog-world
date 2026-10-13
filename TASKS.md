@@ -17,17 +17,17 @@ Three Claude agents share this repo. This file is how we split the work and avoi
 
 | Agent | Who | Focus |
 |---|---|---|
-| **A** | Chog chat on the main account (session `chog-world-72`) | Wallet, Chogs, NPCs, cutscenes |
-| **B** | Second Claude Code account | World polish, load time, casino |
-| **C** | Lead chat on the main account | Tools, 3D model prep, review, this board |
+| **A** | Chog chat on the main account (session `chog-world-72`) | Wallet, Chogs, NPCs, the cutscenes that involve a Chog |
+| **B** | Second Claude Code account | World polish, load time, the world seen from space, casino |
+| **C** | Lead chat on the main account | Tools, 3D models, Chog brain (chat and memory), sound, demo video, review, this board |
 
 ## File ownership
 
 | Files | Owner |
 |---|---|
 | `src/chain.js`, `src/session.js`, `src/chog.js`, `src/chogdata.js`, `src/traitmap.js`, `src/npcs.js`, `src/cutscenes.js` | A |
-| `src/plaza.js`, `src/hub.js`, `src/volclouds.js`, `src/assets.js`, `src/kaykit.js`, new `src/casino.js`, new `src/loader.js` | B |
-| `tools/`, `public/models/`, `public/meta/`, `public/data/`, `TASKS.md` | C |
+| `src/plaza.js`, `src/hub.js`, `src/volclouds.js`, `src/assets.js`, `src/kaykit.js`, new `src/space.js`, new `src/casino.js`, new `src/loader.js` | B |
+| `tools/`, `api/` (Vercel functions), new `src/brain.js`, new `src/audio.js`, `public/models/`, `public/audio/`, `public/meta/`, `public/data/`, `video/`, `TASKS.md` | C |
 | `src/main.js`, `index.html`, `src/style.css` | shared: small edits only; add new CSS in your own clearly marked block |
 | everything else in `src/` | ask in `HANDOFF.md` first |
 
@@ -43,8 +43,10 @@ Status: `todo`, `doing`, `done`, `blocked`.
 | A3 | Guest mode: "Claim a Chog" (`claimRandom`, faucet link) and "Try a demo Chog" with a **Simulate sale** button | todo |
 | A4 | Trait to 3D map (`src/traitmap.js`): trait values map to model files, with a base-Chog fallback. Models arrive in `public/models/` from C | todo |
 | A5 | NPC slots: a singer on a stage in the square with Chogs gathered round, a Chog sniffing a flower, a Chog running around with a toy block | doing |
-| A6 | **Sale cutscene** (the demo's centrepiece): the Chog looks at the camera, colour drains from the feet up, it walks off grey, the camera pulls back to the island as a diorama in the void, fade, "Your Chog has moved on." | todo |
-| A7 | Login and logoff effects | todo |
+| A6 | **Sale cutscene** (the demo's centrepiece): the Chog looks at the camera, colour drains from the feet up and it walks off grey, then the user is carried out to the space view (B7), fade, "Your Chog has moved on." | todo |
+| A7 | Login and logoff effects: on login the Chog wakes in its dome home; on logoff it waves and the user is carried out to the space view (B7) | todo |
+| A8 | Chat with your Chog in the world, wired to C's brain (`src/brain.js`): its mood and face react to the conversation | todo |
+| A9 | Chog-to-Chog chats in the bar, using C's brain. This is the clip the demo leads with | todo |
 
 ### Agent B: world polish, load time, casino
 | # | Task | Status |
@@ -54,7 +56,9 @@ Status: `todo`, `doing`, `done`, `blocked`.
 | B3 | Lobby facade: warm and welcoming like the bar and casino (it is still the grey sci-fi panel body) | todo |
 | B4 | Clouds: check for a grainy, dithered look in the overview at normal frame rates and fix it | todo |
 | B5 | World overview flight for the demo's opening shot (drone path over the islands at golden hour) | todo |
-| B6 | Casino (last, Oct 20 to 21, only if A1 to A6 are done): one game, free chips only, Chog traits give perks (bonus chips, re-rolls, small multipliers), leaderboard. Never wager $CHOG | todo |
+| B6 | Casino spin effect, the casino's own cutscene (only once B7 is done) | todo |
+| B7 | **World seen from space** (`src/space.js`): the whole archipelago as a little diorama floating in a starry void, with the grey Chogs still visible wandering. Used when the user is carried out (sale, logoff) and as the backdrop behind sign-in. Export `enterSpace({from, duration})` and `leaveSpace()` so A's cutscenes just call it | todo |
+| B8 | Casino (last, Oct 20 to 21, only if A1 to A7 are done): one game, free chips only, Chog traits give perks (bonus chips, re-rolls, small multipliers), leaderboard. Never wager $CHOG | todo |
 
 ### Agent C: tools, models, review
 | # | Task | Status |
@@ -62,4 +66,8 @@ Status: `todo`, `doing`, `done`, `blocked`.
 | C1 | Testnet Chog collection (deployed `0x85a9ba85e5a3e87bab529c402140a87a72622b91`) and trait extraction (`tools/`) | done |
 | C2 | Prep each Tripo model the user exports: check the rig, slim it for the web, drop it into `public/models/`, note it in `HANDOFF.md` | doing |
 | C3 | Review every push against this board, and keep the board current | doing |
-| C4 | Demo video shot list and submission text (due Oct 20) | todo |
+| C4 | Demo video shot list, matching `?demo=` camera paths in the app so each shot replays exactly | todo |
+| C5 | **Chog brain**: a Vercel function (`api/chat`) that gives each Chog a personality from its traits and remembers by token (places, friends) and by owner (mannerisms, chats), with owner memories wiped on transfer. Plus `src/brain.js` for A. Needs an LLM API key from the user | todo |
+| C6 | Sound: the singer's song in the square, ambient island sound, UI and cutscene stings (all royalty-free), in `src/audio.js` | todo |
+| C7 | **Demo video edit**: record each shot from the app, then cut a 3-minute video with titles, music and the sale cutscene as the climax (ffmpeg) | todo |
+| C8 | Submission text: pitch, how it works, tech stack, future vision, links (due Oct 21) | todo |
