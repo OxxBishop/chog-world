@@ -59,6 +59,8 @@ export function createGlows(positions, { color = '#ffd7a0', size = 2.2, minPx = 
     // Halos only show as it gets dark; the pixel scale follows the canvas height.
     update(env, renderer) {
       uniforms.uStrength.value = Math.max(0, env.night - 0.15) * 1.1;
+      // By day they add nothing, so skip the draw.
+      points.visible = uniforms.uStrength.value > 0;
       uniforms.uScale.value = renderer.domElement.height / 2 / Math.tan(THREE.MathUtils.degToRad(21));
     },
   };
