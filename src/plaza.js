@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { mergeByMaterial } from './merge.js';
 import { createGlows } from './glows.js';
+import { BRIDGES, DOWNTOWN, roadDistance } from './layout.js';
+import { heightAt, isVoid } from './terrain.js';
 
 /*
  * Furniture for the downtown plaza in front of the Chog Hub: a tiered fountain, benches around
@@ -120,23 +122,42 @@ export function buildPlaza() {
   f.group.position.set(FOUNTAIN.x, 0, FOUNTAIN.z);
   group.add(f.group);
 
-  // Benches sized to the fountain and lamps: an even ring of eight facing the fountain, leaving the
-  // four walks into it clear, and two more out on the plaza between the planters, facing the hub.
+  // Benches sized to the fountain and lamps, every one either round the fountain facing it or square
+  // to a walk. Round the fountain: four pairs on the diagonals, a lamp between the two benches of a
+  // pair, so the four walks in (from the lobby, the bridge, and either side) stay wide and clear.
   const benchSpots = [];
-  const addBench = (x, z, faceX, faceZ) => {
+  const addBench = (x, z, faceX, faceZ, y = 0) => {
     const b = bench(wood, brass);
     b.scale.setScalar(BENCH_SCALE);
-    b.position.set(x, 0, z);
+    b.position.set(x, y, z);
     // The seat faces +z before turning; turn it to face the given point.
     b.rotation.y = Math.atan2(faceX - x, faceZ - z);
     props.add(b);
     benchSpots.push([x, z]);
   };
-  for (let k = 0; k < 8; k++) {
-    const a = ((k + 0.5) / 8) * Math.PI * 2;
-    addBench(FOUNTAIN.x + Math.sin(a) * 11, FOUNTAIN.z + Math.cos(a) * 11, FOUNTAIN.x, FOUNTAIN.z);
+  for (let k = 0; k < 4; k++) {
+    for (const side of [-1, 1]) {
+      const a = ((k + 0.5) / 4) * Math.PI * 2 + side * 0.32;
+      addBench(FOUNTAIN.x + Math.sin(a) * 11, FOUNTAIN.z + Math.cos(a) * 11, FOUNTAIN.x, FOUNTAIN.z);
+    }
   }
-  for (const a of [0.675, -0.675]) addBench(Math.sin(a) * 44, Math.cos(a) * 44, 0, 0);
+  // Along each walk out to a bridge: benches in facing pairs either side of it, set back off the
+  // curb, between the walk's lamp posts (one every 22 m), and clear of any walk that crosses it.
+  const plazaY = heightAt(DOWNTOWN.x, DOWNTOWN.z) + 0.1;
+  const BACK = 2.5 + 1.25;
+  for (const br of BRIDGES) {
+    const ux = Math.cos(br.angle), uz = Math.sin(br.angle);
+    for (const s of [10, 16, 29, 35]) {
+      const r = DOWNTOWN.r + 2.5 + s;
+      for (const side of [-1, 1]) {
+        const x = ux * r - uz * side * BACK, z = uz * r + ux * side * BACK;
+        const ends = [-2.4, 0, 2.4].map((e) => [x + ux * e, z + uz * e]);
+        if (ends.some(([ex, ez]) => roadDistance(ex, ez) < BACK - 2.5 - 0.1 || isVoid(heightAt(ex, ez)))) continue;
+        const y = Math.min(...ends.map(([ex, ez]) => heightAt(ex, ez))) - plazaY;
+        addBench(x, z, ux * r, uz * r, y);
+      }
+    }
+  }
 
   // Planters at the plaza's edge, clear of the hub; island.js fills them with flowers.
   const planters = [];
@@ -155,7 +176,7 @@ export function buildPlaza() {
   const glowSpots = [];
   const spots = [...planters.map(([x, z]) => [x, z]), ...benchSpots];
   const globeMat = new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.2 });
-  // Two along the walk from the lobby, two out on the plaza, and four round the fountain in the gaps between its benches.
+  // Two along the walk from the lobby, two out on the plaza, and four round the fountain between the benches of each pair.
   const round = [1, 3, 5, 7].map((k) => [FOUNTAIN.x + Math.sin((k / 8) * Math.PI * 2) * 11.5, FOUNTAIN.z + Math.cos((k / 8) * Math.PI * 2) * 11.5]);
   for (const [x, z] of [[-9.5, 21], [9.5, 21], [-33, 25], [33, 25], ...round]) {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 4.2, 8).translate(0, 2.1, 0), brass);
