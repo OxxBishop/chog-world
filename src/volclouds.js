@@ -196,11 +196,14 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
 const WHITE = new THREE.Color(1, 1, 1);
 // What lights the clouds: the sun by day, the moon by night, and through twilight a blend that
 // swings from one to the other. t is 0 for full sun, 1 for full moon; the light never drops out.
+// The light never comes in lower than MIN_UP: a grazing sun stretches the deck's shadow map into long
+// streaks across it. The warmth of a lower sun is put back by sunTint.
+const MIN_UP = 0.17;
 const _light = new THREE.Vector3();
 function cloudLight(env, sky) {
   const t = THREE.MathUtils.smoothstep(-env.sunElev, -0.07, 0.04);
   const sun = sky.uniforms.uSunDir.value;
-  _light.set(sun.x, Math.max(sun.y, 0.035), sun.z).normalize().lerp(sky.moonLight, t);
+  _light.set(sun.x, Math.max(sun.y, MIN_UP), sun.z).normalize().lerp(sky.moonLight, t);
   // Sun and moon can sit almost opposite each other: never let the blend shrink to nothing.
   if (_light.lengthSq() < 0.04) _light.copy(t < 0.5 ? sun : sky.moonLight).setY(Math.max(_light.y, 0.2));
   _light.normalize();
@@ -216,6 +219,11 @@ const DRIFT = new THREE.Vector2(0.55, 0.4);
 const SUN_GAIN = 2.1;
 // Optical depth of the air above the islands, per airmass (red, green, blue): Rayleigh plus a little haze.
 const SKY_EXT = [0.07, 0.13, 0.3];
+// Relative air mass for the sun at height y (sine of its elevation), Kasten and Young.
+function airmass(y) {
+  const elev = Math.max(Math.asin(Math.min(1, Math.max(y, 0.035))) * (180 / Math.PI), -2);
+  return 1 / (Math.max(y, 0.035) + 0.15 * Math.pow(elev + 3.885, -1.253));
+}
 
 // Where each drifting cloud goes: wide loops around the whole archipelago, some each way, far
 // enough out to clear every island's outline.
@@ -286,9 +294,8 @@ class CloudComposite extends Effect {
     u.get('sunDir').value.copy(light.dir);
     const col = u.get('sunCol').value;
     const sun = su.uSunDir.value;
-    const elev = Math.max(Math.asin(Math.min(1, Math.max(sun.y, 0.035))) * (180 / Math.PI), -2);
-    const airmass = 1 / (Math.max(sun.y, 0.035) + 0.15 * Math.pow(elev + 3.885, -1.253));
-    col.setRGB(Math.exp(-SKY_EXT[0] * airmass), Math.exp(-SKY_EXT[1] * airmass), Math.exp(-SKY_EXT[2] * airmass)).multiplyScalar(SUN_GAIN);
+    const am = airmass(sun.y);
+    col.setRGB(Math.exp(-SKY_EXT[0] * am), Math.exp(-SKY_EXT[1] * am), Math.exp(-SKY_EXT[2] * am)).multiplyScalar(SUN_GAIN);
     col.lerp(MOON_LIGHT.clone().multiplyScalar(Math.max(env.night, 0.5)), light.t);
     const day = 1 - env.night;
     u.get('ambTop').value.copy(su.uTop.value).lerp(WHITE, 0.55).multiplyScalar(0.42 * day + 0.06);
@@ -402,7 +409,9 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
   // them (the rocky undersides sink into it; its shadow maps shade the clouds themselves), and a
   // second layer far below that shows through the gaps and gives the sea its depth.
   const deck = clouds.cloudLayers[0];
-  Object.assign(deck, { altitude: ALTITUDE - 370, height: 340, densityScale: 0.2, shapeAmount: 1, shapeDetailAmount: 1, weatherExponent: 1, shapeAlteringBias: 0.35, coverageFilterWidth: 0.6, shadow: true });
+  // Squat (220 m) with rounded tops, so from above it reads as billowing heaps. A taller deck with
+  // flatter tops showed tall columns with shaded sides, like hanging curtains.
+  Object.assign(deck, { altitude: ALTITUDE - 250, height: 220, densityScale: 0.2, shapeAmount: 1, shapeDetailAmount: 1, weatherExponent: 1, shapeAlteringBias: 0.6, coverageFilterWidth: 0.6, shadow: true });
   for (let i = 1; i < clouds.cloudLayers.length; i++) clouds.cloudLayers[i].height = 0;
   Object.assign(clouds.cloudLayers[1], { altitude: ALTITUDE - 1300, height: 600, densityScale: 0.2, shapeDetailAmount: 0, shadow: false });
   clouds.coverage = 0.5;
@@ -440,6 +449,7 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
   const skyLum = atmosphere.skyRadianceToRelativeLuminance.clone();
   const moonTint = new THREE.Vector3(0.62, 0.5, 1.0);
   const tint = new THREE.Vector3();
+  const warmth = new THREE.Vector3();
   const dir = new THREE.Vector3();
 
   const composite = new CloudComposite(camera, clouds, deck.altitude + deck.height - ALTITUDE + 2, shape, shapeDetail);
@@ -475,7 +485,11 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
       const k = THREE.MathUtils.lerp(1, 0.1, light.t);
       atmosphere.sunRadianceToRelativeLuminance.copy(sunLum).multiplyScalar(k);
       atmosphere.skyRadianceToRelativeLuminance.copy(skyLum).multiplyScalar(k);
-      atmosphere.solarIrradiance.copy(sunIrradiance).multiply(tint.set(1, 1, 1).lerp(moonTint, light.t));
+      // The extra air a sun below MIN_UP shines through: redder and dimmer, as at a real sunrise.
+      const sunY = sky.uniforms.uSunDir.value.y;
+      const extra = sunY < MIN_UP ? airmass(sunY) - airmass(MIN_UP) : 0;
+      warmth.set(Math.exp(-SKY_EXT[0] * extra), Math.exp(-SKY_EXT[1] * extra), Math.exp(-SKY_EXT[2] * extra));
+      atmosphere.solarIrradiance.copy(sunIrradiance).multiply(tint.copy(warmth).lerp(moonTint, light.t));
     },
   };
 }
