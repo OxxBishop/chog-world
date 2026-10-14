@@ -27,6 +27,13 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · B3 lobby facade (done)
+- `src/hub.js`: the lobby pod has sand plaster walls, wood frames and side panels, and a gold dome (the dome's faces come away whole into the gold material). The tubes to the wings match the walls.
+- Entrance: the pod's door is raised 3 m, so there are now stone steps up to it with a red runner down them and out to the arch, wooden double doors with brass handles, a warm transom, and a wall lantern either side. Lanterns and transom brighten at night.
+- `src/plaza.js`: two more planters, either side of the steps (`island.js` fills them with flowers like the others).
+- `src/kaykit.js`: `repaint()` takes an optional `isRoof(normal, height, cell)` to choose which faces leave for the roof material. The default is unchanged, so the bar and casino look the same.
+- See it: Chog Hub view, or `?hour=19` for the lanterns.
+
 ### 2026-10-13 · B · B2 load time (done, needs a timing check on the HD 520)
 - The world now opens without the clouds. Their pass joins the post chain held off; once the world is showing they download, build their shaders in the background and fade in over 2.5 s. If they fail twice, the world carries on without them.
 - The sky's light used to be computed on the GPU at every load (the biggest cost). It now ships as `public/assets/volclouds/atmosphere/*.exr`, precomputed by `@takram/three-atmosphere` 0.19.1 for its default atmosphere, which is the one we use.
