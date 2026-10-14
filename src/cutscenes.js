@@ -110,11 +110,9 @@ export function prepareWake(chog) {
   chog.sparkle = makeSparkle(chog.root, chog.look.aura ?? '#d0b4ff');
 }
 
-// Where a Chog sleeps and stands in its home room, and where it appears when you arrive: back by the
-// desk, so it steps out towards you (room space, metres).
+// Where a Chog sleeps and stands in its home room (room space, metres).
 export const BED = new THREE.Vector3(-2.7, 0.5, 0.2);
 export const SPOT = new THREE.Vector3(0.3, 0, -0.8);
-export const POD = new THREE.Vector3(-0.4, 0, -2.3);
 
 /**
  * Wake: the Chog is asleep on its bed when the view fades in, sits up, hops down and waves.
@@ -152,29 +150,57 @@ export async function playWake({ chog, name }) {
 }
 
 /**
- * Arriving home (A11): once the flight is into the pod, the Chog appears in a burst of sparkles, steps
- * out towards you, turns to the camera and says hello. hello() resolves to { reply, mood } (asked for
- * at once, so it's ready when the Chog is); say(reply, mood) shows it. Resolves once it has spoken.
+ * Arriving home (A11): the flight has come down to the walk in front of your Chog's pod (src/arrival.js).
+ * Its door swings open, the Chog appears just inside in a burst of sparkles, steps out onto the walk,
+ * turns to the camera and says hello, and the door swings shut behind it. door is the flight's
+ * { position, inside, outward, open(k), dome } (world). hello() resolves to { reply, mood } and is asked
+ * at once, so it's ready when the Chog is; say(reply, mood) shows it. Resolves once it has spoken.
  */
-export async function playSpawn({ chog, group, camera, hello, say }) {
+export async function playArrival({ chog, door, camera, hello, say }) {
   const greeting = hello();
-  chog.root.position.copy(POD);
-  chog.root.rotation.y = Math.atan2(SPOT.x - POD.x, SPOT.z - POD.z);
+  const group = door.dome.group;
+  const from = group.worldToLocal(door.inside.clone());
+  const to = group.worldToLocal(door.position.clone().addScaledVector(door.outward, 2.6));
+  to.y = floorUnder(group, to, chog.root) ?? from.y;
+  group.add(chog.root);
+  chog.root.position.copy(from);
+  chog.root.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+  chog.root.scale.setScalar(1);
   chog.setFade(0);
   chog.play('idle');
   (chog.sparkle ?? makeSparkle(chog.root, chog.look.aura ?? '#d0b4ff')).play();
   chog.sparkle = null;
-  await tween(600, (k) => chog.setFade(k));
-  await wait(250);
+  await tween(800, (k) => {
+    door.open(k);
+    chog.setFade(Math.min(1, k * 1.4));
+  });
   chog.play('walk');
-  await tween(walkMs(POD, SPOT), (k) => chog.root.position.lerpVectors(POD, SPOT, THREE.MathUtils.smoothstep(k, 0, 1)));
+  await tween(walkMs(from, to), (k) => {
+    const e = THREE.MathUtils.smoothstep(k, 0, 1);
+    chog.root.position.lerpVectors(from, to, e);
+    // Down off the sill onto the walk.
+    chog.root.position.y = from.y + (to.y - from.y) * THREE.MathUtils.smoothstep(k, 0.25, 0.6);
+  });
   chog.play('idle');
+  tween(900, (k) => door.open(1 - k));
   await faceCamera(chog, group, camera, 450);
   chog.play('wave');
   const { reply, mood } = await greeting;
   say(reply, mood);
   await wait(2400);
   chog.play('idle');
+}
+
+// The height of the ground underfoot at p (in group's space), leaving out skip; null if there is none.
+function floorUnder(group, p, skip) {
+  const ray = new THREE.Raycaster(group.localToWorld(p.clone().setY(p.y + 4)), new THREE.Vector3(0, -1, 0), 0, 12);
+  const meshes = [];
+  group.traverseVisible((o) => o.isMesh && !o.isInstancedMesh && meshes.push(o));
+  const hits = ray.intersectObjects(meshes, false).filter((h) => {
+    for (let o = h.object; o; o = o.parent) if (o === skip) return false;
+    return true;
+  });
+  return hits.length ? group.worldToLocal(hits[0].point.clone()).y : null;
 }
 
 /**

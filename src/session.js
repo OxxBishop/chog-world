@@ -1,6 +1,6 @@
 import { chogInfo, loadChogs, DEMO_CHOG, homeFor, artFallbacks } from './chogdata.js';
 import { makeChog } from './chog.js';
-import { prepareWake, playWake, playGreyOut, playLogoff, playWalkIn, playWalkOut, playSpawn, SPOT } from './cutscenes.js';
+import { prepareWake, playWake, playGreyOut, playLogoff, playWalkIn, playWalkOut, playArrival, SPOT } from './cutscenes.js';
 import { talk } from './brain.js';
 import { createChat } from './chat.js';
 import { createBarChat } from './barchat.js';
@@ -14,10 +14,10 @@ import * as THREE from 'three';
  *
  * The chain code (viem) loads only when someone connects, so it costs nothing at start-up.
  *
- * Two ways in. The loading screen (B11's intro) drives the first visit: its buttons call connect() and
- * demo(), this calls intro.state(...) as sign-in goes along, then intro.flyHome(room), and the Chog
- * appears in its pod and says hello. Afterwards, or with no intro, the Sign in button opens the panel
- * here, and the Chog wakes on its bed.
+ * Two ways in. With the first screen (B11's src/intro.js), startIntro() drives it through sign-in:
+ * connect, the wallet's steps, the search, "Welcome, <name>", then world.intro.flyHome(room) and your
+ * Chog steps out of its pod and says hello. Sign in later brings that screen back over space. Without
+ * it (?nointro, a view link), the Sign in button opens the panel here and the Chog wakes on its bed.
  */
 
 // Hellos for when the brain isn't up (or is slow): it says one of these instead.
@@ -34,7 +34,6 @@ const short = (a) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 const chain = () => import('./chain.js');
 
 export function initSession(world) {
-  let intro = world.intro ?? null;
   const panel = $('signin');
   const body = panel.querySelector('.signin-body');
   let session = null; // { address, wallet, provider, demo, id, chog, room, stopWatch }
@@ -60,8 +59,17 @@ export function initSession(world) {
     panel.classList.remove('on');
     setTimeout(() => (panel.hidden = true), 250);
   };
-  panel.querySelector('.signin-close').addEventListener('click', () => !busy && close());
-  panel.addEventListener('click', (e) => e.target === panel && !busy && close());
+  // Closed without picking a Chog for the first screen: back to its start.
+  const dismiss = () => {
+    if (busy) return;
+    close();
+    if (pickingForIntro) {
+      pickingForIntro = false;
+      startIntro();
+    }
+  };
+  panel.querySelector('.signin-close').addEventListener('click', dismiss);
+  panel.addEventListener('click', (e) => e.target === panel && dismiss());
 
   const view = (html) => {
     body.innerHTML = html;
@@ -119,7 +127,7 @@ export function initSession(world) {
   }
 
   // ---------- picking a Chog ----------
-  async function picker(ids) {
+  async function picker(ids, onPick = wake) {
     const { FAUCET_URL } = await chain();
     if (!ids.length) {
       const el = view(`
@@ -148,7 +156,7 @@ export function initSession(world) {
       <p class="muted">${esc(short(session.address))} on Monad Testnet. Pick one to wake in its home.</p>
       <ul class="chog-cards">${cards}</ul>`);
     artFallbacks(el);
-    el.querySelectorAll('.wake').forEach((b) => b.addEventListener('click', () => wake(Number(b.dataset.id))));
+    el.querySelectorAll('.wake').forEach((b) => b.addEventListener('click', () => onPick(Number(b.dataset.id))));
   }
 
   async function claim() {
@@ -214,30 +222,43 @@ export function initSession(world) {
     Object.assign(s, { id: info.id, info, chog, room });
   }
 
-  // ---------- the loading screen's way in (A11) ----------
-  const tell = (name, data = {}) => intro?.state(name, data);
+  // ---------- the first screen's way in (A11) ----------
+  let screen = null;
+  let pickingForIntro = false;
+  const tell = (name, data = {}) => screen?.state(name, data);
+  const step2 = (title, text) => tell('step', { title, text });
+  // A guest: the screen goes, and the view flies down from space to the world.
+  const guest = () => screen?.close().then(() => world.leaveSpace?.({ duration: 2.5 }));
 
-  /** Connect wallet (the loading screen's button). */
-  async function connect() {
-    const c = await chain();
-    const wallets = await c.findWallets();
-    if (!wallets.length) return tell('nowallet');
-    if (wallets.length > 1) return tell('wallets', { wallets: wallets.map(({ name, icon }) => ({ name, icon })), pick: (i) => arriveWith(wallets[i]) });
-    return arriveWith(wallets[0]);
+  /**
+   * The first screen's call to connect (src/main.js hands it over once the world has loaded; Sign in
+   * brings it back). A button per wallet in the browser, and one for the demo Chog, so anyone without a
+   * testnet Chog still gets the whole visit.
+   */
+  async function startIntro(s = screen, note = '') {
+    screen = s;
+    if (!screen) return;
+    const { findWallets } = await chain();
+    const wallets = await findWallets();
+    tell('connect', {
+      wallets: [...wallets.map((w) => ({ name: w.name, icon: w.icon, pick: () => arriveWith(w) })), { name: 'Try a demo Chog', icon: null, pick: () => demoArrival() }],
+      guest,
+      text: note || (wallets.length ? '' : 'No wallet in this browser. Try the demo Chog, or explore as a guest.'),
+    });
   }
 
   async function arriveWith(w) {
     try {
       const c = await chain();
-      tell('connect', { wallet: w.name });
+      step2('Approve in your wallet', 'Connect, and switch to Monad Testnet if it asks.');
       const conn = await c.connect(w.provider);
-      tell('sign');
+      step2('Sign the message', 'It is free and does not send anything.');
       const signed = await c.signIn(conn);
       session = { ...conn, ...signed, demo: false };
       w.provider.on?.('accountsChanged', onAccountsChanged);
       await search();
     } catch (err) {
-      tell('error', { message: problem(err), retry: () => connect() });
+      tell('error', { text: problem(err), retry: () => startIntro(), guest });
     }
   }
 
@@ -245,55 +266,65 @@ export function initSession(world) {
   async function search() {
     const s = session;
     const c = await chain();
-    tell('searching', { address: s.address });
+    tell('searching', { text: short(s.address) });
     const [ids] = await Promise.all([c.tokensOf(s.address), loadChogs()]);
     if (session !== s) return;
     if (!ids.length) {
-      const left = await c.claimsLeft(s.address).catch(() => 0);
-      return tell('none', { address: s.address, claimsLeft: left, faucetUrl: c.FAUCET_URL, claim: () => claimThenSearch(), demo: () => demoArrival() });
+      return tell('none', {
+        text: `${short(s.address)} holds no testnet Chog yet. Claim one free: it takes a little testnet MON for gas, from faucet.monad.xyz.`,
+        claim: () => claimThenSearch(),
+        guest,
+      });
     }
     if (ids.length === 1) return arrive(ids[0]);
-    const infos = await Promise.all(ids.map(chogInfo));
-    tell('pick', { chogs: infos.map(({ id, name, image }) => ({ id, name, image })), pick: (id) => arrive(id) });
+    // Several: pick one on the sign-in panel, over the screen.
+    step2('Pick your Chog', `${ids.length} Chogs in this wallet.`);
+    pickingForIntro = true;
+    open();
+    await picker(ids, (id) => {
+      pickingForIntro = false;
+      close();
+      arrive(id);
+    });
   }
 
   async function claimThenSearch() {
     try {
       const c = await chain();
-      tell('claiming');
+      step2('Confirm the claim', 'A free testnet Chog. Gas is paid in testnet MON.');
       await c.claimRandom(session);
       await search();
     } catch (err) {
-      tell('error', { message: problem(err), retry: () => search() });
+      tell('error', { text: problem(err), retry: () => search(), guest });
     }
   }
 
-  /** Try a demo Chog (the loading screen's button): #43 gets the same welcome and arrival. */
+  /** Try a demo Chog: #43 gets the same welcome, flight home and hello. */
   async function demoArrival() {
     session = { address: null, demo: true };
     await loadChogs();
     await arrive(DEMO_CHOG);
   }
 
-  // "Welcome, <name>", the flight home, and the Chog appears in its pod and says hello.
+  // "Welcome, <name>", the flight home, and your Chog steps out of its pod and says hello.
   async function arrive(id) {
     const s = session;
     try {
       const info = await chogInfo(id);
-      tell('welcome', { id, name: info.name, image: info.image });
+      tell('found', { name: info.name, image: info.image });
       if (!s.demo && !(await (await chain()).owns(s.address, id))) {
-        return tell('error', { message: `${info.name} isn't in this wallet any more.`, retry: () => search() });
+        return tell('error', { text: `${info.name} isn't in this wallet any more.`, retry: () => search(), guest });
       }
       await settle(info);
       if (session !== s) return;
-      await intro.flyHome(s.room);
+      const landed = await world.intro.flyHome(s.room);
       if (session !== s) return;
       showChip();
-      await playSpawn({ chog: s.chog, group: s.room.room.group, camera: world.camera, hello: () => hello(s), say: (text, mood) => chat.greet(text, mood) });
-      intro.done?.();
+      await playArrival({ chog: s.chog, door: landed.door, camera: world.camera, hello: () => hello(s), say: (text, mood) => chat.greet(text, mood) });
       if (session === s && !s.demo) watch();
     } catch (err) {
-      tell('error', { message: problem(err), retry: () => (s.demo ? demoArrival() : search()) });
+      console.warn('Arrival:', err);
+      tell('error', { text: problem(err), retry: () => (s.demo ? demoArrival() : search()), guest });
     }
   }
 
@@ -340,7 +371,11 @@ export function initSession(world) {
     }
     $('chog-chip').hidden = true;
     await playGreyOut({ chog: s.chog, name: s.info.name, room: s.room, world });
-    signOut(null, { toOverview: true });
+    signOut(null, { toOverview: !screen, inSpace: !!screen });
+    if (screen) {
+      $('fade').classList.remove('on');
+      startIntro();
+    }
   }
 
   // ---------- guests ----------
@@ -381,9 +416,12 @@ export function initSession(world) {
     s.chog.play('idle');
   }
 
-  // The doorway, in the room's space: the given world point, or just inside the front door.
-  const doorIn = (room, door) =>
-    door ? room.room.group.worldToLocal(door.clone()).setY(0) : new THREE.Vector3(0, 0, room.room.d / 2 - 0.6);
+  // The doorway, in the room's space: the door entry.js gives ({ position, inward }, world), a world
+  // point, or just inside the front door.
+  const doorIn = (room, door) => {
+    const p = door?.position ?? door;
+    return p?.isVector3 ? room.room.group.worldToLocal(p.clone()).setY(0) : new THREE.Vector3(0, 0, room.room.d / 2 - 0.6);
+  };
 
   // Where it stands in a room it walked into: out on the floor in the middle of the room's own view,
   // nearly three quarters of the way from the camera to what it looks at.
@@ -395,12 +433,13 @@ export function initSession(world) {
   }
 
   /**
-   * Your Chog walks into a room with you: call it at the cut into the room. Resolves once it stands in
-   * its spot facing you (at once for guests); skip() puts it there now.
+   * Your Chog walks into a room with you (src/entry.js calls it as the view turns to the door).
+   * Resolves once it stands in its spot facing you; skip() puts it there now, and chog is what the
+   * camera follows. Null for a guest, so the view settles on the room's people instead (focusIn).
    */
   function walkIn(room, door, { delay = 0 } = {}) {
     const s = session;
-    if (!s?.chog || s.leaving || !room || room === s.room) return Object.assign(Promise.resolve(), { skip() {} });
+    if (!s?.chog || s.leaving || !room || room === s.room) return null;
     const group = room.room.group;
     const from = doorIn(room, door);
     const to = room === world.bar ? bar.spotFor(s) : spotIn(room);
@@ -408,7 +447,14 @@ export function initSession(world) {
     s.chog.root.scale.setScalar(1);
     const walk = playWalkIn({ chog: s.chog, group, from, to, camera: world.camera, delay });
     if (room === world.bar) bar.expect(walk.done);
-    return Object.assign(walk.done, { skip: walk.skip });
+    // In the bar the camera eases over to the pair as it arrives, so the view ends with both of them.
+    const chog = room === world.bar ? bar.follow(s.chog.root, to) : s.chog.root;
+    return Object.assign(walk.done, { skip: walk.skip, chog });
+  }
+
+  /** Where a guest's view settles in a room (src/entry.js): the bar's regulars, say (world). */
+  function focusIn(room) {
+    return room === world.bar ? bar.focusPoint() : null;
   }
 
   /** It walks back out of the room ahead of you. Resolves once it's out of the door. */
@@ -432,10 +478,11 @@ export function initSession(world) {
       await new Promise((r) => setTimeout(r, 700));
     }
     await playLogoff({ chog: s.chog, name: s.info.name, room: s.room, world });
-    signOut(null, { toOverview: true });
+    signOut(null, { toOverview: !screen, inSpace: !!screen });
+    if (screen) startIntro();
   }
 
-  function signOut(note, { toOverview = false } = {}) {
+  function signOut(note, { toOverview = false, inSpace = false } = {}) {
     const s = session;
     session = null;
     chat.reset();
@@ -447,7 +494,7 @@ export function initSession(world) {
         s.chog.root.removeFromParent();
         s.chog.dispose();
       }
-      if (toOverview || (s.room && world.currentRoom() === s.room)) world.leaveToOverview();
+      if (!inSpace && (toOverview || (s.room && world.currentRoom() === s.room))) world.leaveToOverview();
     }
     $('chog-chip').hidden = true;
     $('btn-signin').hidden = false;
@@ -458,28 +505,53 @@ export function initSession(world) {
   }
 
   $('btn-signin').addEventListener('click', () => {
+    // With the first screen, signing in goes the way it did the first time: out to space, and connect.
+    if (screen) {
+      world.enterSpace?.({ duration: 1.6 });
+      startIntro();
+      return;
+    }
     open();
     start();
   });
+
+  // Chog standees' shaders, built for each kind of place one can stand (outside, the bar, the lobby, a
+  // home) while the first screen is up, so walking in anywhere never stalls on them: the lights inside
+  // each kind of room are part of its shaders.
+  async function warmStandees() {
+    if (!world.prewarm || !world.rooms) return;
+    const t = await makeChog({ traits: { Aura: 'Purple' }, name: 'Chog' });
+    prepareWake(t);
+    t.setMood('happy');
+    const kinds = [null, world.bar, world.rooms.find((r) => r.id === 'lobby'), world.homes[0]];
+    for (const r of kinds) {
+      if (r === undefined) continue;
+      const g = r?.room.group;
+      const was = g?.visible;
+      if (g) g.visible = true;
+      const ready = world.prewarm(t.root);
+      if (g) g.visible = was;
+      await ready;
+    }
+    t.dispose();
+  }
+  setTimeout(() => warmStandees().catch((err) => console.warn('Standee warm-up:', err)), 300);
 
   return {
     update(dt) {
       bar.update(dt);
       const s = session;
       const parent = s?.chog?.root.parent;
-      // Out in a room you've left: it goes home.
-      if (parent && parent !== s.room.room.group && !parent.visible && !s.leaving) sendHome(s);
+      // Out in a room you've left, or out front of its pod when you go in: it goes home.
+      if (parent && parent !== s.room.room.group && !s.leaving && (!parent.visible || world.currentRoom() === s.room)) sendHome(s);
       // The Chog moves wherever it is: at home, or out in a room with you.
       if (s?.chog?.root.parent?.visible) s.chog.update(dt, world.camera);
       chat.update(dt);
     },
     walkIn,
     walkOut,
-    // The loading screen (B11) plugs in here, if it isn't passed in at the start, and its buttons call these.
-    setIntro(i) {
-      intro = i;
-    },
-    connect,
+    focusIn,
+    startIntro,
     demo: demoArrival,
     // A tap on your Chog opens the chat. True if the tap was on it.
     tapChog(x, y) {
