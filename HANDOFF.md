@@ -27,6 +27,27 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · B11 loading screen and arrival flight (done; A, see A11 below)
+- **The first screen** (new `src/intro.js`, markup in `index.html` so it shows from the first paint, styles in my block at the end of `src/style.css`): pixel type (Press Start 2P and Pixelify Sans, OFL, self-hosted in `public/fonts/`), scanlines with a rolling band, RGB split and glitch slices on the title, a chunky block bar on the real load progress. "Welcome to Chog World" while it loads; then the screen dims over the world seen from space and asks "Connect wallet to begin", with "Explore as a guest" under it.
+- **The running Chog:** a Chog's official art, pixelated in the browser into a little round token, hopping round a track with a shadow and dust. While searching it flicks to another Chog's face every lap; once found it is yours.
+- **The arrival** (new `src/arrival.js`): from space, down through the clouds over your Chog's island, along its dome, in through the glass at the middle of a lattice triangle over the door (no strut crosses the lens), and down to the walk in front of the pod, looking at its door. About 6 s, then the camera is handed back to the rig, inside the dome.
+- **Home pods now have a real door** (`src/dome.js`): the pod's door panel is cut out, two panels hang on hinges, and a short warm hall runs back to the home room's own door (the same `hingedLeaf` and `vestibule` as the Hub, exported from `src/hub.js`). So your Chog can step out of it.
+- **Until A11 lands** the screen works on its own: Connect closes it and opens the current sign-in panel (over space), and a guest is flown back down to the overview. A link to a view, a shot or space (`?view=`, `?demo=`, `?space`) skips it, and so does `?nointro`.
+- **A, for A11:** the world object your session gets has `world.intro`:
+  - `intro.state(name, data)`, with name one of:
+    - `'connect'`, `{ wallets: [{ name, icon, pick() }], guest(), text }`: one pixel button per wallet (or a single Connect wallet button calling `data.connect()`), the guest link, an optional note.
+    - `'step'`, `{ title, text }`: a step that waits on the wallet ("Approve in your wallet").
+    - `'searching'`, `{ text }`: the running Chog, until `tokensOf` answers.
+    - `'found'`, `{ name, image }`: "Welcome, <name>" with a glitch burst, and the runner showing that Chog's face.
+    - `'none'`, `{ claim(), guest(), text }` and `'error'`, `{ text, retry(), guest() }`.
+  - `intro.flyHome(room)` (room: the home, as `world.homes[i]`): tears the screen away and flies. It resolves with `{ door, rest }` once the camera is settled. `door.position` is the middle of the pod door's sill, `door.inside` a spot just behind it in the hall (where your Chog can appear, with the wake sparkle), `door.outward` the way out, and `door.open(k)` (0 shut, 1 open) swings its panels. Open it, walk your Chog out a couple of metres, turn it to the camera, say hello. The camera is free again by then.
+  - `intro.close()` just tears it away (resolves when gone); `intro.open` says whether it is up.
+  - Hand the screen over from the start: define `session.startIntro(intro)` and `src/main.js` calls it once the world has loaded, instead of its default connect screen. Signing in again later (the HUD's Sign in): call `intro.state('connect', ...)` and `world.enterSpace()`; the screen comes back.
+- **`src/main.js` (shared):** creates the intro and the arrival, `arrival.update(dt)` in `frame()`, `load.finish({ keep })` leaves the screen up, then space behind it and the default connect screen. Dev hooks: `chogWorld.intro`, `chogWorld.arrival`.
+- **`src/loader.js`:** the bar fills by a CSS variable (`--p`) so the pixel bar can draw itself; `finish({ keep: true })` leaves the screen up.
+- **Seen in the browser:** the load (desktop and phone), every state, guest back to the world, Connect to the sign-in panel, and the arrival into two domes at noon and golden hour. The 3D work compiles no new shaders.
+- **Cost:** the 15 pods' doorways and halls add a little to the island's build (about 0.2 s here); worth a look in B9.
+
 ### 2026-10-14 · B · B10 room entry cutscenes (done; A, see A10 below)
 - **The lobby and the bar are now walked into for real, no fade and no cut.** The Hub's pods had solid walls behind their doors and the bar had no doorway at all, so each now has one: a doorway carved through the KayKit shell (`carve` in `src/kaykit.js`, exact clipping), wooden double doors on hinges, and a short hall behind them back to the room's own door (`vestibule` in `src/hub.js`). The lobby's hall steps down three steps with its red runner carried on inside; the bar's front gets a dark wood door frame and a stone step. The halls glow warm from their lamps, more after dark.
 - **New `src/entry.js`.** Picking Lobby or Bar on the Hub: the camera flies to the door, the doors swing open, it glides through, down the hall, and the room's own door swings open as it arrives. A sweep along the front of the room pans left to right across it and settles on the room's framed view. Back runs it the other way: out through both doors (they close behind), up and round to the Hub's view. A tap or Esc skips to the end.
