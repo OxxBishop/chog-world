@@ -178,12 +178,14 @@ async function init() {
   // Build every shader the world needs (the rooms and the post chain too) in the background, so the
   // first frame you see is finished.
   load.set('shaders', 0);
+  // The dry run goes first: it bakes the sky's light into the scene, so the rooms compile with it too.
+  const warm = prewarm(renderer, frame, (f) => load.set('shaders', f));
   for (const r of island.rooms) r.room.group.visible = true;
   renderer.setRenderTarget(post.composer.inputBuffer);
   const rooms = renderer.compileAsync(scene, camera).catch(() => {});
   renderer.setRenderTarget(null);
   for (const r of island.rooms) r.room.group.visible = false;
-  await Promise.all([rooms, prewarm(renderer, frame, (f) => load.set('shaders', f))]);
+  await Promise.all([rooms, warm]);
   // The dry run took the sky's light bake with it: bake it again for real.
   sky.envHour = -99;
   load.set('frames', 0);

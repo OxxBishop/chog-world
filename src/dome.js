@@ -219,8 +219,9 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     // From afar only the outside of the glass shows: one side, fewer facets, half the overdraw.
     const farGlass = new THREE.Mesh(f.farGlass, this.glass.clone());
     farGlass.material.side = THREE.FrontSide;
+    // Same shader as the near glass's front face, so it shares that program.
     farGlass.material.onBeforeCompile = this.glass.onBeforeCompile;
-    farGlass.material.customProgramCacheKey = () => 'dome-glass-far';
+    farGlass.material.customProgramCacheKey = this.glass.customProgramCacheKey;
     farGlass.renderOrder = 2;
     farGlass.userData.keep = true;
     far.add(farGlass);
