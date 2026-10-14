@@ -246,6 +246,9 @@ async function init() {
     camera,
     homes: island.rooms.filter((r) => r.id.startsWith('home')),
     bar: island.rooms.find((r) => r.id === 'bar'),
+    rooms: island.rooms,
+    // A room's door cutscene is playing (src/entry.js): your Chog walks in at its end.
+    entering: () => !!entry?.active,
     enterRoom: (r) => enterRoom(r),
     currentRoom: () => (entry?.active ? entry.room : island.rooms.find((r) => r.pod === rig.room) ?? null),
     leaveToOverview: () =>

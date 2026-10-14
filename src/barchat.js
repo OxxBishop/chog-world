@@ -74,6 +74,10 @@ export function createBarChat({ world, getMine, sendHome: home }) {
   let layout = null;
   // Your Chog walking in from the door (A10): the scene waits for it.
   let arriving = null;
+  // Coming in through the doors (src/entry.js): the scene holds your Chog's place until it walks in.
+  let holding = null;
+  // What the camera follows while your Chog walks in (src/entry.js).
+  let follow = null;
   const layoutNow = () => LAYOUTS[world.camera.aspect < 1 ? 'tall' : 'wide'];
 
   const bubble = document.createElement('div');
@@ -260,6 +264,14 @@ export function createBarChat({ world, getMine, sendHome: home }) {
     stop();
     active = true;
     castKey = mine ? mine.id : 'guests';
+    // On the way in through the doors, your Chog isn't here yet: it walks in at the end (walkIn).
+    if (mine && world.entering?.() && !arriving) {
+      arriving = new Promise((resolve) => {
+        holding = resolve;
+        // In case it never comes (the cutscene cut short), it takes its place anyway.
+        setTimeout(resolve, 15000);
+      });
+    }
     loop(mine, ++run).catch((err) => console.warn('Bar chat:', err?.message ?? err));
   }
 
@@ -268,6 +280,8 @@ export function createBarChat({ world, getMine, sendHome: home }) {
     active = false;
     castKey = null;
     quiet();
+    follow?.proxy.removeFromParent();
+    follow = null;
     for (const s of ['a', 'b']) {
       if (!seated[s]) continue;
       seated[s].chog.setFade(1);
@@ -275,6 +289,12 @@ export function createBarChat({ world, getMine, sendHome: home }) {
       seated[s] = null;
     }
   }
+
+  // The middle of the pair at the counter, in the room's space.
+  const middle = () => {
+    const l = layoutNow();
+    return l.a.clone().add(l.b).multiplyScalar(0.5);
+  };
 
   return {
     // Fetch the first pair ahead of time (it covers a guest's first scene and a signed-in Chog's first
@@ -288,12 +308,22 @@ export function createBarChat({ world, getMine, sendHome: home }) {
       const inBar = world.currentRoom() === bar;
       if (!inBar) {
         if (active) stop();
+        if (holding) {
+          holding();
+          holding = null;
+          arriving = null;
+        }
         return;
       }
       const mine = getMine();
       if (!active || castKey !== (mine ? mine.id : 'guests')) start(mine);
       // The screen turned (a phone, say): move the pair to fit.
       if (layout && layout !== layoutNow()) place(layoutNow());
+      // The camera's mark: your Chog as it walks in, drifting to the middle of the pair as it arrives.
+      if (follow) {
+        const k = 1 - Math.min(1, follow.root.position.distanceTo(follow.to) / follow.total);
+        follow.proxy.position.lerpVectors(follow.root.position, middle(), THREE.MathUtils.smoothstep(k, 0.2, 1));
+      }
       // Your own Chog is kept moving by the session; the regulars are moved here.
       for (const s of ['a', 'b']) if (seated[s] && !seated[s].mine) seated[s].chog.update(dt, world.camera);
       if (!speaking || bubble.hidden) return;
@@ -321,14 +351,32 @@ export function createBarChat({ world, getMine, sendHome: home }) {
     // Your Chog is walking in (A10): hold the scene until it's at its spot.
     expect(walk) {
       // Already chatting with it in place (it was here first): start over with it walking in.
-      if (active) {
+      if (active && ['a', 'b'].some((s) => seated[s]?.mine)) {
         run++;
         quiet();
         for (const s of ['a', 'b']) if (seated[s]?.mine) seated[s] = null;
         active = false;
       }
+      // The scene that has been holding its place waits for this walk now.
+      holding?.(walk);
+      holding = null;
       arriving = walk;
       walk.then(() => arriving === walk && (arriving = null));
+    },
+    // What the camera follows as your Chog walks in to `to` (room space): your Chog, easing over to the
+    // middle of the pair as it gets there, so the view ends with both of them in it.
+    follow(root, to) {
+      follow?.proxy.removeFromParent();
+      const proxy = new THREE.Object3D();
+      bar.room.group.add(proxy);
+      proxy.position.copy(root.position);
+      follow = { proxy, root, to: to.clone(), total: Math.max(0.01, root.position.distanceTo(to)) };
+      return proxy;
+    },
+    // Where a guest's view settles on coming in: the middle of whoever is at the counter (world).
+    focusPoint() {
+      if (!seated.a && !seated.b) return null;
+      return bar.room.group.localToWorld(middle().setY(1.3));
     },
     // Your Chog is walking out ahead of you: the chat stops, the regular stays.
     release() {
