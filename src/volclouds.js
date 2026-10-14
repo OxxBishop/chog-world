@@ -67,10 +67,18 @@ bool aboveDeck(const in vec2 uv, const in float d) {
   return (camWorld * vec4(v.xyz / v.w, 1.0)).y > deckTop;
 }
 
+// The deck is marched with a blue-noise jitter and each pixel keeps a single sample, which reads as a
+// fine grain. A small tent filter (four bilinear taps spanning 3 x 3 texels) smooths it away.
+vec4 deckSample(const in vec2 uv, const in vec2 texel) {
+  vec2 h = 0.5 * texel;
+  return 0.25 * (texture(cloudsTex, uv - h) + texture(cloudsTex, uv + h) +
+    texture(cloudsTex, uv + vec2(h.x, -h.y)) + texture(cloudsTex, uv + vec2(-h.x, h.y)));
+}
+
 vec3 deckClouds(const in vec3 inputColor, const in vec2 uv, const in float depth) {
   if (aboveDeck(uv, depth)) return inputColor;
   vec2 size = vec2(textureSize(cloudsTex, 0));
-  vec4 c = texture(cloudsTex, uv) * fade;
+  vec4 c = deckSample(uv, 1.0 / size) * fade;
   // The clouds are marched at a quarter of this resolution, so a bad sample spreads about 4 texels.
   vec2 o = 5.0 / size;
   // Only open sky (where the clouds are the backdrop) gets patched; rock below the deck keeps its own sample.
