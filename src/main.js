@@ -221,6 +221,7 @@ async function init() {
   session = initSession({
     camera,
     homes: island.rooms.filter((r) => r.id.startsWith('home')),
+    bar: island.rooms.find((r) => r.id === 'bar'),
     enterRoom: (r) => enterRoom(r),
     currentRoom: () => island.rooms.find((r) => r.pod === rig.room) ?? null,
     leaveToOverview: () =>

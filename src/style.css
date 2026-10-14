@@ -372,6 +372,13 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 .fade.slow { transition-duration: 1.4s; }
 
+/* ---------- Chogs chatting at the bar (A9) ---------- */
+.chog-bubble.bar-bubble { max-width: 280px; }
+.bar-bubble .who { display: block; margin-bottom: 2px; font: 600 12px/1.2 var(--body); color: #7a52c8; letter-spacing: 0.02em; }
+@media (max-width: 760px) {
+  .chog-bubble.bar-bubble { max-width: min(240px, calc(100vw - 48px)); font-size: 14px; }
+}
+
 /* ---------- Chat with your Chog (A8) ---------- */
 .chat {
   position: fixed;
@@ -428,7 +435,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   pointer-events: none;
   transition: opacity 0.2s ease;
 }
-.chog-bubble::after { content: ''; position: absolute; left: 50%; bottom: -8px; margin-left: -8px; border: 8px solid transparent; border-bottom: 0; border-top-color: #fff8ee; }
+.chog-bubble::after { content: ''; position: absolute; left: calc(50% + var(--tail, 0px)); bottom: -8px; margin-left: -8px; border: 8px solid transparent; border-bottom: 0; border-top-color: #fff8ee; }
 .chog-bubble[hidden] { display: none; }
 @media (max-width: 760px) {
   .chat { right: 16px; left: 16px; width: auto; bottom: 134px; max-height: 46vh; }

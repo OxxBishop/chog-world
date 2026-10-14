@@ -58,8 +58,8 @@ doesn't yet, stub it and move on, then come back.
 | 5 | A8 | Chat with your Chog in the world, wired to C's brain (`src/brain.js`): its mood and face react to the conversation | Oct 16 | C5 | done |
 | 6 | A6 | **Sale cutscene** (the demo's centrepiece): the Chog looks at the camera, colour drains from the feet up and it walks off grey, then the user is carried out to the space view (B7), fade, "Your Chog has moved on." | Oct 17 | B7 (stub until then) | done (calls `world.enterSpace`, a stub in `src/main.js` until B7 lands) |
 | 7 | A7 | Login and logoff effects: on login the Chog wakes in its dome home; on logoff it waves and the user is carried out to the space view (B7) | Oct 17 | B7 | done (same stub) |
-| 8 | A5 | NPC slots: a singer on a stage in the square with Chogs gathered round, a Chog sniffing a flower, a Chog running around with a toy block | Oct 18 | C2 models | doing |
-| 9 | A9 | Chog-to-Chog chats in the bar, using C's brain. This is the clip the demo leads with | Oct 18 | C5 | doing |
+| 8 | A5 | NPC slots: a singer on a stage in the square with Chogs gathered round, a Chog sniffing a flower, a Chog running around with a toy block | Oct 18 | C2 models | blocked: waiting on the Tripo models (slots built in `src/npcs.js`; `?npcs` shows them with standees) |
+| 9 | A9 | Chog-to-Chog chats in the bar, using C's brain. This is the clip the demo leads with | Oct 18 | C5 | done |
 
 ### Agent B: world polish, load time, the world from space, casino
 | Order | # | Task | Target | Needs | Status |
