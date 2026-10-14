@@ -207,11 +207,13 @@ class Room {
     for (const s of [-1, 1]) g.add(new THREE.Mesh(new THREE.BoxGeometry(t, o.h, 0.3).translate(o.x + s * (o.w / 2 + t / 2), o.h / 2, 0.1), this.mats.trim));
     // The leaf hangs on its own hinge, kept out of the merge so it can swing into the room
     // (hinge.rotation.y = hinge.userData.dir * angle; src/entry.js opens it).
+    // It hangs on the side away from the room's framed view, so open it never stands between that view
+    // and the doorway.
     const hinge = new THREE.Group();
-    hinge.position.set(o.x - o.w / 2, 0, -0.05);
-    hinge.userData.dir = -1;
-    hinge.add(new THREE.Mesh(new THREE.BoxGeometry(o.w, o.h, 0.14).translate(o.w / 2, o.h / 2, 0), this.mats.trim));
-    for (const z of [0.15, -0.15]) hinge.add(new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8).translate(o.w * 0.85, o.h * 0.48, z), this.mats.brass));
+    hinge.position.set(o.x + o.w / 2, 0, -0.05);
+    hinge.userData.dir = 1;
+    hinge.add(new THREE.Mesh(new THREE.BoxGeometry(o.w, o.h, 0.14).translate(-o.w / 2, o.h / 2, 0), this.mats.trim));
+    for (const z of [0.15, -0.15]) hinge.add(new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8).translate(-o.w * 0.85, o.h * 0.48, z), this.mats.brass));
     hinge.traverse((m) => m.isMesh && (m.userData.keep = true));
     g.add(hinge);
     this.doorway = { ...o, hinge };

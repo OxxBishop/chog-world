@@ -3,15 +3,15 @@
  * you to connect a wallet (or explore as a guest), shows a pixel Chog running in circles while your
  * wallet is searched, and greets your Chog by name before the flight down to its home.
  *
- * Sign-in itself is A's (src/session.js); it drives this screen through state(name, data):
- *   'connect'   { wallets: [{ name, icon, pick() }], guest() }   the call to connect, a button per wallet
- *   'step'      { title, text }                                 a step that waits on the wallet
- *   'searching' { text }                                        the running Chog, until tokensOf answers
- *   'found'     { name, image }                                 "Welcome, <name>", with its own face
- *   'none'      { claim(), guest(), text }                      no Chog in this wallet
- *   'error'     { text, retry(), guest() }                      something failed
- * flyHome(room) (from src/arrival.js) tears the screen away and flies down to that home; close() just
- * tears it away (a guest, say).
+ * main.js opens it on 'start' (Connect wallet, Try a demo Chog, Explore as a guest). Sign-in itself is
+ * A's (src/session.js): Connect and the demo call into it, and it drives the screen from there through
+ * state(name, data), with the names and data of A's API (HANDOFF, A10 and A11):
+ *   'wallets' { wallets: [{ name, icon }], pick(i) }   'nowallet' {}   'connect' { wallet }   'sign' {}
+ *   'searching' { address }   'pick' { chogs: [{ id, name, image }], pick(id) }
+ *   'welcome' { id, name, image }   'none' { address, claimsLeft, faucetUrl, claim(), demo() }
+ *   'claiming' {}   'error' { message, retry() }
+ * Every screen where you could be stuck keeps the way out as a guest. flyHome (main.js, src/arrival.js)
+ * tears the screen away and flies home; done() tidies up once the hello has landed.
  *
  * The running Chog is the official art, pixelated here as it loads: no sprite is drawn by hand.
  */
@@ -20,6 +20,7 @@ const BASE = import.meta.env?.BASE_URL ?? '/';
 // Faces for the search: a few Chogs whose art ships with the site.
 const SEARCH_FACES = [43, 1, 130, 87, 892, 1517, 22, 35];
 
+const short = (a) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 // The art, pixelated to a round token `size` pixels across, with a dark rim.
@@ -202,6 +203,11 @@ export function createIntro(el) {
   runnerCanvas.className = 'runner';
   const runner = createRunner(runnerCanvas);
   let current = 'loading';
+  // The start screen's handlers (connect, demo, guest), kept for every screen after it.
+  let handlers = {};
+  // When the glitch welcome went up: it gets its moment before the screen tears away.
+  let welcomeAt = 0;
+  const WELCOME_MIN = 1800;
 
   const burst = () => {
     el.classList.remove('burst');
@@ -244,52 +250,99 @@ export function createIntro(el) {
       el.classList.remove('done', 'leaving');
       // Opened again later (from the Sign in button, say): the world's controls step aside again.
       if (el.classList.contains('ready')) document.body.classList.add('intro-open');
-      if (name === 'connect') {
-        setTitle('WELCOME TO', 'CHOG WORLD');
-        const wallets = data.wallets ?? [];
-        const buttons = wallets.length
-          ? wallets.map((w) => `<button class="px wallet">${w.icon ? `<img src="${esc(w.icon)}" alt="">` : ''}${esc(w.name.toUpperCase())}</button>`).join('')
-          : `<button class="px wallet">CONNECT WALLET</button>`;
+      if (name === 'start') handlers = data;
+      const guest = `<button class="link guest">Explore as a guest</button>`;
+      const demo = `<button class="px alt demo">TRY A DEMO CHOG</button>`;
+      const home = name === 'welcome';
+      if (!home) setTitle('WELCOME TO', 'CHOG WORLD');
+      if (name === 'start') {
         show(`
           <div class="prompt">CONNECT WALLET TO BEGIN<span class="cursor"></span></div>
-          ${data.text ? `<p class="note warn">${esc(data.text)}</p>` : ''}
-          <div class="buttons">${buttons}</div>
-          <button class="link guest">Explore as a guest</button>`);
-        on('.wallet', (i) => (wallets[i]?.pick ?? data.connect)?.());
-        on('.guest', () => data.guest?.());
+          <div class="buttons"><button class="px wallet">CONNECT WALLET</button>${demo}</div>
+          ${guest}`);
+        on('.wallet', () => handlers.connect?.());
         stage.querySelector('.px')?.focus({ preventScroll: true });
-      } else if (name === 'step') {
-        show(`<div class="prompt">${esc((data.title ?? '').toUpperCase())}<span class="cursor"></span></div>${data.text ? `<p class="note">${esc(data.text)}</p>` : ''}`);
+      } else if (name === 'wallets') {
+        const wallets = data.wallets ?? [];
+        show(`
+          <div class="prompt">PICK A WALLET</div>
+          <div class="buttons">${wallets.map((w) => `<button class="px wallet">${w.icon ? `<img src="${esc(w.icon)}" alt="">` : ''}${esc(String(w.name).toUpperCase())}</button>`).join('')}</div>
+          ${guest}`);
+        on('.wallet', (i) => data.pick?.(i));
+      } else if (name === 'nowallet') {
+        show(`
+          <div class="prompt">NO WALLET IN THIS BROWSER</div>
+          <p class="note">Add a wallet such as MetaMask or Phantom to bring your own Chog, or meet one now.</p>
+          <div class="buttons">${demo}</div>
+          ${guest}`);
+      } else if (name === 'connect') {
+        show(`
+          <div class="prompt">CONNECTING${data.wallet ? ` TO ${esc(String(data.wallet).toUpperCase())}` : ''}<span class="cursor"></span></div>
+          <p class="note">Approve the connection, and the switch to Monad Testnet if it asks.</p>`);
+      } else if (name === 'sign') {
+        show(`
+          <div class="prompt">SIGN THE MESSAGE<span class="cursor"></span></div>
+          <p class="note">It is free and sends nothing.</p>`);
       } else if (name === 'searching') {
-        setTitle('WELCOME TO', 'CHOG WORLD');
         runner.reset();
-        show(`<div class="prompt">SEARCHING YOUR WALLET<span class="cursor"></span></div>${data.text ? `<p class="note">${esc(data.text)}</p>` : ''}`, { run: true });
-      } else if (name === 'found') {
-        setTitle('WELCOME,', (data.name ?? 'CHOG').toUpperCase());
+        show(`
+          <div class="prompt">SEARCHING YOUR WALLET<span class="cursor"></span></div>
+          ${data.address ? `<p class="note">${esc(short(data.address))}</p>` : ''}`, { run: true });
+      } else if (name === 'pick') {
+        const chogs = data.chogs ?? [];
+        show(`
+          <div class="prompt">PICK YOUR CHOG</div>
+          <div class="chogs">${chogs.map((c) => `<button class="chog"><img src="${esc(c.image)}" alt=""><span>${esc(String(c.name).toUpperCase())}</span></button>`).join('')}</div>`);
+        on('.chog', (i) => data.pick?.(chogs[i].id));
+      } else if (name === 'welcome') {
+        welcomeAt = performance.now();
+        setTitle('WELCOME,', String(data.name ?? 'CHOG').toUpperCase());
         show(`<div class="prompt">TAKING YOU HOME<span class="cursor"></span></div>`, { run: true });
         if (data.image) runner.yours(data.image);
       } else if (name === 'none') {
-        setTitle('WELCOME TO', 'CHOG WORLD');
+        const canClaim = (data.claimsLeft ?? 1) > 0;
         show(`
           <div class="prompt">NO CHOGS IN THIS WALLET</div>
-          ${data.text ? `<p class="note">${esc(data.text)}</p>` : ''}
-          <div class="buttons"><button class="px claim">CLAIM A FREE CHOG</button></div>
-          <button class="link guest">Explore as a guest</button>`);
+          <p class="note">${canClaim ? 'Claim one free on Monad testnet. It needs a little testnet MON for gas' : 'This wallet has claimed all the Chogs it can'}${canClaim && data.faucetUrl ? `: <a href="${esc(data.faucetUrl)}" target="_blank" rel="noopener">get some from the faucet</a>.` : '.'}</p>
+          <div class="buttons">${canClaim ? '<button class="px claim">CLAIM A FREE CHOG</button>' : ''}${demo}</div>
+          ${guest}`);
         on('.claim', () => data.claim?.());
-        on('.guest', () => data.guest?.());
+      } else if (name === 'claiming') {
+        runner.reset();
+        show(`
+          <div class="prompt">CLAIMING YOUR CHOG<span class="cursor"></span></div>
+          <p class="note">Confirm the claim in your wallet. Gas is paid in testnet MON.</p>`, { run: true });
       } else if (name === 'error') {
-        setTitle('WELCOME TO', 'CHOG WORLD');
         show(`
           <div class="prompt">THAT DIDN'T WORK</div>
-          ${data.text ? `<p class="note warn">${esc(data.text)}</p>` : ''}
-          <div class="buttons"><button class="px retry">TRY AGAIN</button></div>
-          <button class="link guest">Explore as a guest</button>`);
+          ${data.message ? `<p class="note warn">${esc(data.message)}</p>` : ''}
+          <div class="buttons"><button class="px retry">TRY AGAIN</button>${demo}</div>
+          ${guest}`);
         on('.retry', () => data.retry?.());
-        on('.guest', () => data.guest?.());
       }
+      // The same demo and guest everywhere: the start screen's, or a state's own.
+      on('.demo', () => (data.demo ?? handlers.demo)?.());
+      on('.guest', () => handlers.guest?.());
     },
-    // Tears the screen away. Resolves once it is gone.
-    close() {
+    // Resolves once the welcome has been up long enough to read.
+    held() {
+      const left = welcomeAt + WELCOME_MIN - performance.now();
+      return new Promise((resolve) => setTimeout(resolve, Math.max(0, left)));
+    },
+    // Once the hello has landed (A11): make sure the screen is gone, and bring the world's controls in.
+    done() {
+      if (current !== 'closed') return api.close();
+      const body = document.body;
+      if (body.classList.contains('intro-open')) {
+        body.classList.add('intro-reveal');
+        body.classList.remove('intro-open');
+        setTimeout(() => body.classList.remove('intro-reveal'), 900);
+      }
+      return Promise.resolve();
+    },
+    // Tears the screen away. Resolves once it is gone. keepHud leaves the world's controls hidden (for
+    // the arrival, until done()).
+    close({ keepHud = false } = {}) {
       current = 'closed';
       runner.stop();
       el.classList.add('leaving');
@@ -297,7 +350,7 @@ export function createIntro(el) {
         setTimeout(() => {
           el.classList.add('done');
           el.classList.remove('leaving');
-          document.body.classList.remove('intro-open');
+          if (!keepHud) document.body.classList.remove('intro-open');
           resolve();
         }, 560),
       );

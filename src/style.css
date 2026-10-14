@@ -495,6 +495,7 @@ body.demo .hud, body.demo .places-toggle, body.demo .nav-hint, body.demo .signin
 #loading.intro > * { position: relative; z-index: 4; }
 /* The world's own controls wait until the screen is gone. */
 body.intro-open .hud, body.intro-open .places-toggle, body.intro-open .nav-hint, body.intro-open .signin-btn, body.intro-open .chog-chip, body.intro-open .focus-bar { opacity: 0; pointer-events: none; }
+body.intro-reveal .hud, body.intro-reveal .places-toggle, body.intro-reveal .nav-hint, body.intro-reveal .signin-btn, body.intro-reveal .chog-chip, body.intro-reveal .focus-bar { transition: opacity 0.8s ease; }
 
 .intro .kicker {
   font-family: 'Press Start 2P', monospace;
@@ -633,6 +634,17 @@ body.intro-open .hud, body.intro-open .places-toggle, body.intro-open .nav-hint,
 .intro .link:hover { color: var(--ink); }
 .intro .link:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 .intro .runner { width: 224px; height: 224px; margin: -24px 0 -30px; image-rendering: pixelated; }
+.intro .note a { color: var(--cyan); }
+/* Picking one of your Chogs: their art, chunky, in pixel frames. */
+.intro .chogs { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; max-width: 560px; }
+.intro .chog {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 8px; background: #12082c; border: 0; cursor: pointer; color: var(--ink);
+  font-family: 'Press Start 2P', monospace; font-size: 9px; letter-spacing: 0.04em;
+  box-shadow: 0 0 0 3px var(--lilac), 0 0 16px rgba(183, 156, 255, 0.3);
+}
+.intro .chog img { width: 88px; height: 88px; image-rendering: pixelated; }
+.intro .chog:hover, .intro .chog:focus-visible { box-shadow: 0 0 0 3px var(--cyan), 0 0 22px rgba(62, 242, 255, 0.5); outline: none; }
 
 /* Gone: torn into strips and out. */
 #loading.intro.leaving { animation: intro-tear 0.55s steps(6) forwards; }

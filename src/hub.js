@@ -294,7 +294,7 @@ export function vestibule(parent, { x, half, top, zOut, zIn, sill, floorIn, room
     parent.add(box(half * 2, t - floorIn + 0.1, RUN, mats.steps, x, (t + floorIn - 0.1) / 2, z0 + RUN / 2));
     if (runner) {
       parent.add(box(runner, 0.04, RUN, mats.runner, x, t + 0.02, z0 + RUN / 2));
-      parent.add(box(runner, rise, 0.04, mats.runner, x, t + rise / 2, z0 + RUN + 0.02));
+      parent.add(box(runner, rise, 0.04, mats.runner, x, t + rise / 2, z0 + RUN - 0.02));
     }
   }
   const flat = stepsAt - count * RUN - zIn;

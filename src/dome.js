@@ -286,12 +286,15 @@ diffuseColor.a = mix(0.07, 0.8, fres);
       return l;
     });
     const hallLamps = [];
-    vestibule(this.group, {
+    const hallFloor = vestibule(this.group, {
       x: 0, half: PD.half, top: PD.top - 0.05, zOut: PD.z - 0.12, zIn: roomFront, sill: PD.bottom, floorIn: 0.2,
       roomDoor: { half: this.room.doorway.w / 2, h: this.room.doorway.h }, mats: hm, lamps: hallLamps,
     });
     const L = (x, y, z) => this.group.localToWorld(new THREE.Vector3(x, y, z));
     this.podDoor = {
+      // The hall in the dome's own space: its floor along it (floor(z)), from the doorway (z) back to
+      // the room's door (zIn), and how tall the doorway is.
+      hall: { floor: hallFloor, z: PD.z, zIn: roomFront, sill: PD.bottom, top: PD.top },
       // The middle of the doorway's sill, a spot just inside the hall, and the way out (world).
       at: () => L(0, PD.bottom, PD.z + 0.3),
       inside: () => L(0, PD.bottom, PD.z - 0.9),
