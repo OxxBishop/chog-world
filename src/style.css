@@ -453,3 +453,198 @@ body.demo .hud, body.demo .places-toggle, body.demo .nav-hint, body.demo .signin
 @font-face { font-family: 'Fredoka'; font-style: normal; font-weight: 500 600; font-display: swap; src: url(/fonts/fredoka-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: 'Figtree'; font-style: normal; font-weight: 400 600; font-display: swap; src: url(/fonts/figtree-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: 'Figtree'; font-style: normal; font-weight: 400 600; font-display: swap; src: url(/fonts/figtree-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+/* Agent B: the intro (loading screen, connect, the search, welcome). Pixel type, scanlines, RGB split. */
+@font-face { font-family: 'Press Start 2P'; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/pressstart2p-latin.woff2) format('woff2'); }
+@font-face { font-family: 'Pixelify Sans'; font-style: normal; font-weight: 400 700; font-display: swap; src: url(/fonts/pixelifysans-latin.woff2) format('woff2'); }
+
+#loading.intro {
+  --pink: #ff3d8b;
+  --cyan: #3ef2ff;
+  --ink: #f4ecff;
+  --dim: #a99ad8;
+  --lilac: #b79cff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 24px 16px;
+  overflow: hidden;
+  font-family: 'Pixelify Sans', 'Press Start 2P', monospace;
+  color: var(--ink);
+  background: radial-gradient(circle at 50% 42%, #2b145e 0%, #12082c 58%, #07030f 100%);
+  transition: opacity 0.5s, background-color 0.8s;
+}
+/* Once the world is loaded it shows through, dimmed, behind the screen. */
+#loading.intro.ready { background: radial-gradient(circle at 50% 42%, rgba(43, 20, 94, 0.72) 0%, rgba(18, 8, 44, 0.82) 60%, rgba(7, 3, 15, 0.9) 100%); }
+#loading.intro::before,
+#loading.intro::after { content: ''; position: absolute; inset: 0; pointer-events: none; }
+/* Scanlines, and a slow bright band rolling down like an old screen. */
+#loading.intro::before {
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.32) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, transparent 0%, rgba(183, 156, 255, 0.07) 48%, transparent 56%);
+  background-size: 100% 100%, 100% 260%;
+  animation: intro-roll 6s linear infinite;
+  z-index: 3;
+}
+#loading.intro::after { background: radial-gradient(circle at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%); z-index: 2; }
+@keyframes intro-roll { from { background-position: 0 0, 0 -160%; } to { background-position: 0 0, 0 100%; } }
+
+#loading.intro > * { position: relative; z-index: 4; }
+/* The world's own controls wait until the screen is gone. */
+body.intro-open .hud, body.intro-open .places-toggle, body.intro-open .nav-hint, body.intro-open .signin-btn, body.intro-open .chog-chip, body.intro-open .focus-bar { opacity: 0; pointer-events: none; }
+
+.intro .kicker {
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(10px, 2.4vw, 14px);
+  letter-spacing: 0.18em;
+  color: var(--lilac);
+  margin-bottom: 14px;
+}
+/* The glitch title: the text twice more, split red and cyan, each sliced and jolted now and then. */
+.intro .glitch {
+  position: relative;
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(22px, 6.4vw, 54px);
+  line-height: 1.15;
+  text-align: center;
+  color: var(--ink);
+  text-shadow: -3px 0 var(--pink), 3px 0 var(--cyan), 0 0 18px rgba(183, 156, 255, 0.45);
+  animation: intro-jolt 3.4s steps(1) infinite;
+}
+.intro .glitch::before,
+.intro .glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.intro .glitch::before { color: var(--pink); text-shadow: none; animation: intro-slice-a 2.7s steps(1) infinite; }
+.intro .glitch::after { color: var(--cyan); text-shadow: none; animation: intro-slice-b 3.1s steps(1) infinite; }
+@keyframes intro-jolt {
+  0%, 86%, 100% { transform: none; }
+  87% { transform: translate(-4px, 1px) skewX(-8deg); }
+  89% { transform: translate(5px, -1px); }
+  91% { transform: none; filter: brightness(1.6); }
+  92% { filter: none; }
+}
+@keyframes intro-slice-a {
+  0%, 70%, 100% { clip-path: inset(100% 0 0 0); transform: none; }
+  71% { clip-path: inset(12% 0 64% 0); transform: translate(-7px, 0); }
+  74% { clip-path: inset(58% 0 22% 0); transform: translate(6px, 0); }
+  77% { clip-path: inset(36% 0 48% 0); transform: translate(-3px, 0); }
+  80% { clip-path: inset(100% 0 0 0); }
+}
+@keyframes intro-slice-b {
+  0%, 60%, 100% { clip-path: inset(100% 0 0 0); transform: none; }
+  61% { clip-path: inset(70% 0 8% 0); transform: translate(8px, 0); }
+  64% { clip-path: inset(20% 0 66% 0); transform: translate(-6px, 0); }
+  67% { clip-path: inset(100% 0 0 0); }
+}
+/* A burst of glitching, for changes of screen. */
+.intro.burst .glitch { animation: intro-burst 0.5s steps(2) 1; }
+.intro.burst .glitch::before { animation: intro-slice-a 0.5s steps(1) infinite; animation-delay: -0.36s; }
+.intro.burst .glitch::after { animation: intro-slice-b 0.45s steps(1) infinite; animation-delay: -0.3s; }
+@keyframes intro-burst {
+  0% { transform: translate(-6px, 0) skewX(10deg); filter: hue-rotate(60deg); }
+  25% { transform: translate(7px, -2px); }
+  50% { transform: translate(-3px, 2px) skewX(-6deg); filter: none; }
+  100% { transform: none; }
+}
+
+/* The load: chunky blocks filling up, and what is happening under them. */
+.intro .load-bar {
+  --p: 0;
+  width: min(320px, 72vw);
+  height: 14px;
+  margin: 30px auto 10px;
+  padding: 3px;
+  border: 2px solid var(--lilac);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: 0 0 0 2px #12082c, 0 0 14px rgba(183, 156, 255, 0.35);
+  overflow: visible;
+  image-rendering: pixelated;
+}
+.intro .load-bar i {
+  display: block;
+  height: 100%;
+  transform: none !important;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 10px, #12082c 10px 12px),
+    linear-gradient(90deg, var(--cyan), var(--lilac) 50%, var(--pink));
+  clip-path: inset(0 calc((1 - var(--p)) * 100%) 0 0);
+}
+.intro .sub {
+  font-family: 'Pixelify Sans', monospace;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  min-height: 1.4em;
+}
+
+/* After the load: the call to connect. */
+.intro .stage { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 26px; min-height: 190px; }
+.intro .stage[hidden] { display: none; }
+.intro .prompt {
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(11px, 2.6vw, 15px);
+  letter-spacing: 0.06em;
+  text-align: center;
+  line-height: 1.6;
+}
+.intro .prompt .cursor { display: inline-block; width: 0.7em; height: 1em; margin-left: 4px; vertical-align: -0.12em; background: var(--cyan); animation: intro-blink 1s steps(1) infinite; }
+@keyframes intro-blink { 50% { opacity: 0; } }
+.intro .note { max-width: 420px; text-align: center; font-size: 15px; color: var(--dim); line-height: 1.4; }
+.intro .note.warn { color: #ffb3cf; }
+.intro .buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.intro .px {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #12082c;
+  background: var(--cyan);
+  border: 0;
+  padding: 14px 18px;
+  cursor: pointer;
+  box-shadow: inset -4px -4px 0 rgba(0, 0, 0, 0.28), inset 4px 4px 0 rgba(255, 255, 255, 0.45), 0 0 0 3px #12082c, 0 0 0 5px var(--cyan), 0 0 22px rgba(62, 242, 255, 0.45);
+  transition: transform 0.08s;
+}
+.intro .px:hover { filter: brightness(1.12); }
+.intro .px:active { transform: translateY(2px); }
+.intro .px:focus-visible { outline: 3px solid var(--pink); outline-offset: 6px; }
+.intro .px.alt { background: var(--lilac); box-shadow: inset -4px -4px 0 rgba(0, 0, 0, 0.28), inset 4px 4px 0 rgba(255, 255, 255, 0.4), 0 0 0 3px #12082c, 0 0 0 5px var(--lilac); }
+.intro .px img { width: 16px; height: 16px; vertical-align: -3px; margin-right: 8px; image-rendering: pixelated; }
+.intro .link {
+  font-family: 'Pixelify Sans', monospace;
+  font-size: 16px;
+  color: var(--dim);
+  background: none;
+  border: 0;
+  padding: 6px 4px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.intro .link:hover { color: var(--ink); }
+.intro .link:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.intro .runner { width: 224px; height: 224px; margin: -24px 0 -30px; image-rendering: pixelated; }
+
+/* Gone: torn into strips and out. */
+#loading.intro.leaving { animation: intro-tear 0.55s steps(6) forwards; }
+@keyframes intro-tear {
+  0% { clip-path: inset(0 0 0 0); filter: none; }
+  30% { clip-path: inset(10% 0 30% 0); transform: translateX(-10px); filter: hue-rotate(80deg) brightness(1.4); }
+  55% { clip-path: inset(46% 0 40% 0); transform: translateX(14px); }
+  80% { clip-path: inset(49% 0 49% 0); transform: translateX(-6px) scaleY(0.4); }
+  100% { clip-path: inset(50% 0 50% 0); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro .glitch, .intro .glitch::before, .intro .glitch::after, #loading.intro::before, .intro .prompt .cursor { animation: none; }
+  #loading.intro.leaving { animation: none; opacity: 0; }
+}
