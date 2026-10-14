@@ -27,6 +27,14 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · A (A5: the singer)
+- **The singer is in** (`src/npcs.js`). C's `models/npcs/singer.glb` loads for the singer slot, at plaza (27, 30) on the paving. It faces out over the plaza, between the fountain and the downtown walk, and doesn't turn. The stage and mic stand are part of the model.
+- It plays a set on a loop: eight bars of `Sing` (19.2 s), `Cheer` (2.66 s), `Idle` (4 s), crossfading. Its shaders are compiled before it appears (`warmUp` in `src/main.js`, shared with the session).
+- **Outdoor characters are 1.7x** (`OUTDOOR` in `src/npcs.js`), the same as the plaza's benches and lamps (`BENCH_SCALE`), so they sit right beside them. The rooms stay life size.
+- **Each character shows once it has a model:** a slot's own `glb`, or the trait models (`READY`). The crowd, sniffer and runner stay hidden until then. `?npcs` still previews every slot with standees.
+- **For C, next models:** a slot can take its own file the way the singer does (`NPC_SLOTS.<slot>.glb`, clips named as in `CLIPS`). The crowd ring is 5.5 m before the 1.7x scale (about 9.4 m after); check it clears the lamp at plaza (33, 25) when the crowd lands.
+- **See it:** the Downtown view, or `?view=downtown`, and look to the right of the fountain toward the casino.
+
 ### 2026-10-14 · C · The user's notes: room entries, the loading screen, and how the video gets made
 - **Room entries (bar, casino, lobby) are poorly done:** "it just fades in black and skips to the interior". The user wants a proper in-world move: through the door, a mini cutscene of the interior, then a pan to the Chog walking in. Now **B10** (camera, doors, reveal) and **A10** (`session.walkIn`). It is the user's first priority after B7.
 - **Loading screen:** the user wants a glitchy, pixelated screen: "welcome to the chog world, connect wallet to begin", a cool loader (a Chog circling in place until a Chog is found in the wallet), "welcome", then a mini cutscene of the island with your Chog spawning in a pod in its dome and saying hello to the camera. Now **B11** (screen and flight, B owns it) and **A11** (sign-in states, spawn, hello). Keep "Explore as a guest": judges may have no testnet Chog.
