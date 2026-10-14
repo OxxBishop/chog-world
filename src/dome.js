@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { piece, repaint } from './kaykit.js';
+import { piece, repaint, carve } from './kaykit.js';
+import { hingedLeaf, vestibule } from './hub.js';
 import { buildHomeRoom } from './interior.js';
 import { createGlows } from './glows.js';
 import { DOME_R, WORLD } from './layout.js';
@@ -16,6 +17,19 @@ const DOOR_H = 5.2;
 // all the domes share it, each in its own materials. Building it per dome was most of the island's
 // build time.
 let FRAME = null;
+
+// The homes' doors and the halls behind them, the same in every dome.
+let HOME_MATS = null;
+const homeMats = () =>
+  (HOME_MATS ??= {
+    hallCream: new THREE.MeshLambertMaterial({ color: '#f1ebf7', emissive: new THREE.Color('#ffb46e') }),
+    hallWood: new THREE.MeshLambertMaterial({ color: '#6e4630', emissive: new THREE.Color('#ffb46e') }),
+    hallStone: new THREE.MeshLambertMaterial({ color: '#e9e2f2', emissive: new THREE.Color('#ffb46e') }),
+    lantern: new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.3 }),
+    brass: new THREE.MeshStandardMaterial({ color: '#cfa84e', metalness: 0.75, roughness: 0.35 }),
+    panel: new THREE.MeshLambertMaterial({ color: '#c9c6d8' }),
+    trim: new THREE.MeshLambertMaterial({ color: '#8f8aa3' }),
+  });
 
 // Copies of one geometry, each moved by its own matrix, in one geometry: what merging moved clones
 // gives, without making a geometry for every copy.
@@ -258,12 +272,42 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     pod.position.set(0, 0, this.homeZ);
     this.group.add(pod);
     this.home = { halfW: 7.6, back: -7.8, front: 8.6, center: this.homeZ + 0.35 };
+    // The room inside the home, drawn only while the camera is in it.
+    this.room = buildHomeRoom(biome);
+    // The home's door opens for real, so your Chog can step out of it (A11): a doorway cut through the
+    // pod's door panel, two panels on hinges, and a short hall back to the room's own door.
+    const hm = homeMats();
+    const PD = { half: 1.95, bottom: 1.05, top: 4.5, z: this.homeZ + 7.8 };
+    const roomFront = this.home.center + this.room.d / 2;
+    carve(pod, new THREE.Box3(new THREE.Vector3(-PD.half, PD.bottom, roomFront + 0.5), new THREE.Vector3(PD.half, PD.top, PD.z + 0.4)), this.group);
+    const leaves = [-1, 1].map((sx) => {
+      const l = hingedLeaf({ hinge: new THREE.Vector3(sx * PD.half, 0, PD.z), dir: -sx, width: PD.half, bottom: PD.bottom, height: PD.top - 0.05 - PD.bottom, mats: { darkWood: hm.panel, wood: hm.trim, brass: hm.brass } });
+      this.group.add(l);
+      return l;
+    });
+    const hallLamps = [];
+    vestibule(this.group, {
+      x: 0, half: PD.half, top: PD.top - 0.05, zOut: PD.z - 0.12, zIn: roomFront, sill: PD.bottom, floorIn: 0.2,
+      roomDoor: { half: this.room.doorway.w / 2, h: this.room.doorway.h }, mats: hm, lamps: hallLamps,
+    });
+    const L = (x, y, z) => this.group.localToWorld(new THREE.Vector3(x, y, z));
+    this.podDoor = {
+      // The middle of the doorway's sill, a spot just inside the hall, and the way out (world).
+      at: () => L(0, PD.bottom, PD.z + 0.3),
+      inside: () => L(0, PD.bottom, PD.z - 0.9),
+      outward: () => L(0, 0, 1).sub(L(0, 0, 0)).normalize(),
+      // Swings its two panels: 0 shut, 1 open.
+      open(k) {
+        const a = THREE.MathUtils.smootherstep(k, 0, 1) * 1.6;
+        for (const l of leaves) l.rotation.y = l.userData.dir * a;
+      },
+    };
     // A lamp by its door, lit after dark.
     const lampAt = new THREE.Vector3(3.2, 3.6, this.homeZ + 8.9);
     this.group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.6, 6).translate(lampAt.x, 1.8, lampAt.z), this.lampPost ??= new THREE.MeshStandardMaterial({ color: '#cfa84e', metalness: 0.7, roughness: 0.4 })));
     this.lampMat = new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.2 });
     this.group.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8).translate(lampAt.x, lampAt.y, lampAt.z), this.lampMat));
-    this.lampGlow = createGlows([lampAt], { size: 2, minPx: 4 });
+    this.lampGlow = createGlows([lampAt, ...hallLamps], { size: 2, minPx: 4 });
 
     // The two levels of detail: each its shared steel and its glass.
     const lod = new THREE.LOD();
@@ -274,8 +318,6 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     this.group.add(lod);
     mergeByMaterial(this.group);
     this.group.add(this.lampGlow.points);
-    // The room inside the home, drawn only while the camera is in it.
-    this.room = buildHomeRoom(biome);
     this.room.group.position.set(0, 0.2, this.home.center);
     this.room.group.visible = false;
     this.group.add(this.room.group);
@@ -298,6 +340,9 @@ diffuseColor.a = mix(0.07, 0.8, fres);
   }
 
   update(env, renderer) {
+    const hm = homeMats();
+    hm.hallCream.emissiveIntensity = hm.hallWood.emissiveIntensity = hm.hallStone.emissiveIntensity = 0.1 + env.night * 0.32;
+    hm.lantern.emissiveIntensity = 0.3 + env.night * 2.2;
     const n = env.night;
     this.lampGlow.update(env, renderer);
     if (this.room.group.visible) this.room.update(env, renderer);

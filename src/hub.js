@@ -237,7 +237,7 @@ const post = (r, h, mat, x, z, y = 0) => {
  * in direction dir (-1 or 1). Merged into one mesh per material and kept out of the hub's big merge,
  * so it can swing: rotation.y = dir * angle turns it inward, into the building.
  */
-function hingedLeaf({ hinge, dir, width, bottom, height, mats }) {
+export function hingedLeaf({ hinge, dir, width, bottom, height, mats }) {
   const g = new THREE.Group();
   g.position.copy(hinge);
   g.userData.dir = dir;
@@ -265,7 +265,7 @@ function hingedLeaf({ hinge, dir, width, bottom, height, mats }) {
  * from either side. The floor is a landing at the outside door's sill, then steps down to the room's
  * floor if that is lower. A lamp on each wall. Returns the hall's floor height along it, floor(z).
  */
-function vestibule(parent, { x, half, top, zOut, zIn, sill, floorIn, roomDoor, mats: m, lamps, runner = 0 }) {
+export function vestibule(parent, { x, half, top, zOut, zIn, sill, floorIn, roomDoor, mats: m, lamps, runner = 0 }) {
   // The hall's own surfaces, warmed by its lamps after dark (hallLight in buildHub).
   const mats = { ...m, cream: m.hallCream, darkWood: m.hallWood, steps: m.hallStone };
   const len = zOut - zIn;

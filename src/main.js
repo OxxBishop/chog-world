@@ -22,6 +22,8 @@ import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createFlight } from './flight.js';
 import { createSpace } from './space.js';
 import { createEntry } from './entry.js';
+import { createIntro } from './intro.js';
+import { createArrival } from './arrival.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -118,6 +120,8 @@ let clouds;
 let session = null;
 let space = null;
 let entry = null;
+let intro = null;
+let arrival = null;
 let npcs = null;
 let debug = null;
 
@@ -137,6 +141,8 @@ function phaseName(h, night) {
 }
 
 async function init() {
+  // The first screen (src/intro.js): the load, then connect or explore as a guest.
+  intro = createIntro($('loading'));
   // Each step's share of the loading bar, roughly how long it takes.
   const load = createLoader($('loading'), [
     ['download', 5, 'Waking the island'],
@@ -177,6 +183,8 @@ async function init() {
   // The world seen from space, ready before the shaders are built so it never stalls.
   space = createSpace({ scene, camera, renderer, sky, clouds, rig, dip: fadeThrough });
   // Walking into the Hub's rooms and out again, as one move (src/entry.js).
+  // The flight down to your Chog's home after signing in (src/arrival.js).
+  arrival = createArrival({ camera, rig, space, domes: island.domes });
   entry = createEntry({ camera, rig, hub: island.hub, fovs: { outdoor: outdoorFov, indoor: () => (camera.aspect < 1 ? 64 : 52) }, dom: renderer.domElement, session: () => session });
   load.set('build', 1);
   // Build every shader the world needs (the rooms and the post chain too) in the background, so the
@@ -204,7 +212,10 @@ async function init() {
     frame();
     load.set('frames', (i + 1) / 3);
   }
-  load.finish();
+  // A link to a view, a shot or space goes straight there; otherwise the intro stays up, over the
+  // world seen from space, asking you to connect.
+  const withIntro = !params.has('view') && !params.has('space') && !SHOTS[params.get('demo')] && !params.has('nointro');
+  load.finish({ keep: withIntro });
   const cloudsIn = clouds.stream(() => post.render(0)).then((shown) => {
     if (shown) load.mark('clouds');
     return shown;
@@ -242,6 +253,20 @@ async function init() {
       return space.enter({ from, duration });
     },
     leaveSpace: (opts) => space.leave(opts),
+    // The first screen (src/intro.js) and the flight to your Chog's home (src/arrival.js), for A11:
+    // intro.state(name, data), intro.close(), and intro.flyHome(room), which tears the screen away and
+    // resolves once the camera is in front of the pod, with its door.
+    intro: {
+      state: (name, data) => intro.state(name, data),
+      close: () => intro.close(),
+      flyHome: (room) => {
+        intro.close();
+        return arrival.fly(room);
+      },
+      get open() {
+        return !$('loading').classList.contains('done');
+      },
+    },
     // Compile a new object's shaders ahead of time, for the target the scene really draws into.
     prewarm: (obj) => {
       const was = renderer.getRenderTarget();
@@ -274,7 +299,20 @@ async function init() {
   if (SHOTS[params.get('demo')]) startDemo(SHOTS[params.get('demo')], cloudsIn);
   // ?space opens on the world seen from space.
   if (params.has('space')) space.enter({ duration: 0 });
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
+  if (withIntro) {
+    space.enter({ duration: 0 });
+    intro.ready();
+    // A11 drives the screen through sign-in (session.startIntro); until then, Connect opens the
+    // sign-in panel and a guest is flown back down to the world.
+    if (session.startIntro) session.startIntro(intro);
+    else {
+      intro.state('connect', {
+        connect: () => intro.close().then(() => $('btn-signin').click()),
+        guest: () => intro.close().then(() => space.leave({ duration: 2.5 })),
+      });
+    }
+  }
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: a camera flight for the video (src/flight.js) with the interface hidden. It holds its
@@ -535,6 +573,7 @@ function frame() {
   demo?.update(dt);
   space?.update();
   entry?.update(dt);
+  arrival?.update(dt);
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
   const fov = entry?.fov() ?? (rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov());
   if (Math.abs(camera.fov - fov) > 0.05) {
