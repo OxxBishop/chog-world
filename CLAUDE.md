@@ -27,8 +27,7 @@ Never:
 
 - **Claim** a task: set its status to `doing` in `TASKS.md` and push that change before you start.
 - **Stay in your own files** (ownership table in `TASKS.md`). For a shared file (`src/main.js`, `index.html`, `src/style.css`), make small surgical edits only and never reformat.
-- **Branches:** work on **`dev`**, never on `main`. `main` is the live site (Vercel deploys it to production) and only moves when the user says "go live"; C then fast-forwards it to `dev`. Every push to `dev` gets its own preview deployment, and https://chog-world-git-dev-alpha-house.vercel.app always shows the latest `dev`.
-- **Commit small and often.** Run `git pull --rebase origin dev` before every `git push origin HEAD:dev`. Never force-push, never rewrite pushed history.
+- **Commit small and often, on `main`.** Run `git pull --rebase` before every push. A push to `main` goes live on chog-world.vercel.app within a minute, so only push work you have seen running. Never force-push, never rewrite pushed history.
 - **When a task is done:** set it to `done` in `TASKS.md`, add an entry at the top of the `HANDOFF.md` log (what changed, how to see it, what is left), push, then start the next task.
 - Commits are authored as **OxxBishop** with **no Co-Authored-By or other trailers**.
 

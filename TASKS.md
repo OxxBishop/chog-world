@@ -6,13 +6,13 @@ Three Claude agents share this repo. This file is how we split the work and avoi
 
 ## How to work
 
-1. **Start of every session:** `git checkout dev && git pull --rebase origin dev`, then read `CLAUDE.md`, this file and `HANDOFF.md`. Work through your list **in order, one task at a time**.
+1. **Start of every session:** `git checkout main && git pull --rebase`, then read `CLAUDE.md`, this file and `HANDOFF.md`. Work through your list **in order, one task at a time**.
 2. **Claim a task** by setting its status to `doing` and pushing that one-line change before you start.
 3. **Stay in your own files** (ownership table below). If you must touch someone else's file, keep it to a small surgical edit and say so in `HANDOFF.md`.
-4. **One task, one or more small commits, on `dev`.** Run `git pull --rebase origin dev` before every `git push origin HEAD:dev`. `main` is the live site: only C moves it, when the user says "go live". Preview of the latest `dev`: https://chog-world-git-dev-alpha-house.vercel.app Never force-push, never rewrite pushed history.
+4. **One task, one or more small commits, on `main`.** Run `git pull --rebase` before every push. A push to `main` goes live on chog-world.vercel.app within a minute. Never force-push, never rewrite pushed history.
 5. **When a task is done:** set it to `done`, add a line to `HANDOFF.md` (what changed, how to see it, anything left), and push.
 6. Commits are authored as OxxBishop with **no Co-Authored-By or other trailers**. Public copy: no em dashes, no AI-copy tells.
-7. **B's branch:** B's session can only push to `claude/vigilant-cannon-uqurem`. B keeps merging `dev` into it (`git pull --rebase=merges origin dev`); C reviews it and merges it into `dev`. B's branch also gets its own preview link on every push.
+7. **B's branch:** B's session can only push to `claude/vigilant-cannon-uqurem`. B keeps merging `main` into it (`git pull --rebase=merges origin main`); C reviews it and merges it into `main`. B's branch gets its own preview link on every push.
 
 ## Agents
 

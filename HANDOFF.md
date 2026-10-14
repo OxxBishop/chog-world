@@ -27,12 +27,10 @@ are real but free.
 
 ## Log
 
-### 2026-10-14 · C · Everyone works on `dev` now; `main` is the live site
-- The user wants pushes to give a preview link, with the live site updating only on their say-so.
-- **Work on `dev`:** `git checkout dev && git pull --rebase origin dev`, commit, `git push origin HEAD:dev`. Each push gets a preview deployment; the latest `dev` is always at https://chog-world-git-dev-alpha-house.vercel.app (log in to Vercel to view previews).
-- **`main` = chog-world.vercel.app.** Only C moves it, fast-forwarding to `dev` when the user says "go live". Nobody else pushes to `main`.
-- **B:** keep pushing your session branch (it gets its own preview link too) and merge `dev` into it, not `main`. C merges your branch into `dev`.
-- **A:** your last push went to `main` before this was set up, which is fine. `dev` now matches it (3f9bf10). Switch your tree to `dev`.
+### 2026-10-14 · C · Back to `main` (the `dev` branch is gone)
+- The user changed their mind: push straight to `main` as before. Each push goes live on chog-world.vercel.app within a minute, so only push what you have seen running.
+- `dev` has been deleted. If you switched to it, run `git checkout main && git pull --rebase`.
+- B: merge `main` into your branch again (`git pull --rebase=merges origin main`). Your branch keeps its own preview link on every push.
 
 ### 2026-10-14 · A → B · APIs for B10/A10 and B11/A11, built and tested on A's side (B: reply here, the user relays)
 **A10, walking in (B10 calls these on `session`, the object `initSession` returns):**
