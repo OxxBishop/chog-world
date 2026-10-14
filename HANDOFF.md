@@ -27,6 +27,24 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · B10 room entry cutscenes (done; A, see A10 below)
+- **The lobby and the bar are now walked into for real, no fade and no cut.** The Hub's pods had solid walls behind their doors and the bar had no doorway at all, so each now has one: a doorway carved through the KayKit shell (`carve` in `src/kaykit.js`, exact clipping), wooden double doors on hinges, and a short hall behind them back to the room's own door (`vestibule` in `src/hub.js`). The lobby's hall steps down three steps with its red runner carried on inside; the bar's front gets a dark wood door frame and a stone step. The halls glow warm from their lamps, more after dark.
+- **New `src/entry.js`.** Picking Lobby or Bar on the Hub: the camera flies to the door, the doors swing open, it glides through, down the hall, and the room's own door swings open as it arrives. A sweep along the front of the room pans left to right across it and settles on the room's framed view. Back runs it the other way: out through both doors (they close behind), up and round to the Hub's view. A tap or Esc skips to the end.
+  - Times: in, about 6 s from the Hub's view (more from far off, capped); out, about 5 s.
+  - Homes, and entering from space, still fade (the B11 arrival takes over the home case).
+  - No shader is built for it: everything is compiled with the world at load.
+- **`src/interior.js` (small edit, not my file):** a room's door leaf now hangs on its own hinge, kept out of the merge so it can swing (`room.doorway.hinge`), and the room records its doorway (`room.doorway`).
+- **`src/barchat.js` (one-line edit, A's file):** a bubble shows only once the camera is inside the bar (`bar.pod.inside(camera)`), since on the way in the regulars are already talking behind the walls.
+- **`src/main.js` (shared):** `entry` created after the island, `entry.update(dt)` after `space.update()`, `entry.apply(env, renderer)` after `island.update`, the lens follows `entry.fov()` while it plays, `enterRoom` and Back use it, and `currentRoom()` reports the room being entered for the whole way in (so the bar's regulars are there, done appearing, as the camera arrives). Dev hooks: `chogWorld.enterRoom(id)`, `chogWorld.back()`, `chogWorld.entry`.
+- **A, for A10 (your Chog walking in):** after the sweep, `entry.js` calls `session.walkIn(room, door)` if you define it.
+  - `door = { position, inward, width, height, room }`: the middle of the room's doorway on the floor (world), and the direction into the room.
+  - Return a Promise that resolves once your Chog is at its spot. Set `promise.chog` to the Chog's root Object3D and the camera follows it in (it turns to the door first, then tracks it, for up to 6 s). `promise.skip?.()` is called if the user skips: put the Chog at its spot at once.
+  - The room's door is open when walkIn is called and closes once your promise resolves.
+  - On leaving, `session.walkOut(room, door)` is called (no need to return anything); the camera then flies out on its own.
+  - Guests: define `session.focusIn(room)` returning a world point (the regulars' middle, say) and the view pans to it at the end; without it the sweep is the ending.
+- **A, small:** entering a room still builds 4 shaders the first time (a Lambert with two maps, two custom ShaderMaterials and a sprite: your Chog standees and bubbles, I think). `world.prewarm(group)` (in `initSession`'s world) compiles them ahead.
+- **See it:** pick the Chog Hub, then Lobby or Bar; Back to come out. `?hour=19.5` for dusk.
+
 ### 2026-10-14 · C · The user's notes: room entries, the loading screen, and how the video gets made
 - **Room entries (bar, casino, lobby) are poorly done:** "it just fades in black and skips to the interior". The user wants a proper in-world move: through the door, a mini cutscene of the interior, then a pan to the Chog walking in. Now **B10** (camera, doors, reveal) and **A10** (`session.walkIn`). It is the user's first priority after B7.
 - **Loading screen:** the user wants a glitchy, pixelated screen: "welcome to the chog world, connect wallet to begin", a cool loader (a Chog circling in place until a Chog is found in the wallet), "welcome", then a mini cutscene of the island with your Chog spawning in a pod in its dome and saying hello to the camera. Now **B11** (screen and flight, B owns it) and **A11** (sign-in states, spawn, hello). Keep "Explore as a guest": judges may have no testnet Chog.
