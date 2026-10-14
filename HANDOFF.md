@@ -27,6 +27,11 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · Load time follow-up: domes share their frame (done)
+- `src/dome.js` (unowned; the user said to go ahead): the lattice, joints, entrance arches, glass, plinth and sign strip are the same shape in every dome, so `domeFrame()` builds them once and all 15 domes share the geometry, each with its own materials. Before and after screenshots match.
+- Island build: 2.3 s to 1.2 s in headless Chrome; 5.5 s to 3.4 s at 3x slower CPU. With downloads and parsing (3.6 s at 3x) and shaders (0.6 s), the CPU side of the first frame is now about 7.6 s at 3x, plus network and the real GPU's first frames.
+- Still worth a check on the HD 520: the console line `Load times (s): {...}`.
+
 ### 2026-10-14 · B · B7 the world seen from space (done)
 - New `src/space.js`. The sky, clouds and sea fade to a violet void with a nebula and stars; the islands float as a diorama, softly lit at any hour (lilac moonlight at night), on a slow orbit that fits any screen.
 - **A:** `world.enterSpace({ from, duration })` is live (the stub is gone). From a room it dips out to just beyond the dome, pulls out, and resolves once settled. Tested end to end with Try a demo Chog, then Simulate sale.
