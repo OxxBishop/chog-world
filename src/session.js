@@ -1,6 +1,6 @@
 import { chogInfo, loadChogs, DEMO_CHOG, homeFor } from './chogdata.js';
 import { makeChog } from './chog.js';
-import { playWake, playGreyOut } from './cutscenes.js';
+import { prepareWake, playWake, playGreyOut, playLogoff } from './cutscenes.js';
 import { createChat } from './chat.js';
 import * as THREE from 'three';
 
@@ -170,6 +170,8 @@ export function initSession(world) {
       const home = homeFor(id, world.homes.length);
       const room = world.homes[home];
       room.room.group.add(chog.root);
+      prepareWake(chog);
+      await world.prewarm?.(room.room.group);
       session.id = id;
       session.info = info;
       session.chog = chog;
@@ -238,8 +240,23 @@ export function initSession(world) {
     $('btn-signin').hidden = true;
     chip.querySelector('.talk').addEventListener('click', () => (chat.isOpen ? chat.close() : chat.open()));
     chip.querySelector('.home').addEventListener('click', () => world.enterRoom(s.room));
-    chip.querySelector('.out').addEventListener('click', () => signOut());
+    chip.querySelector('.out').addEventListener('click', () => logOff());
     chip.querySelector('.sale')?.addEventListener('click', () => sold());
+  }
+
+  // Sign out with a goodbye: home if you're elsewhere, a wave, then out to the world from space.
+  async function logOff() {
+    const s = session;
+    if (!s?.chog || s.leaving) return signOut();
+    s.leaving = true;
+    chat.close();
+    $('chog-chip').hidden = true;
+    if (world.currentRoom() !== s.room) {
+      world.enterRoom(s.room);
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    await playLogoff({ chog: s.chog, name: s.info.name, room: s.room, world });
+    signOut(null, { toOverview: true });
   }
 
   function signOut(note, { toOverview = false } = {}) {

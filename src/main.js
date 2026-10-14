@@ -198,6 +198,14 @@ async function init() {
     // The world seen from space (B7, src/space.js) plugs in here as enterSpace({ from, duration }).
     // Until it lands the cutscene goes straight to the fade.
     enterSpace: async () => {},
+    // Compile a new object's shaders ahead of time, for the target the scene really draws into.
+    prewarm: (obj) => {
+      const was = renderer.getRenderTarget();
+      renderer.setRenderTarget(post.composer.inputBuffer);
+      const ready = renderer.compileAsync(obj, camera, scene);
+      renderer.setRenderTarget(was);
+      return ready.catch(() => {});
+    },
     blackout: (title, sub) =>
       new Promise((resolve) => {
         $('fade').classList.add('on', 'slow');

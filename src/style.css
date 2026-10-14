@@ -343,7 +343,14 @@ button:disabled { opacity: 0.45; cursor: default; }
   left: 50%;
   top: 22%;
   transform: translate(-50%, 8px);
-  width: min(560px, calc(100vw - 32px));
+  width: max-content;
+  max-width: min(560px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 12px 22px 14px;
+  border-radius: 18px;
+  background: rgba(24, 12, 52, 0.42);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   text-align: center;
   opacity: 0;
   pointer-events: none;
