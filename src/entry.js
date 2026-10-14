@@ -6,8 +6,9 @@ import { createFlight } from './flight.js';
  * fade. The camera flies up to the building's door, the doors swing open and it glides through,
  * down the short hall behind them and in through the room's own door. A slow sweep shows the room,
  * then the view settles and turns to the door as your Chog comes through it (session.walkIn, A10),
- * follows it to its spot and settles back on the room's view once it faces you. A guest's sweep is
- * the ending. Leaving runs it the other way: the camera watches your Chog walk out of the room's door
+ * follows it to its spot and settles back on the room's view once it faces you (in the bar, on it
+ * and its partner). A guest's view settles on whoever is there (session.focusIn), or the sweep is the
+ * ending. Leaving runs it the other way: the camera watches your Chog walk out of the room's door
  * (session.walkOut), then goes out after it through the hall, and the doors close behind as it pulls
  * back to the building. A tap or Esc skips to the end.
  *
@@ -204,10 +205,11 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
           look: new THREE.Vector3(),
           // Your Chog walks in with you (A10). Called the frame the room first shows, so it is never seen
           // already placed; it steps through the door as the camera's gaze comes round to it.
+          // What the camera follows is A's: your Chog, or in the bar a mark easing to the pair.
           startWalk: () => {
-            const promise = ses?.walkIn?.(r, undefined, { delay: Math.max(0, t1 + STEP - me.t) });
-            const root = chogIn(r);
-            const w = { promise, root, done: !root };
+            const promise = ses?.walkIn?.(r, undefined, { delay: Math.max(0, t1 + STEP - me.t) }) ?? null;
+            const root = promise ? promise.chog ?? chogIn(r) : null;
+            const w = { promise, root, own: !!root && root === chogIn(r), done: !root };
             if (root) Promise.resolve(promise).finally(() => (w.done = true));
             me.walk = w;
           },
@@ -300,12 +302,17 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
         run.flight.pose(camera, Math.min(t, run.flight.duration));
         if (t < run.flight.duration) return;
         if (run.mode === 'out') return end();
-        // A guest: the sweep was the ending.
-        if (!run.owner) return end();
-        run.stage = 'pan';
         run.panAt = t;
+        if (run.owner) run.stage = 'pan';
+        else {
+          // A guest: on to the room's people, or the sweep was the ending.
+          run.spot = session()?.focusIn?.(run.r) ?? null;
+          if (!run.spot) return end();
+          run.stage = 'spot';
+        }
         return;
       }
+      if (run.stage === 'spot') return spot(t);
       pan(t);
     },
 
@@ -328,19 +335,31 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
   };
 
   // From the room's view, looking at its door: along with your Chog as it comes through to its spot,
-  // and back to the room's view once it stands facing you.
+  // and back to the room's view once it stands facing you. A mark of A's (the bar's pair) is followed
+  // to the end instead.
   function pan(t) {
     const { r, walk: w } = run;
     const look = run.doorLook.clone();
     if (w?.root) look.lerp(midOf(w.root), smooth(clamp01((t - run.panAt) / 0.6)));
     if (run.doneAt === null && (!w?.root || w.done || t - run.panAt > WALK_MAX)) run.doneAt = t;
     const back = run.doneAt === null ? 0 : smooth(clamp01((t - run.doneAt) / 0.8));
-    look.lerp(r.view.target, back);
+    if (!w?.root || w.own) look.lerp(r.view.target, back);
     camera.position.copy(r.view.pos);
     camera.lookAt(look);
     camera.updateMatrixWorld();
     run.look.copy(look);
     if (back >= 1) end();
+  }
+
+  // A guest's view: from the room's framed view round to the room's people, then it settles there.
+  function spot(t) {
+    const k = smooth(clamp01((t - run.panAt) / 1.1));
+    const look = run.r.view.target.clone().lerp(run.spot, k);
+    camera.position.copy(run.r.view.pos);
+    camera.lookAt(look);
+    camera.updateMatrixWorld();
+    run.look.copy(look);
+    if (t - run.panAt > 1.4) end();
   }
 
   // Leaving with your Chog: the camera stays put and watches it walk to the room's door (which swings

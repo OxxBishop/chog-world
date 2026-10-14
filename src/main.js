@@ -238,7 +238,7 @@ async function init() {
   space = createSpace({ scene, camera, renderer, sky, clouds, rig, dip: fadeThrough });
   // Walking into the Hub's rooms and out again, as one move (src/entry.js).
   // The flight down to your Chog's home after signing in (src/arrival.js).
-  arrival = createArrival({ camera, rig, space, domes: island.domes, fovs: { outdoor: outdoorFov, indoor: () => (camera.aspect < 1 ? 64 : 52) } });
+  arrival = createArrival({ camera, rig, space, domes: island.domes });
   entry = createEntry({ camera, rig, hub: island.hub, fovs: { outdoor: outdoorFov, indoor: () => (camera.aspect < 1 ? 64 : 52) }, dom: renderer.domElement, session: () => session });
   load.set('build', 1);
   // Build every shader the world needs (the rooms and the post chain too) in the background, so the
@@ -318,23 +318,20 @@ async function init() {
       return space.enter({ from, duration });
     },
     leaveSpace: (opts) => space.leave(opts),
-    // The first screen (src/intro.js) and the flight into your Chog's home (src/arrival.js), for A11:
-    // intro.state(name, data) as sign-in goes along, intro.flyHome(room), which tears the screen away
-    // and resolves once the camera is in the home's room, and intro.done() once the hello has landed.
+    // The first screen (src/intro.js) and the flight to your Chog's home (src/arrival.js), for A11:
+    // intro.state(name, data), intro.close(), and intro.flyHome(room), which tears the screen away and
+    // resolves once the camera is in front of the pod, with its door.
     intro: {
       state: (name, data) => intro.state(name, data),
       close: () => intro.close(),
       flyHome: async (room) => {
-        // The welcome has its moment first. The world's controls stay away through the flight and the
-        // hello, until done() (or a while after, if that never comes).
+        // The welcome has its moment first; the world's controls stay away until the camera is there.
         await intro.held();
         intro.close({ keepHud: true });
-        // Your Chog stays out of sight until its spawn, though its room shows on the way in.
-        session?.active?.chog?.setFade(0);
-        await arrival.fly(room);
-        setTimeout(() => intro.done(), 12000);
+        const landed = await arrival.fly(room);
+        intro.revealHud();
+        return landed;
       },
-      done: () => intro.done(),
       get open() {
         return !$('loading').classList.contains('done');
       },
@@ -367,13 +364,15 @@ async function init() {
   if (withIntro) {
     space.enter({ duration: 0 });
     intro.ready();
-    // Connect and the demo hand over to the session (A11), which drives the screen from there; a
-    // guest is flown back down to the world.
-    intro.state('start', {
-      connect: () => session.connect(),
-      demo: () => session.demo(),
-      guest: () => intro.close().then(() => space.leave({ duration: 2.5 })),
-    });
+    // A11 drives the screen through sign-in (session.startIntro); until then, Connect opens the
+    // sign-in panel and a guest is flown back down to the world.
+    if (session.startIntro) session.startIntro(intro);
+    else {
+      intro.state('connect', {
+        connect: () => intro.close().then(() => $('btn-signin').click()),
+        guest: () => intro.close().then(() => space.leave({ duration: 2.5 })),
+      });
+    }
   }
   if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
@@ -639,7 +638,7 @@ function frame() {
   entry?.update(dt);
   arrival?.update(dt);
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
-  const fov = entry?.fov() ?? arrival?.fov() ?? (rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov());
+  const fov = entry?.fov() ?? (rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov());
   if (Math.abs(camera.fov - fov) > 0.05) {
     camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
@@ -658,7 +657,6 @@ function frame() {
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
   entry?.apply(env, renderer);
-  arrival?.apply(env, renderer);
   session?.update(dt);
   npcs?.update(dt, camera);
   // On a lighter look, settled in a room, the clouds fade out: they show only through its windows and
