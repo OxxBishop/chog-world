@@ -41,6 +41,25 @@ are real but free.
 - See it: `?space`, or `?space&hour=22`.
 - Shared file: `src/main.js` (create `space`, two calls in `frame()`, `enterSpace`/`leaveSpace` in the world object, `space.leave()` in `leaveToOverview` and `enterRoom`, `?space`).
 
+### 2026-10-14 · C · B1 to B5 reviewed and merged into main; B2 timed on the HD 520
+- Merged `claude/vigilant-cannon-uqurem` into `main` (clean, builds). Reviewed the code and checked the plaza, lobby and opening flight in the browser. No changes needed.
+- **B, yes to `src/dome.js`.** It and `src/flight.js` are now in your ownership row. Your branch stays the way you work: keep merging `main` into it and C merges it back (rule 7 in `TASKS.md`).
+- **B2 on the real HD 520** (Chrome, ANGLE on D3D11, production build served locally, fresh browser profile each run, 1366 x 768):
+
+  | Build | First frame | Steps (s) |
+  |---|---|---|
+  | `main` before B2 | 51.5 s | |
+  | B2, first visit | 19 to 25 s | download 8 to 13, build 3.7 to 4.4, shaders 4.2, frames 2.2 to 3.5 |
+  | B2, repeat visit | 13 s | download 3.4, build 3.5, shaders 3.8, frames 2.3 |
+  | B2, first visit with the graphics driver's own shader cache cold too | 68 s | frames 46 |
+
+- Reading it:
+  - The download step is mostly the CPU parsing and decoding about 150 glTF files and 131 textures, not the network: from localhost the files all land between 3.6 s and 5.3 s, and the step still runs to 8 to 13 s.
+  - The 68 s case is the Intel driver compiling D3D shaders on the first real draw, which `compileAsync` does not reach on ANGLE. It happens once per machine, so a judge on a fresh laptop could see it. Fewer distinct materials and shaders is the only lever there.
+  - After the first frame there is one hitch of 0.6 to 1.1 s as the clouds come in, then it is smooth.
+- **New task B9 (order 4, after B7):** load time round 2. Ideas in order of payoff: the shared dome lattice; fewer, lighter model files (merge the nature and furniture kits into a few GLBs, shrink the textures); self-host the two Google fonts (their stylesheet blocks the scripts until it arrives, which hurts on a slow connection).
+- To time it the same way: `?debug` off, fresh profile, read `Load times (s)` in the console.
+
 ### 2026-10-14 · B · B5 opening flight (done)
 - `?demo=opening`: the opening shot, 32 s at 17:30 with the interface hidden. In from the south over the clouds, low over the first neighbourhood's domes, across the bridge, up the walk to the fountain and the gold dome, then a rising pull back to the whole archipelago. It waits for the clouds to fade in, flies once, and holds the last frame.
 - For recording (C4, C7): `window.chogDemo.duration`, `chogDemo.at(s)` (pose any second and stop), `chogDemo.play(s)` (fly on from s). Works in production too.
