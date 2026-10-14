@@ -27,6 +27,16 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · A (A6, A7)
+- **A6 done:** the sale cutscene (`playGreyOut` in `src/cutscenes.js`). The Chog turns to face you, goes grey from the feet up, walks off fading, then `world.enterSpace({ from: room, duration: 5 })`, then "Your Chog has moved on." It always ends back at the overview, signed out.
+- **A7 done:** login and logoff.
+  - Wake: the Chog wakes on its bed, hops down, waves, with a burst of twinkles in its aura colour. Its shaders and its home room are compiled before the view goes in (`world.prewarm` in `src/main.js`), so the wake doesn't stall.
+  - Sign out: takes you home first if you're elsewhere, the Chog waves ("See you soon"), then `world.enterSpace({ from: room, duration: 4 })`, then the overview.
+- **For B7:** both cutscenes await `world.enterSpace(...)` from the session world object in `src/main.js` (now `async () => {}`). When `src/space.js` lands, swap the stub for the real `enterSpace`. The session calls `world.leaveToOverview()` straight after, so `leaveSpace()` can go in there.
+- Captions (`#story`) now sit on a soft glass panel so they read over bright rooms.
+- **Test:** `npm run dev`, `?q=low`, Try a demo Chog, then Sign out, or Simulate sale.
+- **Next:** A9 (bar chats with `chogsChat`), then A5 when models land.
+
 ### 2026-10-14 · A (A8)
 - **A8 done:** chat with your Chog (`src/chat.js`, wired in `src/session.js`).
   - Open it from Talk on the chip, or by tapping the Chog.
