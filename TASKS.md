@@ -76,7 +76,7 @@ doesn't yet, stub it and move on, then come back.
 | 8 | B4 | Clouds: check for a grainy, dithered look in the overview at normal frame rates and fix it | Oct 17 | | done |
 | 9 | B5 | World overview flight for the demo's opening shot (drone path over the islands at golden hour) | Oct 18 | | done |
 | 10 | B8 | Casino (only if everything above, and A1 to A7, are done): one game, free chips only, Chog traits give perks (bonus chips, re-rolls, small multipliers), leaderboard. Never wager $CHOG | Oct 19 | | done (C: `api/casino` for the shared board, see HANDOFF) |
-| 11 | B6 | Casino spin effect, the casino's own cutscene | Oct 19 | B8 | doing |
+| 11 | B6 | Casino spin effect, the casino's own cutscene | Oct 19 | B8 | done |
 
 ### Agent C: tools, models, brain, sound, video
 | Order | # | Task | Target | Needs | Status |

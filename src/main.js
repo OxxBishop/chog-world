@@ -358,7 +358,7 @@ async function init() {
       }),
   });
   // The casino's game (B8): its panel shows while you're inside.
-  casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, session: () => session });
+  casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active });
   // The Chogs about town, each once its model is in; ?npcs shows every slot, with stand-ins.
   buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs'), prewarm: warmUp }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
@@ -663,7 +663,7 @@ function frame() {
   entry?.apply(env, renderer);
   session?.update(dt);
   casino?.show(!entry?.active && rig.room === casino.room.pod);
-  casino?.update(dt);
+  casino?.update(dt, env);
   npcs?.update(dt, camera);
   // On a lighter look, settled in a room, the clouds fade out: they show only through its windows and
   // cost nearly half a frame. They come back as you leave, before the doors open.

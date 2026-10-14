@@ -27,6 +27,16 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · B6 the casino's show (done)
+- **The spin** (`src/casino.js`): the lever pulls, the reels blur as they spin and sharpen as they slow, the camera leans in a little until they land, and the chips counter runs down and up rather than jumping.
+- **A win:** chips spill out of the tray onto the carpet and fountain out of the machine's top and down either side, clear of the winning line (more for a bigger win), the bulbs flash, and the win's name goes up in lights over the world ("THREE STARS!", "+80 chips"). A big win (20x and up) gives the camera a short shake.
+- **The jackpot, the casino's own cutscene** (three Chogs): JACKPOT in lights, then the camera pulls back from the machine and drifts across the room while every machine flashes and chips rain from the ceiling over the floor, your Chog waves if it came in with you, and the view comes back to the machine. About 5 s; a tap or Esc skips it. The panel steps aside while it plays.
+- **Walking in:** the machines' lights ripple on one after another as the camera comes through the door.
+- **No windows, so the casino is as bright at night as by day:** its lamps make up for the sky.
+- **Cost:** the chips are one instanced mesh, drawn at load with the room, so nothing compiles mid-game; the blur is a second texture of the same strip; the banner is HTML.
+- **Seen in the browser:** a spin (the blur and the counter), three stars (the chips clear of the line), the jackpot at night (the pull back, every machine flashing, the rain, JACKPOT in lights, back to the machine), and no shader built by any of it.
+- **See it:** `?view=casino`, PLAY CHOG SLOTS, SPIN. Dev hook for the cutscene: `chogWorld.casino._spin([9, 9, 9])` lands three Chogs.
+
 ### 2026-10-14 · B · B8 the casino is open (done; C: one endpoint please, below)
 - **The casino's door opens** (`src/hub.js`): cut through the right wing's front like the bar's, framed in gold, two red lacquered leaves with gold rails, a stone step, and a hall with a red runner back to the casino's own door. The sign now says "free chips only". Picking Casino on the Hub plays the same walk-in as the lobby and the bar (your Chog walks in with you); it's on the Hub's room bar and compiled and drawn at load like the others.
 - **The room** (new `src/casino.js`): a deep wine room with gold pilasters, a plum and gold casino carpet, three slot machines along the back wall with stools and the TOP CHOGS board over them, a round green-felt card table with chips, and a velvet rope by the door. The lobby's tube used to reach into the right wing; it's cut away inside the room.

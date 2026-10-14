@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { Room } from './interior.js';
+import { createFlight } from './flight.js';
 
 /*
  * The casino (B8), in the Hub's right wing: one game, Chog Slots, for free chips only. Nothing here
@@ -11,6 +12,11 @@ import { Room } from './interior.js';
  * its tier sets the day's free chips, laser eyes and lucky charms give re-rolls (spin one reel again
  * after a losing spin), and a crown, a king's robe or a sharp suit pays every win a little more.
  * A leaderboard of the Chogs with the most chips hangs on the wall.
+ *
+ * The show (B6): the reels blur as they spin and the camera leans in, a win throws chips out of the
+ * tray and puts its name up in lights, and three Chogs play the casino's own cutscene: the camera
+ * pulls back across the room as every machine flashes and chips rain from the ceiling, your Chog
+ * waves, and the view comes back to the machine. Walking in, the machines' lights ripple on.
  *
  * buildCasinoRoom() is the room itself (src/hub.js places it); createCasino() is the game, its
  * panel and its camera moves (src/main.js).
@@ -298,6 +304,20 @@ function drawStrip(c, face) {
   });
 }
 
+// The strip smeared round the reel, for while it spins fast.
+function blurStrip(src, dst) {
+  const g = dst.getContext('2d');
+  const w = src.width;
+  g.clearRect(0, 0, w, dst.height);
+  const n = 12;
+  g.globalAlpha = 1 / n;
+  for (let k = 0; k < n; k++) {
+    const dx = ((k / (n - 1)) - 0.5) * src.height * 0.9;
+    for (const o of [-w, 0, w]) g.drawImage(src, dx + o, 0);
+  }
+  g.globalAlpha = 1;
+}
+
 function signTex(title, sub) {
   return canvasTex(1024, 300, (g, w, h) => {
     g.fillStyle = '#2a0c18';
@@ -362,6 +382,8 @@ function drawBoard(canvas, rows, shared) {
 }
 
 // ---------- the slot machine ----------
+const CHIPS_MAX = 160;
+const LAMP = new THREE.Color('#ffe2bd');
 const REEL_R = 0.42, REEL_W = 0.36;
 const STEP = (Math.PI * 2) / STRIP.length;
 
@@ -458,7 +480,16 @@ export function buildCasinoRoom() {
   const stripTex = new THREE.CanvasTexture(stripCanvas);
   stripTex.colorSpace = THREE.SRGBColorSpace;
   stripTex.anisotropy = 8;
-  const strip = { canvas: stripCanvas, tex: stripTex, mat: new THREE.MeshBasicMaterial({ map: stripTex }) };
+  const blurCanvas = document.createElement('canvas');
+  blurCanvas.width = stripCanvas.width;
+  blurCanvas.height = stripCanvas.height;
+  blurStrip(stripCanvas, blurCanvas);
+  const blurTex = new THREE.CanvasTexture(blurCanvas);
+  blurTex.colorSpace = THREE.SRGBColorSpace;
+  const strip = {
+    canvas: stripCanvas, tex: stripTex, mat: new THREE.MeshBasicMaterial({ map: stripTex }),
+    blurCanvas, blurTex, blurMat: new THREE.MeshBasicMaterial({ map: blurTex }),
+  };
 
   // Three machines along the back wall, the middle one yours to play, the others turned in a little.
   const machines = [-4.2, 0, 4.2].map((x) => {
@@ -542,8 +573,18 @@ export function buildCasinoRoom() {
   room.onWall('back').add(frame);
   drawBoard(board, [], false);
 
+  // The chips a win throws out (B6), one mesh for all of them. One sits hidden in the middle machine
+  // so the load draws it, and the casino starts it empty.
+  const burst = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.06, 0.018, 14), new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#40202a' }), CHIPS_MAX);
+  burst.setMatrixAt(0, new THREE.Matrix4().makeTranslation(0, 1.6, -room.d / 2 + 0.6));
+  burst.setColorAt(0, new THREE.Color('#c4334a'));
+  burst.count = 1;
+  burst.frustumCulled = false;
+  burst.userData.keep = true;
+  room.group.add(burst);
+
   room.finish();
-  room.casino = { machines, strip, mats, board: { canvas: board, tex: boardTex } };
+  room.casino = { machines, strip, mats, burst, board: { canvas: board, tex: boardTex } };
   return room;
 }
 
@@ -553,7 +594,7 @@ export function buildCasinoRoom() {
  * camera rig; session(): A's session (for your Chog: its id, name, art and traits).
  * Call update(dt) every frame. A place on the island's list, the panel shows itself while you're in.
  */
-export function createCasino({ room: r, rig, session }) {
+export function createCasino({ room: r, rig, camera, dom, session, entering = () => false }) {
   const c = r.room.casino;
   const machine = c.machines[1];
   const panel = document.createElement('div');
@@ -572,6 +613,17 @@ export function createCasino({ room: r, rig, session }) {
   let atMachine = false;
   let flash = 0;
   let faceFor = null;
+  // The show: the camera leaning in, a shake, the jackpot's cutscene, the lights waking up.
+  let push = 0;
+  let shake = 0;
+  let show = null;
+  let wake = 0;
+  let shownChips = 0;
+  c.burst.count = 0;
+  const banner = document.createElement('div');
+  banner.className = 'cz-banner';
+  banner.hidden = true;
+  document.body.appendChild(banner);
 
   // The casino's own framing: from the right of the door across the floor to the machines and the
   // board over them, clear of the panel on the right (the room's view, so the way in ends on it).
@@ -596,6 +648,7 @@ export function createCasino({ room: r, rig, session }) {
     if (who?.key === next.key) return;
     who = { ...next, perks: perksFor(next.traits) };
     state = all[who.key] ?? { chips: 0, day: '', rerolls: 0, best: 0 };
+    shownChips = null;
     // A new day: chips topped up to the day's free amount, re-rolls back.
     if (state.day !== today()) {
       state.day = today();
@@ -604,6 +657,7 @@ export function createCasino({ room: r, rig, session }) {
     }
     all[who.key] = state;
     saveStore(all);
+    shownChips = state.chips;
     message = '';
     canReroll = false;
     // The jackpot symbol wears your Chog's face.
@@ -614,6 +668,8 @@ export function createCasino({ room: r, rig, session }) {
       img.onload = () => {
         drawStrip(c.strip.canvas, img);
         c.strip.tex.needsUpdate = true;
+        blurStrip(c.strip.canvas, c.strip.blurCanvas);
+        c.strip.blurTex.needsUpdate = true;
       };
       img.src = who.image;
     }
@@ -727,9 +783,16 @@ export function createCasino({ room: r, rig, session }) {
     if (k >= THREE_OF.heart) {
       message = `Three ${NAMES[line[0]]}! +${won.toLocaleString('en-US')}`;
       flash = line[0] === 'chog' ? 6 : 2.5;
+      if (line[0] === 'chog') jackpot(won);
+      else {
+        announce(`THREE ${NAMES[line[0]].toUpperCase()}!`, `+${won.toLocaleString('en-US')} chips`);
+        throwChips(k >= 20 ? 70 : 36);
+        if (k >= 20) shake = 0.45;
+      }
     } else if (k === 6) {
       message = `Two Chogs! +${won}`;
       flash = 1.5;
+      throwChips(18);
     } else if (k === 1) message = `Your ${bet} back.`;
     else {
       canReroll = state.rerolls > 0;
@@ -742,6 +805,130 @@ export function createCasino({ room: r, rig, session }) {
   const lever = { pull: null };
   const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
+  // ---------- the show ----------
+  // Chips out of the tray (or, for the jackpot, down from the ceiling all over the room), in the
+  // room's own space: each a position, a velocity, a spin, and an age.
+  const chips = [];
+  const COLOURS = ['#c4334a', '#1d1d2a', '#e8b84a', '#fff6e8', '#c4334a', '#e8b84a'].map((x) => new THREE.Color(x));
+  const g = r.room.group;
+  const tray = () => g.worldToLocal(machine.group.localToWorld(new THREE.Vector3(0, 1.0, 0.45)));
+  const top = () => g.worldToLocal(machine.group.localToWorld(new THREE.Vector3(0, 3.0, 0.15)));
+  const fwd = () => g.worldToLocal(machine.group.localToWorld(new THREE.Vector3(0, 0, 1))).sub(g.worldToLocal(machine.group.localToWorld(new THREE.Vector3())));
+  function throwChips(n, rain = false) {
+    // Half spill out of the tray onto the carpet, half fountain out of the top and down either side,
+    // so none cross the reels while the winning line shows.
+    const f = fwd(), side = new THREE.Vector3(f.z, 0, -f.x);
+    const spill = tray(), crown = top();
+    for (let i = 0; i < n && chips.length < CHIPS_MAX; i++) {
+      const fountain = i % 2 === 1;
+      const from = fountain ? crown : spill;
+      // The rain falls over the machines' half of the room, where the camera looks.
+      const p = rain
+        ? new THREE.Vector3((Math.random() - 0.5) * (r.room.w - 3), r.room.h - 0.4, -r.room.d / 2 + 1 + Math.random() * (r.room.d * 0.55))
+        : from.clone();
+      const v = rain
+        ? new THREE.Vector3((Math.random() - 0.5) * 0.6, -0.5 - Math.random(), (Math.random() - 0.5) * 0.6)
+        : fountain
+          ? f.clone().multiplyScalar(0.2 + Math.random() * 0.6).addScaledVector(side, (Math.random() < 0.5 ? -1 : 1) * (1.2 + Math.random() * 1.6)).setY(2 + Math.random() * 1.6)
+          : f.clone().multiplyScalar(0.8 + Math.random() * 1.0).addScaledVector(side, (Math.random() - 0.5) * 3.6).setY(1.2 + Math.random() * 1.2);
+      chips.push({
+        p, v, age: rain ? -Math.random() * 1.6 : -i * 0.012,
+        q: new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 3, Math.random() * 3, Math.random() * 3)),
+        w: new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(14),
+        colour: COLOURS[(Math.random() * COLOURS.length) | 0],
+        life: rain ? 4.4 : 3.2,
+        size: rain ? 1.8 : 1,
+      });
+    }
+  }
+  const m4 = new THREE.Matrix4(), dq = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), sc = new THREE.Vector3();
+  function stepChips(dt) {
+    let n = 0;
+    for (let i = chips.length - 1; i >= 0; i--) {
+      const ch = chips[i];
+      ch.age += dt;
+      if (ch.age >= ch.life) chips.splice(i, 1);
+    }
+    for (const ch of chips) {
+      if (ch.age < 0) continue;
+      ch.v.y -= 9.8 * dt;
+      ch.p.addScaledVector(ch.v, dt);
+      // Down on the carpet: a small bounce, then they lie there.
+      if (ch.p.y < 0.012 && ch.v.y < 0) {
+        ch.p.y = 0.012;
+        ch.v.y *= -0.28;
+        ch.v.x *= 0.55;
+        ch.v.z *= 0.55;
+        ch.w.multiplyScalar(0.4);
+        if (Math.abs(ch.v.y) < 0.4) {
+          ch.v.y = 0;
+          ch.q.slerp(new THREE.Quaternion(), 0.5);
+        }
+      }
+      dq.setFromAxisAngle(sc.copy(ch.w).normalize(), ch.w.length() * dt);
+      if (ch.w.lengthSq() > 1e-4) ch.q.premultiply(dq);
+      const s = THREE.MathUtils.clamp((ch.life - ch.age) / 0.5, 0, 1) * ch.size;
+      m4.compose(ch.p, ch.q, sc.copy(one).multiplyScalar(s));
+      c.burst.setMatrixAt(n, m4);
+      c.burst.setColorAt(n, ch.colour);
+      n++;
+    }
+    c.burst.count = n;
+    if (n) {
+      c.burst.instanceMatrix.needsUpdate = true;
+      c.burst.instanceColor.needsUpdate = true;
+    }
+  }
+
+  // A win's name up in lights, over the world.
+  function announce(title, sub, big = false) {
+    banner.innerHTML = `<div class="czb-title">${title}</div><div class="czb-sub">${sub}</div>`;
+    banner.classList.toggle('big', big);
+    banner.hidden = false;
+    banner.classList.remove('on');
+    void banner.offsetWidth;
+    banner.classList.add('on');
+    clearTimeout(announce.t);
+    announce.t = setTimeout(() => (banner.hidden = true), big ? 4200 : 2400);
+  }
+
+  // The jackpot: the casino's own cutscene. From the machine the camera pulls back and across the
+  // room while every machine flashes and chips rain down, your Chog waves, and it comes back to the
+  // machine. About 5 s; a tap or Esc skips it.
+  function jackpot(won) {
+    announce('JACKPOT', `three Chogs · +${won.toLocaleString('en-US')} chips`, true);
+    throwChips(40);
+    throwChips(120, true);
+    flash = 6;
+    const view = rig.views['casino-play'];
+    const keys = [
+      { t: 0, pos: camera.position.clone(), look: view.target.clone() },
+      { t: 1.7, pos: L(4.4, 3.6, 4.2), look: L(0.4, 2.0, -5.2) },
+      { t: 3.6, pos: L(-2.6, 3.0, 3.6), look: L(0.2, 1.8, -5.4) },
+      { t: 5.2, pos: view.pos.clone(), look: view.target.clone() },
+    ];
+    show = { t: 0, flight: createFlight({ keys: keys.map((k) => ({ t: k.t, pos: k.pos.toArray(), look: k.look.toArray() })) }) };
+    panel.classList.add('away');
+    // Your Chog, if it came in with you, waves at it.
+    const chog = session()?.active?.chog;
+    if (chog?.root.parent === g) {
+      chog.play?.('wave');
+      setTimeout(() => chog.play?.('idle'), 2600);
+    }
+  }
+  function endShow() {
+    show = null;
+    panel.classList.remove('away');
+  }
+  const skip = (e) => {
+    if (!show || (e.type === 'keydown' && e.key !== 'Escape')) return;
+    e.stopImmediatePropagation();
+    if (e.type === 'pointerdown') endShow();
+    if (e.type === 'keydown') endShow();
+  };
+  dom?.addEventListener('pointerdown', skip, { capture: true });
+  window.addEventListener('keydown', skip, { capture: true });
+
   // ---------- the panel ----------
   function render() {
     if (!who) return;
@@ -749,7 +936,7 @@ export function createCasino({ room: r, rig, session }) {
     const perks = p.list.map((x) => `<li><b>${x.trait}</b> ${x.text}</li>`).join('');
     panel.innerHTML = atMachine
       ? `
-        <div class="cz-top"><span class="cz-chips"><i></i>${state.chips.toLocaleString('en-US')}</span><span class="cz-who">${who.name}</span></div>
+        <div class="cz-top"><span class="cz-chips"><i></i><b>${Math.round(shownChips).toLocaleString('en-US')}</b></span><span class="cz-who">${who.name}</span></div>
         <div class="cz-msg" aria-live="polite">${message || '&nbsp;'}</div>
         <div class="cz-row">
           <button class="cz-bet" data-d="-1" aria-label="Lower the bet">−</button>
@@ -761,7 +948,7 @@ export function createCasino({ room: r, rig, session }) {
         <ul class="cz-perks">${perks}</ul>
         <button class="cz-leave">Step back</button>`
       : `
-        <div class="cz-top"><span class="cz-chips"><i></i>${state.chips.toLocaleString('en-US')}</span><span class="cz-who">${who.name}</span></div>
+        <div class="cz-top"><span class="cz-chips"><i></i><b>${Math.round(shownChips).toLocaleString('en-US')}</b></span><span class="cz-who">${who.name}</span></div>
         <p class="cz-note">Free chips only, topped up every day. Your Chog's traits give perks:</p>
         <ul class="cz-perks">${perks}</ul>
         <button class="cz-play">PLAY CHOG SLOTS</button>`;
@@ -816,10 +1003,24 @@ export function createCasino({ room: r, rig, session }) {
       panel.hidden = !inside;
       document.body.classList.toggle('in-casino', inside);
     },
-    update(dt) {
+    update(dt, env) {
       t += dt;
-      if (!r.room.group.visible) return;
+      if (!r.room.group.visible) {
+        wake = 0;
+        return;
+      }
+      // No windows: the casino is as bright at night as by day (the lamps make up for the sky).
+      if (env) for (const m of r.room.lit) m.emissive.copy(m.color).multiply(LAMP).multiplyScalar(0.2 + env.night * 0.34);
       if (!panel.hidden) identify();
+      // Walking in, the machines' lights come on one after another, a ripple along each.
+      wake = entering() || wake > 0 ? wake + dt : 3;
+      // The chips counter runs up to what you have.
+      if (state && shownChips !== state.chips) {
+        const gap = state.chips - shownChips;
+        shownChips = Math.abs(gap) < 1 ? state.chips : shownChips + gap * Math.min(1, dt * 5);
+        const el = panel.querySelector('.cz-chips b');
+        if (el) el.textContent = Math.round(shownChips).toLocaleString('en-US');
+      }
       // The reels.
       if (spinning) {
         spinning.t += dt;
@@ -837,11 +1038,35 @@ export function createCasino({ room: r, rig, session }) {
           while (end - from < Math.PI * 2 * turns) end += Math.PI * 2;
           const e = easeOut(k);
           const bounce = k > 0.85 ? Math.sin(((k - 0.85) / 0.15) * Math.PI) * 0.06 : 0;
+          const before = reel.userData.angle;
           reel.userData.angle = k < 1 ? from + (end - from) * e - bounce : target;
           reel.userData.stop = spinning.stops[i];
           reel.rotation.x = reel.userData.angle;
+          // Fast, it blurs.
+          reel.material = Math.abs(reel.userData.angle - before) / Math.max(dt, 1e-3) > 9 ? c.strip.blurMat : c.strip.mat;
         });
-        if (done) land();
+        if (done) {
+          for (const reel of machine.reels) reel.material = c.strip.mat;
+          land();
+        }
+      }
+      stepChips(dt);
+      // The camera: the jackpot's flight, or at the machine leaning in while the reels spin, and a
+      // shake on a big win.
+      if (show) {
+        show.t += dt;
+        show.flight.pose(camera, Math.min(show.t, show.flight.duration));
+        if (show.t >= show.flight.duration) endShow();
+      } else if (atMachine && !panel.hidden) {
+        push += ((spinning ? 1 : 0) - push) * Math.min(1, dt * (spinning ? 3 : 2));
+        if (push > 0.001) camera.position.lerp(machine.reels[1].getWorldPosition(new THREE.Vector3()), push * 0.06);
+        if (shake > 0) {
+          shake = Math.max(0, shake - dt);
+          const a = shake * 0.06;
+          camera.position.x += Math.sin(t * 71) * a;
+          camera.position.y += Math.sin(t * 53 + 1) * a;
+        }
+        camera.updateMatrixWorld();
       }
       // The idle machines drift their reels round now and then, so the floor feels alive.
       c.machines.forEach((m, j) => {
@@ -860,18 +1085,20 @@ export function createCasino({ room: r, rig, session }) {
       }
       // The bulbs: chasing while it spins, flashing on a win, a slow twinkle otherwise.
       flash = Math.max(0, flash - dt);
-      for (const m of c.machines) {
+      c.machines.forEach((m, j) => {
         const mine = m === machine;
+        const all = show !== null;
         for (let i = 0; i < m.spots.length; i++) {
           let lit;
-          if (mine && flash > 0) lit = Math.floor(t * 8) % 2 === 0;
+          if (wake < 3) lit = wake > 0.6 + j * 0.45 + (i / m.spots.length) * 0.5 && (i + Math.floor(wake * 10)) % 2 === 0;
+          else if ((mine || all) && flash > 0) lit = Math.floor(t * 8 + (all ? j : 0)) % 2 === 0;
           else if (mine && spinning) lit = (i + Math.floor(t * 14)) % 3 === 0;
           else lit = (i + Math.floor(t * 3 + (mine ? 0 : 5))) % 4 === 0;
-          tmp.copy(lit ? (flash > 0 && mine ? hot : on) : off).multiplyScalar(lit ? 1.6 : 1);
+          tmp.copy(lit ? (flash > 0 && (mine || all) ? hot : on) : off).multiplyScalar(lit ? 1.6 : 1);
           m.bulbs.setColorAt(i, tmp);
         }
         m.bulbs.instanceColor.needsUpdate = true;
-      }
+      });
     },
     // For tests: a spin that lands on the given stops (indexes into the strip), or a re-roll.
     _spin(stops, reroll = -1) {
