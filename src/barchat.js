@@ -21,12 +21,11 @@ const FACES_RIGHT = [87, 892];
 const FACES_LEFT = [130, 1517];
 const GUEST_PAIRS = [[87, 130], [892, 1517], [87, 1517], [892, 130]];
 const PLACE = 'the bar in the Chog Hub';
-// Two spots on the floor, side by side as the bar's camera sees them, in clear view of it and clear of
-// the furniture (room space, metres). A tall phone screen sees less of the room across, so there the
-// pair stands further back to fit.
+// Two spots at the counter, between its stools, in clear view of the bar's camera (room space, metres).
+// A tall phone screen sees less of the room across, so there the pair stands closer together.
 const LAYOUTS = {
-  wide: { scale: 1, a: new THREE.Vector3(0.07, 0, -0.7), b: new THREE.Vector3(1.72, 0, -2.08) },
-  tall: { scale: 1, a: new THREE.Vector3(-1.65, 0, -0.89), b: new THREE.Vector3(0, 0, -2.27) },
+  wide: { scale: 1, a: new THREE.Vector3(0, 0, -2.3), b: new THREE.Vector3(2.6, 0, -2.3) },
+  tall: { scale: 1, a: new THREE.Vector3(0.2, 0, -2.3), b: new THREE.Vector3(2.3, 0, -2.3) },
 };
 
 // If the brain can't be reached (not set up yet, or busy), the regulars still have a few things to say.
