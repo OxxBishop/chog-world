@@ -16,7 +16,6 @@ import { LANDMARK_KIT } from './landmarks.js';
 import { FURNITURE_KIT } from './interior.js';
 import { initSession } from './session.js';
 import { buildNpcs } from './npcs.js';
-import { READY } from './traitmap.js';
 import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createFlight } from './flight.js';
@@ -52,6 +51,16 @@ function outdoorFov() {
 }
 
 // A quick dip to dusk and back, for stepping indoors and out.
+// Compile a new object's shaders ahead of time, for the target the scene really draws into, so it
+// doesn't stall the frame it first appears in.
+function warmUp(obj) {
+  const was = renderer.getRenderTarget();
+  renderer.setRenderTarget(post.composer.inputBuffer);
+  const ready = renderer.compileAsync(obj, camera, scene);
+  renderer.setRenderTarget(was);
+  return ready.catch(() => {});
+}
+
 function fadeThrough(fn) {
   const f = $('fade');
   f.classList.add('on');
@@ -227,14 +236,7 @@ async function init() {
     // The world seen from space (B7, src/space.js) plugs in here as enterSpace({ from, duration }).
     // Until it lands the cutscene goes straight to the fade.
     enterSpace: async () => {},
-    // Compile a new object's shaders ahead of time, for the target the scene really draws into.
-    prewarm: (obj) => {
-      const was = renderer.getRenderTarget();
-      renderer.setRenderTarget(post.composer.inputBuffer);
-      const ready = renderer.compileAsync(obj, camera, scene);
-      renderer.setRenderTarget(was);
-      return ready.catch(() => {});
-    },
+    prewarm: warmUp,
     blackout: (title, sub) =>
       new Promise((resolve) => {
         $('fade').classList.add('on', 'slow');
@@ -253,8 +255,8 @@ async function init() {
         }, 3800);
       }),
   });
-  // The Chogs about town wait for their models; ?npcs shows their slots with stand-ins.
-  if (READY.size || params.has('npcs')) buildNpcs({ scene, plaza: island.plaza }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
+  // The Chogs about town, each once its model is in; ?npcs shows every slot, with stand-ins.
+  buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs'), prewarm: warmUp }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
   if (SHOTS[params.get('demo')]) startDemo(SHOTS[params.get('demo')], cloudsIn);
   if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; } };
