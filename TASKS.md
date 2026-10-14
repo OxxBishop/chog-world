@@ -6,13 +6,13 @@ Three Claude agents share this repo. This file is how we split the work and avoi
 
 ## How to work
 
-1. **Start of every session:** `git pull --rebase`, then read `CLAUDE.md`, this file and `HANDOFF.md`. Work through your list **in order, one task at a time**.
+1. **Start of every session:** `git checkout main && git pull --rebase`, then read `CLAUDE.md`, this file and `HANDOFF.md`. Work through your list **in order, one task at a time**.
 2. **Claim a task** by setting its status to `doing` and pushing that one-line change before you start.
 3. **Stay in your own files** (ownership table below). If you must touch someone else's file, keep it to a small surgical edit and say so in `HANDOFF.md`.
-4. **One task, one or more small commits.** Run `git pull --rebase` before every push. Never force-push, never rewrite pushed history.
+4. **One task, one or more small commits, on `main`.** Run `git pull --rebase` before every push. A push to `main` goes live on chog-world.vercel.app within a minute. Never force-push, never rewrite pushed history.
 5. **When a task is done:** set it to `done`, add a line to `HANDOFF.md` (what changed, how to see it, anything left), and push.
 6. Commits are authored as OxxBishop with **no Co-Authored-By or other trailers**. Public copy: no em dashes, no AI-copy tells.
-7. **B's branch:** B's session can only push to `claude/vigilant-cannon-uqurem`. B keeps merging `main` into it (`git pull --rebase=merges`); C reviews it and merges it into `main`.
+7. **B's branch:** B's session can only push to `claude/vigilant-cannon-uqurem`. B keeps merging `main` into it (`git pull --rebase=merges origin main`); C reviews it and merges it into `main`. B's branch gets its own preview link on every push.
 
 ## Agents
 
@@ -58,10 +58,10 @@ doesn't yet, stub it and move on, then come back.
 | 5 | A8 | Chat with your Chog in the world, wired to C's brain (`src/brain.js`): its mood and face react to the conversation | Oct 16 | C5 | done |
 | 6 | A6 | **Sale cutscene** (the demo's centrepiece): the Chog looks at the camera, colour drains from the feet up and it walks off grey, then the user is carried out to the space view (B7), fade, "Your Chog has moved on." | Oct 17 | B7 (stub until then) | done (calls `world.enterSpace`, a stub in `src/main.js` until B7 lands) |
 | 7 | A7 | Login and logoff effects: on login the Chog wakes in its dome home; on logoff it waves and the user is carried out to the space view (B7) | Oct 17 | B7 | done (same stub) |
-| 8 | A5 | NPC slots: a singer on a stage in the square with Chogs gathered round, a Chog sniffing a flower, a Chog running around with a toy block | Oct 18 | C2 models | blocked: waiting on the Tripo models (slots built in `src/npcs.js`; `?npcs` shows them with standees) |
+| 8 | A5 | NPC slots: a singer on a stage in the square with Chogs gathered round, a Chog sniffing a flower, a Chog running around with a toy block | Oct 18 | C2 models | doing: the singer is in; the crowd, sniffer and runner show once their models land (`?npcs` previews them) |
 | 9 | A9 | Chog-to-Chog chats in the bar, using C's brain. This is the clip the demo leads with | Oct 18 | C5 | done |
-| 10 | A10 | **Your Chog walks in**, for B10: `session.walkIn(room, door)` returns a promise. Your Chog appears at the door, walks to its spot and looks at the camera, and walks back out on leaving. Guests: nothing to do | Oct 16 | B10 | todo |
-| 11 | A11 | **Sign-in on the new loading screen**, with B11. Drive B's `intro.state(...)`: connect, searching (the running pixel Chog until `tokensOf` answers), found ("Welcome, <name>"), or none (claim or guest, as A3). Then the spawn: after B's flight reaches the pod, your Chog appears in it (the wake sparkle), steps out, turns to the camera and says hello in a bubble. Use the brain if it is up, a canned line if not | Oct 17 | B11 | todo |
+| 10 | A10 | **Your Chog walks in**, for B10: `session.walkIn(room, door)` returns a promise. Your Chog appears at the door, walks to its spot and looks at the camera, and walks back out on leaving. Guests: nothing to do | Oct 16 | B10 | done on A's side (`session.walkIn`/`walkOut`, see HANDOFF); B10 calls it |
+| 11 | A11 | **Sign-in on the new loading screen**, with B11. Drive B's `intro.state(...)`: connect, searching (the running pixel Chog until `tokensOf` answers), found ("Welcome, <name>"), or none (claim or guest, as A3). Then the spawn: after B's flight reaches the pod, your Chog appears in it (the wake sparkle), steps out, turns to the camera and says hello in a bubble. Use the brain if it is up, a canned line if not | Oct 17 | B11 | done on A's side (`session.connect`/`demo`/`setIntro`, see HANDOFF); B11 plugs in |
 
 ### Agent B: world polish, load time, the world from space, casino
 | Order | # | Task | Target | Needs | Status |

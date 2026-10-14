@@ -122,6 +122,14 @@ export function createChat({ camera, getSession, placeName }) {
     close,
     reset,
     send,
+    // Your Chog speaks first (its hello when you arrive): over its head, and in the chat.
+    greet(text, mood) {
+      const s = getSession();
+      if (!s?.chog) return;
+      add('chog', esc(text));
+      if (mood) s.chog.setMood(mood);
+      say(text);
+    },
     get isOpen() {
       return !panel.hidden;
     },

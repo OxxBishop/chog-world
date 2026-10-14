@@ -27,7 +27,7 @@ Never:
 
 - **Claim** a task: set its status to `doing` in `TASKS.md` and push that change before you start.
 - **Stay in your own files** (ownership table in `TASKS.md`). For a shared file (`src/main.js`, `index.html`, `src/style.css`), make small surgical edits only and never reformat.
-- **Commit small and often.** Run `git pull --rebase` before every push. Never force-push, never rewrite pushed history.
+- **Commit small and often, on `main`.** Run `git pull --rebase` before every push. A push to `main` goes live on chog-world.vercel.app within a minute, so only push work you have seen running. Never force-push, never rewrite pushed history.
 - **When a task is done:** set it to `done` in `TASKS.md`, add an entry at the top of the `HANDOFF.md` log (what changed, how to see it, what is left), push, then start the next task.
 - Commits are authored as **OxxBishop** with **no Co-Authored-By or other trailers**.
 

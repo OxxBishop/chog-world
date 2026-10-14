@@ -1,6 +1,7 @@
 import { chogInfo, loadChogs, DEMO_CHOG, homeFor, artFallbacks } from './chogdata.js';
 import { makeChog } from './chog.js';
-import { prepareWake, playWake, playGreyOut, playLogoff } from './cutscenes.js';
+import { prepareWake, playWake, playGreyOut, playLogoff, playWalkIn, playWalkOut, playSpawn, SPOT } from './cutscenes.js';
+import { talk } from './brain.js';
 import { createChat } from './chat.js';
 import { createBarChat } from './barchat.js';
 import * as THREE from 'three';
@@ -12,7 +13,20 @@ import * as THREE from 'three';
  * a little testnet MON for gas) or try a demo Chog with a button that acts out a sale.
  *
  * The chain code (viem) loads only when someone connects, so it costs nothing at start-up.
+ *
+ * Two ways in. The loading screen (B11's intro) drives the first visit: its buttons call connect() and
+ * demo(), this calls intro.state(...) as sign-in goes along, then intro.flyHome(room), and the Chog
+ * appears in its pod and says hello. Afterwards, or with no intro, the Sign in button opens the panel
+ * here, and the Chog wakes on its bed.
  */
+
+// Hellos for when the brain isn't up (or is slow): it says one of these instead.
+const HELLOS = [
+  'Hey, you made it! I kept the place warm.',
+  'Oh hi! I was just watching the clouds roll by.',
+  'There you are! Welcome home.',
+  'You\'re here! I was starting to count the clouds.',
+];
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -20,6 +34,7 @@ const short = (a) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 const chain = () => import('./chain.js');
 
 export function initSession(world) {
+  let intro = world.intro ?? null;
   const panel = $('signin');
   const body = panel.querySelector('.signin-body');
   let session = null; // { address, wallet, provider, demo, id, chog, room, stopWatch }
@@ -33,7 +48,7 @@ export function initSession(world) {
   };
   const chat = createChat({ camera: world.camera, getSession: () => session, placeName });
   // Your Chog comes along to the bar and chats with the regulars there.
-  const bar = createBarChat({ world, getMine: () => (session?.chog ? session : null) });
+  const bar = createBarChat({ world, getMine: () => (session?.chog ? session : null), sendHome: (s) => sendHome(s) });
   setTimeout(() => (window.requestIdleCallback ?? setTimeout)(() => bar.preload()), 12000);
   const ray = new THREE.Raycaster();
 
@@ -172,18 +187,8 @@ export function initSession(world) {
       }
       const info = await chogInfo(id);
       step(`Waking ${info.name}`);
-      const chog = await makeChog(info);
-      // Its art first if it comes quickly; otherwise it wakes showing its name and the art follows.
-      await Promise.race([chog.ready, new Promise((r) => setTimeout(r, 8000))]);
-      const home = homeFor(id, world.homes.length);
-      const room = world.homes[home];
-      room.room.group.add(chog.root);
-      prepareWake(chog);
-      await world.prewarm?.(room.room.group);
-      session.id = id;
-      session.info = info;
-      session.chog = chog;
-      session.room = room;
+      await settle(info);
+      const { chog, room } = session;
       busy = false;
       close();
       showChip();
@@ -194,6 +199,117 @@ export function initSession(world) {
       busy = false;
       await start(problem(err));
     }
+  }
+
+  // Make the Chog and put it in its home, ready to be shown (it stays out of sight until then).
+  async function settle(info) {
+    const s = session;
+    const chog = await makeChog(info);
+    // Its art first if it comes quickly; otherwise it shows its name and the art follows.
+    await Promise.race([chog.ready, new Promise((r) => setTimeout(r, 8000))]);
+    const room = world.homes[homeFor(info.id, world.homes.length)];
+    room.room.group.add(chog.root);
+    prepareWake(chog);
+    await world.prewarm?.(room.room.group);
+    Object.assign(s, { id: info.id, info, chog, room });
+  }
+
+  // ---------- the loading screen's way in (A11) ----------
+  const tell = (name, data = {}) => intro?.state(name, data);
+
+  /** Connect wallet (the loading screen's button). */
+  async function connect() {
+    const c = await chain();
+    const wallets = await c.findWallets();
+    if (!wallets.length) return tell('nowallet');
+    if (wallets.length > 1) return tell('wallets', { wallets: wallets.map(({ name, icon }) => ({ name, icon })), pick: (i) => arriveWith(wallets[i]) });
+    return arriveWith(wallets[0]);
+  }
+
+  async function arriveWith(w) {
+    try {
+      const c = await chain();
+      tell('connect', { wallet: w.name });
+      const conn = await c.connect(w.provider);
+      tell('sign');
+      const signed = await c.signIn(conn);
+      session = { ...conn, ...signed, demo: false };
+      w.provider.on?.('accountsChanged', onAccountsChanged);
+      await search();
+    } catch (err) {
+      tell('error', { message: problem(err), retry: () => connect() });
+    }
+  }
+
+  // The running pixel Chog, until the wallet's Chogs are in.
+  async function search() {
+    const s = session;
+    const c = await chain();
+    tell('searching', { address: s.address });
+    const [ids] = await Promise.all([c.tokensOf(s.address), loadChogs()]);
+    if (session !== s) return;
+    if (!ids.length) {
+      const left = await c.claimsLeft(s.address).catch(() => 0);
+      return tell('none', { address: s.address, claimsLeft: left, faucetUrl: c.FAUCET_URL, claim: () => claimThenSearch(), demo: () => demoArrival() });
+    }
+    if (ids.length === 1) return arrive(ids[0]);
+    const infos = await Promise.all(ids.map(chogInfo));
+    tell('pick', { chogs: infos.map(({ id, name, image }) => ({ id, name, image })), pick: (id) => arrive(id) });
+  }
+
+  async function claimThenSearch() {
+    try {
+      const c = await chain();
+      tell('claiming');
+      await c.claimRandom(session);
+      await search();
+    } catch (err) {
+      tell('error', { message: problem(err), retry: () => search() });
+    }
+  }
+
+  /** Try a demo Chog (the loading screen's button): #43 gets the same welcome and arrival. */
+  async function demoArrival() {
+    session = { address: null, demo: true };
+    await loadChogs();
+    await arrive(DEMO_CHOG);
+  }
+
+  // "Welcome, <name>", the flight home, and the Chog appears in its pod and says hello.
+  async function arrive(id) {
+    const s = session;
+    try {
+      const info = await chogInfo(id);
+      tell('welcome', { id, name: info.name, image: info.image });
+      if (!s.demo && !(await (await chain()).owns(s.address, id))) {
+        return tell('error', { message: `${info.name} isn't in this wallet any more.`, retry: () => search() });
+      }
+      await settle(info);
+      if (session !== s) return;
+      await intro.flyHome(s.room);
+      if (session !== s) return;
+      showChip();
+      await playSpawn({ chog: s.chog, group: s.room.room.group, camera: world.camera, hello: () => hello(s), say: (text, mood) => chat.greet(text, mood) });
+      intro.done?.();
+      if (session === s && !s.demo) watch();
+    } catch (err) {
+      tell('error', { message: problem(err), retry: () => (s.demo ? demoArrival() : search()) });
+    }
+  }
+
+  // Its first words when you arrive: the brain's answer to your hello, or a line of its own if the
+  // brain isn't up or takes too long.
+  async function hello(s) {
+    try {
+      const out = await Promise.race([
+        talk({ id: s.id, session: s.demo ? { demo: true } : { address: s.address, message: s.message, signature: s.signature }, text: 'Hi, I\'m here!', place: 'at home in its dome' }),
+        new Promise((r) => setTimeout(r, 4000)),
+      ]);
+      if (out?.reply) return out;
+    } catch {
+      // Not up yet: its own line below.
+    }
+    return { reply: HELLOS[Math.floor(Math.random() * HELLOS.length)], mood: 'happy' };
   }
 
   // ---------- the sale watch ----------
@@ -253,6 +369,57 @@ export function initSession(world) {
     chip.querySelector('.sale')?.addEventListener('click', () => sold());
   }
 
+  // ---------- walking into rooms with you (A10) ----------
+  // Back to its spot at home, from wherever it went with you.
+  function sendHome(s) {
+    if (session !== s || !s.chog) return;
+    s.room.room.group.add(s.chog.root);
+    s.chog.root.position.copy(SPOT);
+    s.chog.root.rotation.y = 0.5;
+    s.chog.root.scale.setScalar(1);
+    s.chog.setFade(1);
+    s.chog.play('idle');
+  }
+
+  // The doorway, in the room's space: the given world point, or just inside the front door.
+  const doorIn = (room, door) =>
+    door ? room.room.group.worldToLocal(door.clone()).setY(0) : new THREE.Vector3(0, 0, room.room.d / 2 - 0.6);
+
+  // Where it stands in a room it walked into: out on the floor in the middle of the room's own view,
+  // nearly three quarters of the way from the camera to what it looks at.
+  function spotIn(room) {
+    const g = room.room.group;
+    const eye = g.worldToLocal(room.view.pos.clone());
+    const look = g.worldToLocal(room.view.target.clone());
+    return eye.lerp(look, 0.72).setY(0);
+  }
+
+  /**
+   * Your Chog walks into a room with you: call it at the cut into the room. Resolves once it stands in
+   * its spot facing you (at once for guests); skip() puts it there now.
+   */
+  function walkIn(room, door, { delay = 0 } = {}) {
+    const s = session;
+    if (!s?.chog || s.leaving || !room || room === s.room) return Object.assign(Promise.resolve(), { skip() {} });
+    const group = room.room.group;
+    const from = doorIn(room, door);
+    const to = room === world.bar ? bar.spotFor(s) : spotIn(room);
+    group.add(s.chog.root);
+    s.chog.root.scale.setScalar(1);
+    const walk = playWalkIn({ chog: s.chog, group, from, to, camera: world.camera, delay });
+    if (room === world.bar) bar.expect(walk.done);
+    return Object.assign(walk.done, { skip: walk.skip });
+  }
+
+  /** It walks back out of the room ahead of you. Resolves once it's out of the door. */
+  async function walkOut(room, door) {
+    const s = session;
+    if (!s?.chog || !room || s.chog.root.parent !== room.room.group) return;
+    if (room === world.bar) bar.release();
+    await playWalkOut({ chog: s.chog, to: doorIn(room, door) });
+    sendHome(s);
+  }
+
   // Sign out with a goodbye: home if you're elsewhere, a wave, then out to the world from space.
   async function logOff() {
     const s = session;
@@ -298,10 +465,22 @@ export function initSession(world) {
   return {
     update(dt) {
       bar.update(dt);
-      // The Chog moves wherever it is: at home, or out at the bar with you.
-      if (session?.chog?.root.parent?.visible) session.chog.update(dt, world.camera);
+      const s = session;
+      const parent = s?.chog?.root.parent;
+      // Out in a room you've left: it goes home.
+      if (parent && parent !== s.room.room.group && !parent.visible && !s.leaving) sendHome(s);
+      // The Chog moves wherever it is: at home, or out in a room with you.
+      if (s?.chog?.root.parent?.visible) s.chog.update(dt, world.camera);
       chat.update(dt);
     },
+    walkIn,
+    walkOut,
+    // The loading screen (B11) plugs in here, if it isn't passed in at the start, and its buttons call these.
+    setIntro(i) {
+      intro = i;
+    },
+    connect,
+    demo: demoArrival,
     // A tap on your Chog opens the chat. True if the tap was on it.
     tapChog(x, y) {
       const root = session?.chog?.root;
