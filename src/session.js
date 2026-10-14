@@ -515,6 +515,28 @@ export function initSession(world) {
     start();
   });
 
+  // Chog standees' shaders, built for each kind of place one can stand (outside, the bar, the lobby, a
+  // home) while the first screen is up, so walking in anywhere never stalls on them: the lights inside
+  // each kind of room are part of its shaders.
+  async function warmStandees() {
+    if (!world.prewarm || !world.rooms) return;
+    const t = await makeChog({ traits: { Aura: 'Purple' }, name: 'Chog' });
+    prepareWake(t);
+    t.setMood('happy');
+    const kinds = [null, world.bar, world.rooms.find((r) => r.id === 'lobby'), world.homes[0]];
+    for (const r of kinds) {
+      if (r === undefined) continue;
+      const g = r?.room.group;
+      const was = g?.visible;
+      if (g) g.visible = true;
+      const ready = world.prewarm(t.root);
+      if (g) g.visible = was;
+      await ready;
+    }
+    t.dispose();
+  }
+  setTimeout(() => warmStandees().catch((err) => console.warn('Standee warm-up:', err)), 300);
+
   return {
     update(dt) {
       bar.update(dt);
