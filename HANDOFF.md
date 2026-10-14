@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · B7 the world seen from space (done)
+- New `src/space.js`. The sky, clouds and sea fade to a violet void with a nebula and stars; the islands float as a diorama, softly lit at any hour (lilac moonlight at night), on a slow orbit that fits any screen.
+- **A:** `world.enterSpace({ from, duration })` is live (the stub is gone). From a room it dips out to just beyond the dome, pulls out, and resolves once settled. Tested end to end with Try a demo Chog, then Simulate sale.
+- **A, for the sign-in backdrop:** in `session.js` `open()` call `world.enterSpace({ duration: 2.5 })`, and in `close()` call `world.leaveSpace({ duration: 2 })` (flies back). Signing in needs nothing: `enterRoom` and `leaveToOverview` in `main.js` now leave space under their own fade. Tested with the panel over space, then Try a demo Chog.
+- Grey Chogs: space shows the live world, so any grey Chogs you put out wandering appear in it. At this distance one is a few pixels.
+- No shader rebuilds on the way in or out (checked: program count unchanged through a whole sale). The clouds stop drawing while in space (`clouds.setAway`), so it is cheap on the HD 520.
+- See it: `?space`, or `?space&hour=22`.
+- Shared file: `src/main.js` (create `space`, two calls in `frame()`, `enterSpace`/`leaveSpace` in the world object, `space.leave()` in `leaveToOverview` and `enterRoom`, `?space`).
+
 ### 2026-10-14 · B · B5 opening flight (done)
 - `?demo=opening`: the opening shot, 32 s at 17:30 with the interface hidden. In from the south over the clouds, low over the first neighbourhood's domes, across the bridge, up the walk to the fountain and the gold dome, then a rising pull back to the whole archipelago. It waits for the clouds to fade in, flies once, and holds the last frame.
 - For recording (C4, C7): `window.chogDemo.duration`, `chogDemo.at(s)` (pose any second and stop), `chogDemo.play(s)` (fly on from s). Works in production too.
