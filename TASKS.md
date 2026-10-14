@@ -60,6 +60,8 @@ doesn't yet, stub it and move on, then come back.
 | 7 | A7 | Login and logoff effects: on login the Chog wakes in its dome home; on logoff it waves and the user is carried out to the space view (B7) | Oct 17 | B7 | done (same stub) |
 | 8 | A5 | NPC slots: a singer on a stage in the square with Chogs gathered round, a Chog sniffing a flower, a Chog running around with a toy block | Oct 18 | C2 models | blocked: waiting on the Tripo models (slots built in `src/npcs.js`; `?npcs` shows them with standees) |
 | 9 | A9 | Chog-to-Chog chats in the bar, using C's brain. This is the clip the demo leads with | Oct 18 | C5 | done |
+| 10 | A10 | **Your Chog walks in**, for B10: `session.walkIn(room, door)` returns a promise. Your Chog appears at the door, walks to its spot and looks at the camera, and walks back out on leaving. Guests: nothing to do | Oct 16 | B10 | todo |
+| 11 | A11 | **Sign-in on the new loading screen**, with B11. Drive B's `intro.state(...)`: connect, searching (the running pixel Chog until `tokensOf` answers), found ("Welcome, <name>"), or none (claim or guest, as A3). Then the spawn: after B's flight reaches the pod, your Chog appears in it (the wake sparkle), steps out, turns to the camera and says hello in a bubble. Use the brain if it is up, a canned line if not | Oct 17 | B11 | todo |
 
 ### Agent B: world polish, load time, the world from space, casino
 | Order | # | Task | Target | Needs | Status |
@@ -67,12 +69,14 @@ doesn't yet, stub it and move on, then come back.
 | 1 | B2 | Load time: first frame in under 10 s on a slow laptop (show the world first and stream the clouds in after, real progress in the loader, cache assets). Today it is 40 to 60 s | Oct 14 | | done |
 | 2 | B1 | Plaza benches: tidy rings facing the fountain and rows along the paths, no random angles | Oct 14 | | done |
 | 3 | B7 | **World seen from space** (`src/space.js`): the whole archipelago as a little diorama floating in a starry void, with the grey Chogs still visible wandering. Used when the user is carried out (sale, logoff) and as the backdrop behind sign-in. Export `enterSpace({from, duration})` and `leaveSpace()` so A's cutscenes just call it. A needs this by Oct 17 | Oct 16 | | done |
-| 4 | B9 | Load time, round 2: B2 measured on the HD 520 is 19 to 25 s to the first frame on a first visit, 13 s on a repeat visit (see C's 10-14 handoff entry). Get the first visit under 10 s: dome lattice shared across domes, fewer and lighter model files, then re-measure | Oct 17 | | done (C: re-time on the HD 520) |
-| 5 | B3 | Lobby facade: warm and welcoming like the bar and casino (it is still the grey sci-fi panel body) | Oct 16 | | done |
-| 6 | B4 | Clouds: check for a grainy, dithered look in the overview at normal frame rates and fix it | Oct 17 | | done |
-| 7 | B5 | World overview flight for the demo's opening shot (drone path over the islands at golden hour) | Oct 18 | | done |
-| 8 | B8 | Casino (only if everything above, and A1 to A7, are done): one game, free chips only, Chog traits give perks (bonus chips, re-rolls, small multipliers), leaderboard. Never wager $CHOG | Oct 19 | | todo |
-| 9 | B6 | Casino spin effect, the casino's own cutscene | Oct 19 | B8 | todo |
+| 4 | B10 | **Room entry cutscenes** (bar, casino, lobby), replacing the fade to black. The user's words: "a clear and proper animation that shows the interior in some sort of mini cutscene before the camera then pans to the chog that's entering the building". Camera flies to the door, the doors open, and the move carries through the doorway: cut on a frame the doorway fills, so the switch to the interior scene can't be seen. A short reveal sweeps across the interior (about 3 s), then the camera settles and pans to the entrance as your Chog walks in (A10). Guests settle on the regulars. Leaving plays it in reverse. A tap or Esc skips to the end. Total 5 to 7 s, 30 fps on the HD 520 | Oct 16 | A10 | doing |
+| 5 | B11 | **Loading screen and arrival flight**, with A11. A glitchy, pixelated screen (pixel font, scanlines, RGB split and glitch flickers): "Welcome to Chog World" over the real load progress, then "Connect wallet to begin" with "Explore as a guest" kept for judges without a testnet Chog. While A11 searches the wallet, a pixel Chog runs in a little circle (pixelate the official art at runtime, no hand-drawn sprite). Then a glitch "Welcome, <Chog name>", and the arrival flight: over the island, down to your dome, in through the glass to the pod, handing over to A11's spawn. Give A a small API (`intro.state(name, data)`, `intro.flyHome(room)`) | Oct 17 | A11 | todo |
+| 6 | B9 | Load time, round 2: B2 measured on the HD 520 is 19 to 25 s to the first frame on a first visit, 13 s on a repeat visit (see C's 10-14 handoff entry). Get the first visit under 10 s: dome lattice shared across domes, fewer and lighter model files, then re-measure | Oct 17 | | done (C: re-time on the HD 520) |
+| 7 | B3 | Lobby facade: warm and welcoming like the bar and casino (it is still the grey sci-fi panel body) | Oct 16 | | done |
+| 8 | B4 | Clouds: check for a grainy, dithered look in the overview at normal frame rates and fix it | Oct 17 | | done |
+| 9 | B5 | World overview flight for the demo's opening shot (drone path over the islands at golden hour) | Oct 18 | | done |
+| 10 | B8 | Casino (only if everything above, and A1 to A7, are done): one game, free chips only, Chog traits give perks (bonus chips, re-rolls, small multipliers), leaderboard. Never wager $CHOG | Oct 19 | | todo |
+| 11 | B6 | Casino spin effect, the casino's own cutscene | Oct 19 | B8 | todo |
 
 ### Agent C: tools, models, brain, sound, video
 | Order | # | Task | Target | Needs | Status |
@@ -83,5 +87,5 @@ doesn't yet, stub it and move on, then come back.
 | ongoing | C3 | Review every push against this board, and keep the board current | daily | | doing |
 | 2 | C6 | Sound: the singer's song in the square, ambient island sound, UI and cutscene stings (all royalty-free), in `src/audio.js` | Oct 17 | | todo |
 | 3 | C4 | Demo video shot list, with matching `?demo=` camera paths in the app so each shot replays exactly | Oct 18 | B5 | todo |
-| 4 | C7 | **Demo video edit**: record each shot from the app, then cut a 3-minute video with titles, music and the sale cutscene as the climax (ffmpeg) | Oct 20 | C4, A6 | todo |
+| 4 | C7 | **Demo video edit**: every shot is captured from the live app frame by frame (headless Chrome stepping `chogDemo.at(s)`, so it is smooth at any frame rate), then cut with ffmpeg: titles, music, crossfades. Scripts in `video/`, runnable by B in the cloud or on the laptop (much faster there: real GPU). 3 minutes| Oct 20 | C4, A6 | todo |
 | 5 | C8 | Submission text: pitch, how it works, tech stack, future vision, links | Oct 21 | | todo |

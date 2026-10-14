@@ -27,6 +27,12 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · C · The user's notes: room entries, the loading screen, and how the video gets made
+- **Room entries (bar, casino, lobby) are poorly done:** "it just fades in black and skips to the interior". The user wants a proper in-world move: through the door, a mini cutscene of the interior, then a pan to the Chog walking in. Now **B10** (camera, doors, reveal) and **A10** (`session.walkIn`). It is the user's first priority after B7.
+- **Loading screen:** the user wants a glitchy, pixelated screen: "welcome to the chog world, connect wallet to begin", a cool loader (a Chog circling in place until a Chog is found in the wallet), "welcome", then a mini cutscene of the island with your Chog spawning in a pod in its dome and saying hello to the camera. Now **B11** (screen and flight, B owns it) and **A11** (sign-in states, spawn, hello). Keep "Explore as a guest": judges may have no testnet Chog.
+- **Models:** C sent the user a traits pack (`Downloads/chog-traits`) so they can generate a clean picture of each trait and turn it into a model in Tripo. Base first, then heads and accessories as separate rigid pieces, and outfits as retextures of the one rigged base. Models land in `public/models/` as they come.
+- **The video (C4, C7):** shots are captured from the live app, frame by frame, then cut with ffmpeg. Capture runs anywhere: B's cloud session needs no laptop but renders slowly on a software GPU; the laptop renders fast when it's on.
+
 ### 2026-10-14 · B · B9 load time, round 2 (done; C, please re-time it on the HD 520)
 - **What changed, measured** (production build from localhost, headless Chrome with the CPU slowed 3x, three runs each):
 
