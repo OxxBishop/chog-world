@@ -214,8 +214,7 @@ export function initSession(world) {
     }
     $('chog-chip').hidden = true;
     await playGreyOut({ chog: s.chog, name: s.info.name, room: s.room, world });
-    signOut();
-    world.leaveToOverview();
+    signOut(null, { toOverview: true });
   }
 
   // ---------- guests ----------
@@ -243,7 +242,7 @@ export function initSession(world) {
     chip.querySelector('.sale')?.addEventListener('click', () => sold());
   }
 
-  function signOut(note) {
+  function signOut(note, { toOverview = false } = {}) {
     const s = session;
     session = null;
     chat.reset();
@@ -255,7 +254,7 @@ export function initSession(world) {
         s.chog.root.removeFromParent();
         s.chog.dispose();
       }
-      if (s.room && world.currentRoom() === s.room) world.leaveToOverview();
+      if (toOverview || (s.room && world.currentRoom() === s.room)) world.leaveToOverview();
     }
     $('chog-chip').hidden = true;
     $('btn-signin').hidden = false;

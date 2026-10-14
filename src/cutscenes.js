@@ -72,7 +72,13 @@ export async function playWake({ chog, name }) {
 export async function playGreyOut({ chog, name, room, world }) {
   chog.play('idle');
   caption(`${name} left your wallet`);
-  await wait(1100);
+  // It turns to face you.
+  const eye = room.room.group.worldToLocal(world.camera.getWorldPosition(new THREE.Vector3()));
+  const turnFrom = chog.root.rotation.y;
+  let turnBy = Math.atan2(eye.x - chog.root.position.x, eye.z - chog.root.position.z) - turnFrom;
+  turnBy = Math.atan2(Math.sin(turnBy), Math.cos(turnBy));
+  await tween(700, (k) => (chog.root.rotation.y = turnFrom + turnBy * THREE.MathUtils.smoothstep(k, 0, 1)));
+  await wait(400);
   // Colour drains from the feet up.
   await tween(2600, (k) => chog.setGrey(THREE.MathUtils.smoothstep(k, 0, 1)));
   chog.play('sad');
