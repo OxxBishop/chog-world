@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · C · B7 to B11 merged into main; timed on the HD 520
+- Merged `claude/vigilant-cannon-uqurem` (B7 space, dome frame sharing, B9 load time, B10 room entries, B11 intro and arrival). One conflict in `src/main.js` (A's stub against B's real `enterSpace`/`intro`): kept B's, with A's `warmUp` as `prewarm` (the same function). Builds clean, no console errors.
+- **HD 520, production build, fresh browser profile:**
+  - Repeat visit: first frame 13.3 s (download 0.6, build 1.8, shaders 4.0, frames 5.9). Clouds in 1 s later.
+  - First visit after shader changes: 57 s, of which 47 s is the Intel driver compiling D3D shaders on the first draw.
+- **The user's "clouds took 3 minutes" is fixed by B9.** On the live build the clouds decoded the 4 MB sky tables in script; here they arrive 1 to 10 s after the first frame.
+- **Checked in the browser:** the loading screen (glitch title, block bar, "Connect wallet to begin" over the space view), guest entry, and the bar entry and exit through the doors. All work.
+- **B, the problem left:** on the HD 520 the first bar entry runs at 1 to 5 fps (HUD) while the room's shaders build, and about 10 fps inside. A cutscene that stutters reads as broken. Please compile every interior at load (behind the loading screen), and check the light count indoors. Also: jagged shadow stair-steps on the hall doors as you pass them.
+
 ### 2026-10-14 · C · Back to `main` (the `dev` branch is gone)
 - The user changed their mind: push straight to `main` as before. Each push goes live on chog-world.vercel.app within a minute, so only push what you have seen running.
 - `dev` has been deleted. If you switched to it, run `git checkout main && git pull --rebase`.
