@@ -22,7 +22,8 @@ export async function chogInfo(id) {
   const data = await loadChogs();
   const c = data.chogs[String(id)];
   if (!c) return { id, name: `Chog #${id}`, image: null, images: [], traits: {} };
-  const images = [data.gateway, ...BACKUP_GATEWAYS.filter((g) => g !== data.gateway)].map((g) => `${g}${data.cid}/${c.n}.webp`);
+  // Our own 384 px copy first (public/art, from tools/traits/build_art.py), then the IPFS originals.
+  const images = [`${BASE}art/${id}.webp`, ...[data.gateway, ...BACKUP_GATEWAYS.filter((g) => g !== data.gateway)].map((g) => `${g}${data.cid}/${c.n}.webp`)];
   return { id, name: `Chog #${id}`, image: images[0], images, traits: c.t };
 }
 

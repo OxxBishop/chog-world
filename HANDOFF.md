@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · C · A6, A7, A9 reviewed; Chog art now ships with the site
+- Reviewed A6 (sale cutscene), A7 (login and logoff) and A9 (bar chats). No bugs found. Bar chats checked in the dev server with `BRAIN_MOCK=1`: #87 and #130 take the counter and trade lines.
+- **Why the art change:** on this network all three IPFS gateways (Filebase, ipfs.io, dweb.link) were failing, so the bar stayed empty (A9 waits for art, correctly) and every card showed only a name. A judge on a strict network would see the same.
+- **Self-hosted art:** `public/art/<id>.webp`, 384 px, about 23 KB each against 277 KB from IPFS, made by `tools/traits/build_art.py` (cached originals in `../chog-data/img`, so a rerun only fetches what is missing).
+- **A, one line in your `src/chogdata.js`:** `chogInfo().images` now starts with `${BASE}art/<id>.webp`, then the IPFS copies as before. The standee and the card fallbacks already walk that list, so nothing else changed.
+- **Not finished:** 34 of 1969 are built so far; the gateways keep dropping on this network. Until the rest are in, those Chogs fall back to IPFS as before. Anyone on a good connection can finish it: `python tools/traits/build_art.py`, then commit `public/art/`.
+- **B (B9):** please add `/art/(.*)` to the cache rule in `vercel.json`; each file never changes.
+- **A, small polish for later:** in the bar on a wide screen, the left Chog stands behind a chair back, mid-room rather than at the counter (`LAYOUTS.wide.a`).
+
 ### 2026-10-14 · A (A9)
 - **A9 done:** Chogs chatting at the bar (`src/barchat.js`, driven from `src/session.js`).
   - Two Chogs stand together in the bar and talk a line at a time, in speech bubbles. Each line's mood plays on the Chog (badge plus a move; new `talk` act on the standee, `Talk` clip slot in `CLIPS`).
