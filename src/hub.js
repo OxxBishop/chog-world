@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { piece, kitMaterial, repaint, CELL } from './kaykit.js';
+import { piece, kitMaterial, repaint, carve, CELL } from './kaykit.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from './merge.js';
@@ -232,6 +232,99 @@ const post = (r, h, mat, x, z, y = 0) => {
   return m;
 };
 
+/*
+ * A door leaf on its hinge (a point in hub space at ground level), reaching `width` from it along x
+ * in direction dir (-1 or 1). Merged into one mesh per material and kept out of the hub's big merge,
+ * so it can swing: rotation.y = dir * angle turns it inward, into the building.
+ */
+function hingedLeaf({ hinge, dir, width, bottom, height, mats }) {
+  const g = new THREE.Group();
+  g.position.copy(hinge);
+  g.userData.dir = dir;
+  const cx = (dir * width) / 2;
+  // Meeting the other leaf with no gap, so the doorway can't be seen through.
+  g.add(box(width - 0.01, height, 0.2, mats.darkWood, cx, bottom + height / 2, 0));
+  for (const y of [bottom + 1.1, bottom + height - 1.1]) {
+    for (const side of [-1, 1]) g.add(box(width - 0.6, 0.14, 0.08, mats.wood, cx, y, side * 0.13));
+  }
+  for (const side of [-1, 1]) g.add(box(0.12, 1.2, 0.14, mats.brass, dir * (width - 0.35), bottom + height / 2, side * 0.16));
+  mergeByMaterial(g);
+  g.traverse((o) => {
+    if (o.isMesh) {
+      o.userData.keep = true;
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+  return g;
+}
+
+/*
+ * A short hall from a door in the pod's shell back to the room's own door (the shell is see-through
+ * from inside, so the hall is what you see on the way in). Walls, ceiling and floor are slabs, seen
+ * from either side. The floor is a landing at the outside door's sill, then steps down to the room's
+ * floor if that is lower. A lamp on each wall. Returns the hall's floor height along it, floor(z).
+ */
+function vestibule(parent, { x, half, top, zOut, zIn, sill, floorIn, roomDoor, mats: m, lamps, runner = 0 }) {
+  // The hall's own surfaces, warmed by its lamps after dark (hallLight in buildHub).
+  const mats = { ...m, cream: m.hallCream, darkWood: m.hallWood, steps: m.hallStone };
+  const len = zOut - zIn;
+  const mid = (zOut + zIn) / 2;
+  const RISE = 0.8, RUN = 0.8;
+  const count = Math.round((sill - floorIn) / RISE);
+  const rise = count ? (sill - floorIn) / count : 0;
+  const stepsAt = zIn + 1 + count * RUN;
+  for (const side of [-1, 1]) {
+    parent.add(box(0.3, top - floorIn + 0.3, len, mats.cream, x + side * (half + 0.15), (floorIn + top) / 2, mid));
+    // Panelled lower walls: as high as the landing beside it, and a dado rail on top.
+    parent.add(box(0.06, sill - floorIn + 1.2, zOut - stepsAt + count * RUN, mats.darkWood, x + side * (half - 0.03), (floorIn + sill + 1.2) / 2, (zOut + stepsAt - count * RUN) / 2));
+    parent.add(box(0.06, 1.2, stepsAt - count * RUN - zIn, mats.darkWood, x + side * (half - 0.03), floorIn + 0.6, (stepsAt - count * RUN + zIn) / 2));
+    const lamp = new THREE.Vector3(x + side * (half - 0.35), Math.max(sill, floorIn) + 3.1, (zIn + stepsAt) / 2 + 0.6);
+    parent.add(box(0.5, 0.14, 0.14, mats.brass, x + side * (half - 0.2), lamp.y + 0.4, lamp.z));
+    parent.add(new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8).translate(lamp.x, lamp.y, lamp.z), mats.lantern));
+    lamps.push(lamp);
+  }
+  parent.add(box(half * 2 + 0.6, 0.3, len, mats.cream, x, top + 0.15, mid));
+  // The landing, and the steps down from it.
+  parent.add(box(half * 2, sill - floorIn + 0.1, zOut - stepsAt, mats.steps, x, (sill + floorIn - 0.1) / 2, (zOut + stepsAt) / 2));
+  if (runner) parent.add(box(runner, 0.04, zOut - stepsAt, mats.runner, x, sill + 0.02, (zOut + stepsAt) / 2));
+  for (let i = 0; i < count; i++) {
+    const t = sill - rise * (i + 1);
+    const z0 = stepsAt - RUN * (i + 1);
+    parent.add(box(half * 2, t - floorIn + 0.1, RUN, mats.steps, x, (t + floorIn - 0.1) / 2, z0 + RUN / 2));
+    if (runner) {
+      parent.add(box(runner, 0.04, RUN, mats.runner, x, t + 0.02, z0 + RUN / 2));
+      parent.add(box(runner, rise, 0.04, mats.runner, x, t + rise / 2, z0 + RUN + 0.02));
+    }
+  }
+  const flat = stepsAt - count * RUN - zIn;
+  parent.add(box(half * 2, 0.1, flat, mats.steps, x, floorIn - 0.05, zIn + flat / 2));
+  if (runner) parent.add(box(runner, 0.04, flat, mats.runner, x, floorIn + 0.02, zIn + flat / 2));
+  // The end wall round the room's door, with a frame on this side.
+  const shape = new THREE.Shape();
+  shape.moveTo(-half, floorIn);
+  shape.lineTo(half, floorIn);
+  shape.lineTo(half, top);
+  shape.lineTo(-half, top);
+  const hole = new THREE.Path();
+  hole.moveTo(-roomDoor.half, floorIn);
+  hole.lineTo(-roomDoor.half, floorIn + roomDoor.h);
+  hole.lineTo(roomDoor.half, floorIn + roomDoor.h);
+  hole.lineTo(roomDoor.half, floorIn);
+  shape.holes.push(hole);
+  const end = new THREE.Mesh(new THREE.ShapeGeometry(shape), mats.cream);
+  end.position.set(x, 0, zIn + 0.03);
+  parent.add(end);
+  for (const side of [-1, 1]) parent.add(box(0.3, roomDoor.h + 0.3, 0.3, mats.darkWood, x + side * (roomDoor.half + 0.15), floorIn + (roomDoor.h + 0.3) / 2, zIn + 0.15));
+  parent.add(box(roomDoor.half * 2 + 0.6, 0.3, 0.3, mats.darkWood, x, floorIn + roomDoor.h + 0.15, zIn + 0.15));
+  return (z) => {
+    if (z >= stepsAt) return sill;
+    if (z <= stepsAt - count * RUN) return floorIn;
+    // Down the steps as a smooth slope, which is how a camera glides down them.
+    return sill - ((stepsAt - z) / (count * RUN)) * (sill - floorIn);
+  };
+}
+
 export function buildHub() {
   const group = new THREE.Group();
   const props = new THREE.Group();
@@ -263,9 +356,11 @@ export function buildHub() {
   repaint(lobbyPod, { grey: 'brown', purple: 'brown', dark: 'brown' }, mats.gold, isDome);
   lobbyPod.traverse((o) => o.isMesh && !o.userData.roof && (o.userData.lobby = true));
   kit.add(lobbyPod);
+  let barWing = null;
   for (const side of [-1, 1]) {
     const wing = piece(side < 0 ? 'basemodule_A' : 'basemodule_D', WING_S);
     wing.position.x = side * WING_X;
+    if (side < 0) barWing = wing;
     // Each wing in its own colours: the bar in warm taupe and wood brown under a green roof, like
     // a cosy pub; the casino in charcoal with gold trim under a deep red roof.
     if (side < 0) repaint(wing, { white: 'taupe', grey: 'brown', purple: 'brown' }, mats.barRoof);
@@ -349,6 +444,12 @@ export function buildHub() {
   const STEP = { rise: 0.75, run: 0.9, half: 3.9, from: 18.08 };
   mats.runner = new THREE.MeshLambertMaterial({ color: '#8e2436' });
   mats.steps = new THREE.MeshLambertMaterial({ color: '#efd3ae' });
+  // The halls behind the doors: lit only by their lamps, so they glow a little, more after dark.
+  const hallLight = new THREE.Color('#ffb46e');
+  mats.hallCream = new THREE.MeshLambertMaterial({ color: '#f3e6cf', emissive: hallLight });
+  mats.hallWood = new THREE.MeshLambertMaterial({ color: '#6e4630', emissive: hallLight });
+  mats.hallStone = new THREE.MeshLambertMaterial({ color: '#efd3ae', emissive: hallLight });
+  const hallMats = [mats.hallCream, mats.hallWood, mats.hallStone];
   for (let i = 0; i < 3; i++) {
     const top = DOOR.bottom - STEP.rise * (i + 1);
     const z0 = STEP.from + STEP.run * i;
@@ -358,13 +459,12 @@ export function buildHub() {
     props.add(box(4.2, STEP.rise, 0.04, mats.runner, 0, top + STEP.rise / 2, z0 + 0.02));
   }
   props.add(box(4.2, STEP.rise, 0.04, mats.runner, 0, STEP.rise / 2, STEP.from + STEP.run * 3 + 0.02));
-  for (const sx of [-1, 1]) {
-    const x = (sx * DOOR.half) / 2;
-    const h = DOOR.top - 0.85 - DOOR.bottom;
-    props.add(box(DOOR.half - 0.08, h, 0.2, mats.darkWood, x, DOOR.bottom + h / 2, DOOR.z));
-    for (const y of [DOOR.bottom + 1.1, DOOR.bottom + h - 1.1]) props.add(box(DOOR.half - 0.6, 0.14, 0.08, mats.wood, x, y, DOOR.z + 0.13));
-    props.add(box(0.12, 1.2, 0.14, mats.brass, sx * 0.35, DOOR.bottom + h / 2, DOOR.z + 0.16));
-  }
+  const doorH = DOOR.top - 0.85 - DOOR.bottom;
+  const lobbyLeaves = [-1, 1].map((sx) => {
+    const l = hingedLeaf({ hinge: new THREE.Vector3(sx * DOOR.half, 0, DOOR.z), dir: -sx, width: DOOR.half, bottom: DOOR.bottom, height: doorH, mats });
+    group.add(l);
+    return l;
+  });
   props.add(box(DOOR.half * 2 + 0.3, 0.22, 0.3, mats.wood, 0, DOOR.top - 0.85, DOOR.z + 0.02));
   mats.fanlight = new THREE.MeshStandardMaterial({ color: '#ffe2b0', emissive: new THREE.Color('#ffc477'), emissiveIntensity: 0.4 });
   props.add(box(DOOR.half * 2, 0.6, 0.1, mats.fanlight, 0, DOOR.top - 0.42, DOOR.z - 0.04));
@@ -375,6 +475,18 @@ export function buildHub() {
     props.add(new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.32, 8).translate(p.x, p.y + 0.42, p.z), mats.brass));
     props.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8).translate(p.x, p.y, p.z), mats.lantern));
   }
+
+  // The rooms inside: the lobby in the middle pod, the bar in the left wing. The casino stays shut.
+  // Each is reached for real: its door in the pod's shell opens onto a short hall to the room's own
+  // door, so the camera can fly in from the plaza without a cut (src/entry.js).
+  const lobbyRoom = buildLobbyRoom();
+  const barRoom = buildBarRoom();
+  const lobbyIn = LOBBY_ROOM.z + lobbyRoom.d / 2;
+  carve(lobbyPod, new THREE.Box3(new THREE.Vector3(-DOOR.half, DOOR.bottom, lobbyIn + 1), new THREE.Vector3(DOOR.half, DOOR.top - 0.85, DOOR.z + 0.3)), group);
+  const lobbyFloor = vestibule(props, {
+    x: 0, half: DOOR.half, top: DOOR.top - 0.97, zOut: DOOR.z - 0.12, zIn: lobbyIn, sill: DOOR.bottom, floorIn: LOBBY_ROOM.y,
+    roomDoor: { half: lobbyRoom.doorway.w / 2, h: lobbyRoom.doorway.h }, mats, lamps: lanterns, runner: 4.2,
+  });
   const rugFrom = STEP.from + STEP.run * 3;
   const rugLen = archZ + 1.5 - rugFrom;
   // Pulled forward further than the plaza's paving (see roads.js), so it never sinks into it.
@@ -430,6 +542,23 @@ export function buildHub() {
   const mug = signMesh(neonMugTexture(), 7.5, 0.5);
   mug.position.set(bx, 8.4, WING_FRONT + 0.2);
   signs.push(mug);
+  // The bar's door, cut through the wing's front and its window band and framed in dark wood: two
+  // leaves like the lobby's, a stone step up to the sill, and a hall back to the bar's own door.
+  const BAR_DOOR = { half: 1.8, bottom: BAR_ROOM.y, top: 5.0, z: WING_FRONT + 0.35 };
+  const barIn = BAR_ROOM.z + barRoom.d / 2;
+  carve(barWing, new THREE.Box3(new THREE.Vector3(bx - BAR_DOOR.half, BAR_DOOR.bottom, barIn + 1), new THREE.Vector3(bx + BAR_DOOR.half, BAR_DOOR.top, BAR_DOOR.z + 0.4)), group);
+  for (const side of [-1, 1]) props.add(box(0.35, BAR_DOOR.top + 0.35, 1.8, mats.darkWood, bx + side * (BAR_DOOR.half + 0.175), (BAR_DOOR.top + 0.35) / 2, WING_FRONT - 0.45));
+  props.add(box(BAR_DOOR.half * 2 + 0.7, 0.35, 1.8, mats.darkWood, bx, BAR_DOOR.top + 0.175, WING_FRONT - 0.45));
+  props.add(box(BAR_DOOR.half * 2 + 0.8, BAR_DOOR.bottom, 0.9, mats.steps, bx, BAR_DOOR.bottom / 2, BAR_DOOR.z + 0.55));
+  const barLeaves = [-1, 1].map((sx) => {
+    const l = hingedLeaf({ hinge: new THREE.Vector3(bx + sx * BAR_DOOR.half, 0, BAR_DOOR.z), dir: -sx, width: BAR_DOOR.half, bottom: BAR_DOOR.bottom, height: BAR_DOOR.top - 0.1 - BAR_DOOR.bottom, mats });
+    group.add(l);
+    return l;
+  });
+  const barFloor = vestibule(props, {
+    x: bx, half: BAR_DOOR.half, top: BAR_DOOR.top - 0.05, zOut: BAR_DOOR.z - 0.12, zIn: barIn, sill: BAR_DOOR.bottom, floorIn: BAR_ROOM.y,
+    roomDoor: { half: barRoom.doorway.w / 2, h: barRoom.doorway.h }, mats, lamps: lanterns,
+  });
 
   // Casino: marquee bulbs round the door and sign, red and gold trim, a giant die and chip on the roof.
   const cx = WING_X;
@@ -521,14 +650,26 @@ export function buildHub() {
     }
   });
 
-  // The rooms inside: the lobby in the middle pod, the bar in the left wing. The casino stays shut.
-  const lobby = buildLobbyRoom();
-  lobby.group.position.set(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z);
-  const bar = buildBarRoom();
-  bar.group.position.set(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z);
+  lobbyRoom.group.position.set(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z);
+  barRoom.group.position.set(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z);
+  // How to walk in (hub space): the outside door, its leaves, the hall's floor, and the room's door.
+  const entrance = (x, d, leaves, floor, zIn, room) => ({
+    x, half: d.half, sill: d.bottom, top: d.top, z: d.z, zIn, floor, room,
+    // Swings the outside doors: 0 shut, 1 open.
+    open(k) {
+      const a = THREE.MathUtils.smootherstep(k, 0, 1) * 1.6;
+      for (const l of leaves) l.rotation.y = l.userData.dir * a;
+    },
+  });
   const rooms = [
-    { id: 'lobby', name: 'Lobby', room: lobby, at: new THREE.Vector3(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z), shell: 'lobby' },
-    { id: 'bar', name: 'Bar', room: bar, at: new THREE.Vector3(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z), shell: 'bar' },
+    {
+      id: 'lobby', name: 'Lobby', room: lobbyRoom, at: new THREE.Vector3(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z), shell: 'lobby',
+      entrance: entrance(0, { ...DOOR, top: DOOR.top - 0.85 }, lobbyLeaves, lobbyFloor, lobbyIn, lobbyRoom),
+    },
+    {
+      id: 'bar', name: 'Bar', room: barRoom, at: new THREE.Vector3(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z), shell: 'bar',
+      entrance: entrance(bx, BAR_DOOR, barLeaves, barFloor, barIn, barRoom),
+    },
   ];
   for (const r of rooms) {
     r.room.group.visible = false;
@@ -568,6 +709,7 @@ export function buildHub() {
       for (const s of signs) s.material.emissiveIntensity = 0.35 + n * 1.6;
       mats.lantern.emissiveIntensity = 0.3 + n * 2.2;
       mats.fanlight.emissiveIntensity = 0.4 + n * 1.8;
+      for (const m of hallMats) m.emissiveIntensity = 0.1 + n * 0.32;
       lanternGlow.update(env, renderer);
       // Bulbs glow by day as decoration and properly at night.
       warmBulbs.color.set('#ffd9a0').multiplyScalar(1 + n * 2.5);
