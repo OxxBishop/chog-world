@@ -20,6 +20,7 @@ import { READY } from './traitmap.js';
 import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createFlight } from './flight.js';
+import { createSpace } from './space.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -114,6 +115,7 @@ post.setPixelRatio(renderer.getPixelRatio());
 let island;
 let clouds;
 let session = null;
+let space = null;
 let npcs = null;
 let debug = null;
 
@@ -170,6 +172,8 @@ async function init() {
   for (const r of island.rooms) VIEWS[r.id] = r.view;
   VIEWS.home = VIEWS[`home${DOMES.indexOf(home)}`];
   buildPickables();
+  // The world seen from space, ready before the shaders are built so it never stalls.
+  space = createSpace({ scene, camera, renderer, sky, clouds, rig, dip: fadeThrough });
   load.set('build', 1);
   // Build every shader the world needs (the rooms and the post chain too) in the background, so the
   // first frame you see is finished.
@@ -220,12 +224,17 @@ async function init() {
     leaveToOverview: () =>
       fadeThrough(() => {
         leaveRoomUI();
+        space.leave();
         rig.jump('overview');
         markView('overview');
       }),
-    // The world seen from space (B7, src/space.js) plugs in here as enterSpace({ from, duration }).
-    // Until it lands the cutscene goes straight to the fade.
-    enterSpace: async () => {},
+    // The world seen from space (src/space.js): carried out to it from a room or wherever the view
+    // is, and back (at once, or flying back over duration seconds).
+    enterSpace: ({ from, duration } = {}) => {
+      leaveRoomUI();
+      return space.enter({ from, duration });
+    },
+    leaveSpace: (opts) => space.leave(opts),
     // Compile a new object's shaders ahead of time, for the target the scene really draws into.
     prewarm: (obj) => {
       const was = renderer.getRenderTarget();
@@ -256,7 +265,9 @@ async function init() {
   if (READY.size || params.has('npcs')) buildNpcs({ scene, plaza: island.plaza }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
   if (SHOTS[params.get('demo')]) startDemo(SHOTS[params.get('demo')], cloudsIn);
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; } };
+  // ?space opens on the world seen from space.
+  if (params.has('space')) space.enter({ duration: 0 });
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space };
 }
 
 // ?demo=<shot>: a camera flight for the video (src/flight.js) with the interface hidden. It holds its
@@ -403,7 +414,10 @@ function showBar(name, rooms = []) {
 }
 function enterRoom(r) {
   const place = pickables.find((m) => m.userData.place.id === r.place)?.userData.place;
-  fadeThrough(() => rig.jump(r.id));
+  fadeThrough(() => {
+    space.leave();
+    rig.jump(r.id);
+  });
   inRoom = { room: r, place };
   showBar(r.name);
   markView(null);
@@ -503,6 +517,7 @@ function frame() {
 
   rig.update(dt);
   demo?.update(dt);
+  space?.update();
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
   const fov = rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov();
   if (Math.abs(camera.fov - fov) > 0.05) {
@@ -514,6 +529,7 @@ function frame() {
   sky.fog.near = 600 + dist * 1.3;
   sky.fog.far = sky.fog.near + 2600;
   const env = sky.update(hour, camera, t);
+  space?.apply();
   // The shadow box covers the whole world, so only the sun moving calls for a fresh shadow map.
   if (Math.abs(hour - lastShadowHour) > 0.02) {
     renderer.shadowMap.needsUpdate = true;

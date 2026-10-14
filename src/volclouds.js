@@ -477,6 +477,8 @@ export function createVolumetricClouds(renderer, camera) {
   let wanted = true;
   let shownAt = null;
   let lastT = 0;
+  // How far the clouds have given way to something else (the world seen from space), 0 to 1.
+  let away = 0;
 
   // Every texture the clouds draw from. The sky's light (transmittance, irradiance and scattering
   // through the air) was worked out once on the GPU at every load; it is the same every time, so it
@@ -511,7 +513,7 @@ export function createVolumetricClouds(renderer, camera) {
     hold(p) {
       pass = p;
       wanted = p.enabled;
-      Object.defineProperty(p, 'enabled', { get: () => warming || (ready && wanted), set: (v) => (wanted = v), configurable: true });
+      Object.defineProperty(p, 'enabled', { get: () => warming || (ready && wanted && away < 1), set: (v) => (wanted = v), configurable: true });
     },
     /**
      * Brings the clouds in: loads their textures, builds their shaders in the background with one
@@ -519,6 +521,10 @@ export function createVolumetricClouds(renderer, camera) {
      * the clouds, so a failed load is tried once more. If they still can't load (offline, blocked
      * download), the world carries on without them. Resolves true once they are showing.
      */
+    // Fades the clouds out (k = 1, and their pass stops drawing) or back in (k = 0).
+    setAway(k) {
+      away = k;
+    },
     async stream(draw) {
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
@@ -569,7 +575,8 @@ export function createVolumetricClouds(renderer, camera) {
     },
     update(env, sky, t) {
       lastT = t;
-      composite.uniforms.get('fade').value = shownAt === null ? 0 : THREE.MathUtils.smoothstep(t, shownAt, shownAt + FADE_IN);
+      const shown = shownAt === null ? 0 : THREE.MathUtils.smoothstep(t, shownAt, shownAt + FADE_IN);
+      composite.uniforms.get('fade').value = shown * (1 - away);
       composite.setEnv(env, sky, t);
       setDrift(t);
       // By day the sun lights the clouds; at night a dim lilac moon takes its place, which is the
