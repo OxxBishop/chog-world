@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { loadModel, loadPack, unpack } from './assets.js';
 
 /*
  * KayKit kits by Kay Lousberg (CC0). Space Base Bits gives the modular pods, tubes and towers the hub,
@@ -8,23 +8,23 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
  * draw call per kit.
  */
 
-const ROOT = `${import.meta.env.BASE_URL}assets/`;
 const kit = new Map();
 const shared = new Map();
 
 export async function loadKit(names, dir = 'kaykit', onProgress) {
-  const loader = new GLTFLoader();
+  const pack = await loadPack(dir, (f) => onProgress?.(0.9 * f));
   let done = 0;
   await Promise.all(
     names.map(async (name) => {
-      const gltf = await loader.loadAsync(`${ROOT}${dir}/${name}.gltf`);
-      gltf.scene.traverse((o) => {
+      const scene = await loadModel(pack, dir, name);
+      unpack(scene);
+      scene.traverse((o) => {
         if (!o.isMesh) return;
         if (!shared.has(dir)) shared.set(dir, o.material);
         o.material = shared.get(dir);
       });
-      kit.set(name, gltf.scene);
-      onProgress?.(++done / names.length);
+      kit.set(name, scene);
+      onProgress?.(0.9 + (0.1 * ++done) / names.length);
     }),
   );
 }
@@ -103,5 +103,84 @@ export function repaint(obj, swaps, roofMat = null, isRoof = (n, h) => n.y > 0.6
       r.userData.roof = true;
       o.add(r);
     }
+  }
+}
+
+/*
+ * Cut a passage through kit pieces: every face loses exactly the part of it inside box (a Box3 in
+ * root's space), clipped, not dropped, so the wall around the opening stays whole. Normals and UVs
+ * carry over, so the cut faces look as they did.
+ */
+export function carve(obj, box, root = obj) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const lo = box.min.toArray(), hi = box.max.toArray();
+  const v = new THREE.Vector3();
+  const lerp = (a, b, s) => a.map((x, i) => x + (b[i] - x) * s);
+  const mix = (a, b, s) => ({ w: lerp(a.w, b.w, s), p: lerp(a.p, b.p, s), n: lerp(a.n, b.n, s), t: lerp(a.t, b.t, s) });
+  // The part of a convex polygon with its axis coordinate at most c (below) or at least c.
+  const clip = (poly, ax, c, below) => {
+    const res = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const da = below ? c - a.w[ax] : a.w[ax] - c, db = below ? c - b.w[ax] : b.w[ax] - c;
+      if (da >= 0) res.push(a);
+      if (da >= 0 !== db >= 0) res.push(mix(a, b, da / (da - db)));
+    }
+    return res;
+  };
+  const meshes = [];
+  obj.traverse((o) => o.isMesh && meshes.push(o));
+  for (const o of meshes) {
+    const M = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld);
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
+    const pos = g.attributes.position, nor = g.attributes.normal, uv = g.attributes.uv;
+    const out = { position: [], normal: [], uv: [] };
+    const emit = (poly) => {
+      for (let i = 1; i < poly.length - 1; i++) {
+        for (const q of [poly[0], poly[i], poly[i + 1]]) {
+          out.position.push(...q.p);
+          out.normal.push(...q.n);
+          out.uv.push(...q.t);
+        }
+      }
+    };
+    const vert = (k) => ({
+      w: v.fromBufferAttribute(pos, k).applyMatrix4(M).toArray(),
+      p: [pos.getX(k), pos.getY(k), pos.getZ(k)],
+      n: [nor.getX(k), nor.getY(k), nor.getZ(k)],
+      t: uv ? [uv.getX(k), uv.getY(k)] : [0, 0],
+    });
+    let cut = false;
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    for (let k = 0; k < pos.count; k += 3) {
+      // Most faces are nowhere near the box: test them cheaply and copy them as they are.
+      a.fromBufferAttribute(pos, k).applyMatrix4(M);
+      b.fromBufferAttribute(pos, k + 1).applyMatrix4(M);
+      c.fromBufferAttribute(pos, k + 2).applyMatrix4(M);
+      const touches = [0, 1, 2].every((ax) => Math.max(a.getComponent(ax), b.getComponent(ax), c.getComponent(ax)) > lo[ax] && Math.min(a.getComponent(ax), b.getComponent(ax), c.getComponent(ax)) < hi[ax]);
+      if (!touches) {
+        for (let q = k; q < k + 3; q++) {
+          out.position.push(pos.getX(q), pos.getY(q), pos.getZ(q));
+          out.normal.push(nor.getX(q), nor.getY(q), nor.getZ(q));
+          out.uv.push(uv ? uv.getX(q) : 0, uv ? uv.getY(q) : 0);
+        }
+        continue;
+      }
+      let poly = [vert(k), vert(k + 1), vert(k + 2)];
+      cut = true;
+      // Peel off what lies below and above the box on each axis in turn; what is left is inside it.
+      for (let ax = 0; ax < 3 && poly.length >= 3; ax++) {
+        emit(clip(poly, ax, lo[ax], true));
+        emit(clip(poly, ax, hi[ax], false));
+        poly = clip(clip(poly, ax, lo[ax], false), ax, hi[ax], true);
+      }
+    }
+    if (!cut) continue;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(out.position, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(out.normal, 3));
+    if (uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(out.uv, 2));
+    o.geometry = geo;
   }
 }

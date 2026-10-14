@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MeshoptSimplifier } from 'meshoptimizer';
+import { MeshoptDecoder, MeshoptSimplifier } from 'meshoptimizer';
 import { patchPlant, sphereNormals, upNormals } from './foliage.js';
 
 // Quaternius Stylized Nature MegaKit (CC0), standard free version.
@@ -53,8 +53,79 @@ function simplify(geometry, ratio) {
   const [out] = MeshoptSimplifier.simplify(idx, pos, 3, Math.floor((idx.length * ratio) / 3) * 3, 0.02, ['LockBorder']);
   geometry.setIndex(new THREE.BufferAttribute(out, 1));
 }
-const loader = new GLTFLoader();
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const cache = new Map();
+
+/*
+ * The models load from one compressed file per kit (scripts/pack-models.mjs, npm run pack-models).
+ * Hashed into their names at build, so a cached copy never outlives a change.
+ */
+const PACKS = {
+  nature: new URL('./packs/nature.glb', import.meta.url).href,
+  kaykit: new URL('./packs/kaykit.glb', import.meta.url).href,
+  furniture: new URL('./packs/furniture.glb', import.meta.url).href,
+};
+
+/** Every model in a kit's pack, by name; empty if the pack is missing. onProgress gets 0 to 1. */
+export async function loadPack(kit, onProgress) {
+  try {
+    const gltf = await loader.loadAsync(PACKS[kit], (e) => e.total && onProgress?.((0.9 * e.loaded) / e.total));
+    onProgress?.(1);
+    return new Map(gltf.scenes.map((s) => [s.name, s]));
+  } catch (e) {
+    console.warn(`The ${kit} pack did not load, so its loose files will: ${e.message}`);
+    return new Map();
+  }
+}
+
+/** A model from its pack, or from its loose file if the pack lacks it (run npm run pack-models). */
+export async function loadModel(pack, dir, name, gltfLoader = loader) {
+  if (pack.has(name)) return pack.get(name);
+  if (pack.size) console.warn(`${name} is not in the ${dir} pack: run npm run pack-models`);
+  return (await gltfLoader.loadAsync(`${import.meta.env.BASE_URL}assets/${dir}/${name}.gltf`)).scene;
+}
+
+/*
+ * A packed model's geometry is small integers (see scripts/pack-models.mjs). Turn it back into plain
+ * floats in the model's own space, as its loose file had it, so nothing downstream can tell.
+ */
+const unpacked = new WeakSet();
+export function unpack(root) {
+  root.traverse((o) => {
+    const p = o.userData.packed;
+    if (!o.isMesh || !p || unpacked.has(o.geometry)) return;
+    const g = o.geometry;
+    unpacked.add(g);
+    const [x, y, z, step, u0, v0, uvStep] = p;
+    for (const [name, a] of Object.entries(g.attributes)) {
+      const n = a.itemSize;
+      const out = new Float32Array(a.count * n);
+      for (let i = 0; i < a.count; i++) for (let c = 0; c < n; c++) out[i * n + c] = a.getComponent(i, c);
+      if (name === 'position') {
+        for (let i = 0; i < out.length; i += 3) {
+          out[i] = x + step * out[i];
+          out[i + 1] = y + step * out[i + 1];
+          out[i + 2] = z + step * out[i + 2];
+        }
+      } else if (name === 'uv' && uvStep) {
+        for (let i = 0; i < out.length; i += 2) {
+          out[i] = u0 + uvStep * out[i];
+          out[i + 1] = v0 + uvStep * out[i + 1];
+        }
+      } else if (name === 'normal') {
+        for (let i = 0; i < out.length; i += 3) {
+          const l = Math.hypot(out[i], out[i + 1], out[i + 2]) || 1;
+          out[i] /= l;
+          out[i + 1] /= l;
+          out[i + 2] /= l;
+        }
+      }
+      g.setAttribute(name, new THREE.BufferAttribute(out, n));
+    }
+    g.computeBoundingBox();
+    g.computeBoundingSphere();
+  });
+}
 const materials = new Map();
 
 // One material per kit material name, shared by every model, so instancing batches cleanly.
@@ -93,12 +164,13 @@ function prepMaterial(src, modelName) {
 
 export async function loadAll(onProgress) {
   const names = [...new Set(Object.values(MODELS).flat())];
-  await MeshoptSimplifier.ready;
+  // The pack's download is most of the work; the loose files, if any, the rest.
+  const [pack] = await Promise.all([loadPack('nature', (f) => onProgress?.(0.9 * f)), MeshoptSimplifier.ready]);
   let done = 0;
   await Promise.all(
     names.map(async (name) => {
-      const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}assets/nature/${name}.gltf`);
-      const root = gltf.scene;
+      const root = await loadModel(pack, 'nature', name);
+      unpack(root);
       root.updateMatrixWorld(true);
       const parts = [];
       root.traverse((o) => {
@@ -109,8 +181,9 @@ export async function loadAll(onProgress) {
         if (lname.startsWith('lea') && TREES.has(name)) sphereNormals(g, 0.85);
         else if (lname.startsWith('lea')) sphereNormals(g, 0.6, 0);
         else if (lname.startsWith('grass') || lname.startsWith('flower') || lname.startsWith('plant')) upNormals(g, 0.65);
-        if (lname.startsWith('bark')) simplify(g, 0.4);
-        if (lname.startsWith('mushroom')) simplify(g, 0.35);
+        // Packed models come already simplified.
+        if (lname.startsWith('bark') && !o.userData.packed) simplify(g, 0.4);
+        if (lname.startsWith('mushroom') && !o.userData.packed) simplify(g, 0.35);
         parts.push({ geometry: g, material: mat, matrix: o.matrixWorld.clone(), shadow: !lname.startsWith('grass'), tintable: TINTED.has(o.material.name) });
       });
       const box = new THREE.Box3().setFromObject(root);
@@ -120,7 +193,7 @@ export async function loadAll(onProgress) {
         height: Math.max(0.001, box.max.y - box.min.y),
         radius: Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2,
       });
-      onProgress?.(++done / names.length);
+      onProgress?.(0.9 + (0.1 * ++done) / names.length);
     }),
   );
 }

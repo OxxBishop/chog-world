@@ -18,7 +18,7 @@ export function createLoader(el, steps) {
     const f = state.reduce((s, x) => s + x.share * x.f, 0) / total;
     // Never runs backwards, even if a step finds more to do than it first thought.
     shown = Math.max(shown, f);
-    if (bar) bar.style.transform = `scaleX(${shown.toFixed(3)})`;
+    if (bar) bar.parentElement.style.setProperty('--p', shown.toFixed(3));
     const now = state.find((x) => x.f < 1) ?? state[state.length - 1];
     sub.textContent = `${now.label}... ${Math.round(shown * 100)}%`;
   };
@@ -37,10 +37,11 @@ export function createLoader(el, steps) {
       }
       render();
     },
-    // Lifts the loading screen. Returns the seconds from start to the first frame.
-    finish() {
+    // Lifts the loading screen (unless keep: the intro carries on from it). Returns the seconds from
+    // start to the first frame.
+    finish({ keep = false } = {}) {
       for (const s of state) api.set(s.id, 1);
-      el.classList.add('done');
+      if (!keep) el.classList.add('done');
       api.times.total = +((performance.now() - t0) / 1000).toFixed(2);
       console.info('Load times (s):', JSON.stringify(api.times));
       return api.times.total;

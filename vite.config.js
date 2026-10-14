@@ -27,8 +27,24 @@ function devApi(env) {
   };
 }
 
+// The model packs (src/packs, loaded by src/assets.js) start downloading with the page instead of
+// once the script has run. Build only: their names carry a hash.
+function preloadPacks() {
+  return {
+    name: 'chog-preload-packs',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler: (html, ctx) =>
+        Object.keys(ctx.bundle ?? {})
+          .filter((f) => f.endsWith('.glb'))
+          .map((f) => ({ tag: 'link', attrs: { rel: 'preload', href: `./${f}`, as: 'fetch', crossorigin: '' }, injectTo: 'head' })),
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
   base: './',
   server: { port: 5173 },
-  plugins: [devApi(loadEnv(mode, process.cwd(), ''))],
+  plugins: [devApi(loadEnv(mode, process.cwd(), '')), preloadPacks()],
 }));

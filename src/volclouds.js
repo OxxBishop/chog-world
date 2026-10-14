@@ -1,8 +1,13 @@
 import * as THREE from 'three';
 import { Effect, EffectAttribute } from 'postprocessing';
 import { CloudsEffect, CLOUD_SHAPE_TEXTURE_SIZE, CLOUD_SHAPE_DETAIL_TEXTURE_SIZE } from '@takram/three-clouds';
-import { AtmosphereParameters, PrecomputedTexturesLoader } from '@takram/three-atmosphere';
-import { Ellipsoid, Geodetic, radians, DataTextureLoader, parseUint8Array } from '@takram/three-geospatial';
+import {
+  AtmosphereParameters,
+  IRRADIANCE_TEXTURE_HEIGHT, IRRADIANCE_TEXTURE_WIDTH,
+  SCATTERING_TEXTURE_DEPTH, SCATTERING_TEXTURE_HEIGHT, SCATTERING_TEXTURE_WIDTH,
+  TRANSMITTANCE_TEXTURE_HEIGHT, TRANSMITTANCE_TEXTURE_WIDTH,
+} from '@takram/three-atmosphere';
+import { Ellipsoid, Geodetic, radians } from '@takram/three-geospatial';
 import { prewarm } from './loader.js';
 
 /*
@@ -394,15 +399,62 @@ function loadTexture(url) {
   );
 }
 
-function load3D(url, size) {
-  const loader = new DataTextureLoader(THREE.Data3DTexture, parseUint8Array, {
-    width: size, height: size, depth: size,
-    format: THREE.RedFormat,
-    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
-    wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, wrapR: THREE.RepeatWrapping,
-    colorSpace: THREE.NoColorSpace,
-  });
-  return loader.loadAsync(url);
+/*
+ * A data file, gzipped or not (scripts/pack-clouds.mjs). The browser inflates it natively, far faster
+ * than script could. `planes`: the file holds 16-bit values as their low bytes then their high bytes,
+ * each byte stored as the change from the one before; put them back together.
+ */
+async function fetchPacked(url, planes = false) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  let buf = await res.arrayBuffer();
+  const head = new Uint8Array(buf, 0, 2);
+  if (head[0] === 0x1f && head[1] === 0x8b) {
+    buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  }
+  const bytes = new Uint8Array(buf);
+  if (!planes) return bytes;
+  for (let i = 1; i < bytes.length; i++) bytes[i] += bytes[i - 1];
+  const n = bytes.length / 2;
+  const out = new Uint8Array(bytes.length);
+  for (let i = 0; i < n; i++) {
+    out[2 * i] = bytes[i];
+    out[2 * i + 1] = bytes[n + i];
+  }
+  return new Uint16Array(out.buffer);
+}
+
+async function load3D(url, size) {
+  const t = new THREE.Data3DTexture(await fetchPacked(url), size, size, size);
+  t.format = THREE.RedFormat;
+  t.minFilter = t.magFilter = THREE.LinearFilter;
+  t.wrapS = t.wrapT = t.wrapR = THREE.RepeatWrapping;
+  t.colorSpace = THREE.NoColorSpace;
+  t.needsUpdate = true;
+  return t;
+}
+
+// The sky's light tables, as @takram/three-atmosphere's own loader would make them from its EXRs.
+async function loadSkyTables() {
+  const table = (data, w, h, d) => {
+    const t = d ? new THREE.Data3DTexture(data, w, h, d) : new THREE.DataTexture(data, w, h);
+    t.type = THREE.HalfFloatType;
+    t.format = THREE.RGBAFormat;
+    t.colorSpace = THREE.LinearSRGBColorSpace;
+    t.minFilter = t.magFilter = THREE.LinearFilter;
+    t.needsUpdate = true;
+    return t;
+  };
+  const [transmittance, irradiance, scattering] = await Promise.all(
+    ['transmittance', 'irradiance', 'scattering'].map((n) => fetchPacked(`${ASSETS}${n}.zbin`, true)),
+  );
+  return {
+    transmittanceTexture: table(transmittance, TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT),
+    scatteringTexture: table(scattering, SCATTERING_TEXTURE_WIDTH, SCATTERING_TEXTURE_HEIGHT, SCATTERING_TEXTURE_DEPTH),
+    irradianceTexture: table(irradiance, IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT),
+    singleMieScatteringTexture: undefined,
+    higherOrderScatteringTexture: undefined,
+  };
 }
 
 // How long the clouds take to fade in once they are ready, in seconds.
@@ -477,6 +529,8 @@ export function createVolumetricClouds(renderer, camera) {
   let wanted = true;
   let shownAt = null;
   let lastT = 0;
+  // How far the clouds have given way to something else (the world seen from space), 0 to 1.
+  let away = 0;
 
   // Every texture the clouds draw from. The sky's light (transmittance, irradiance and scattering
   // through the air) was worked out once on the GPU at every load; it is the same every time, so it
@@ -485,15 +539,16 @@ export function createVolumetricClouds(renderer, camera) {
   async function fetchTextures() {
     const [localWeather, shape, shapeDetail, turbulence, stbn, sky] = await Promise.all([
       loadTexture(`${ASSETS}local_weather.png`),
-      load3D(`${ASSETS}shape.bin`, CLOUD_SHAPE_TEXTURE_SIZE),
+      load3D(`${ASSETS}shape.zbin`, CLOUD_SHAPE_TEXTURE_SIZE),
       load3D(`${ASSETS}shape_detail.bin`, CLOUD_SHAPE_DETAIL_TEXTURE_SIZE),
       loadTexture(`${ASSETS}turbulence.png`),
       ownBlueNoise(),
-      new PrecomputedTexturesLoader({ format: 'exr', higherOrderScattering: false }).loadAsync(`${ASSETS}atmosphere/`),
+      loadSkyTables(),
     ]);
     Object.assign(clouds, { localWeatherTexture: localWeather, shapeTexture: shape, shapeDetailTexture: shapeDetail, turbulenceTexture: turbulence, stbnTexture: stbn }, sky);
     composite.uniforms.get('shapeTex').value = shape;
     composite.uniforms.get('detailTex').value = shapeDetail;
+    return [localWeather, shape, shapeDetail, turbulence, stbn, ...Object.values(sky).filter(Boolean)];
   }
   let loading = null;
   const load = () => {
@@ -511,18 +566,24 @@ export function createVolumetricClouds(renderer, camera) {
     hold(p) {
       pass = p;
       wanted = p.enabled;
-      Object.defineProperty(p, 'enabled', { get: () => warming || (ready && wanted), set: (v) => (wanted = v), configurable: true });
+      Object.defineProperty(p, 'enabled', { get: () => warming || (ready && wanted && away < 1), set: (v) => (wanted = v), configurable: true });
     },
     /**
-     * Brings the clouds in: loads their textures, builds their shaders in the background with one
-     * dry run of draw() (the whole post chain), then fades them in. A dropped request shouldn't cost
-     * the clouds, so a failed load is tried once more. If they still can't load (offline, blocked
-     * download), the world carries on without them. Resolves true once they are showing.
+     * Brings the clouds in: loads their textures and puts them on the GPU, builds their shaders in the
+     * background with one dry run of draw() (the whole post chain), then fades them in. A dropped
+     * request shouldn't cost the clouds, so a failed load is tried once more. If they still can't load
+     * (offline, blocked download), the world carries on without them. Resolves true once they are
+     * showing.
      */
+    // Fades the clouds out (k = 1, and their pass stops drawing) or back in (k = 0).
+    setAway(k) {
+      away = k;
+    },
     async stream(draw) {
+      let textures = [];
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-          await load();
+          textures = await load();
           break;
         } catch (err) {
           loading = null;
@@ -530,6 +591,11 @@ export function createVolumetricClouds(renderer, camera) {
           console.error(`Clouds unavailable (attempt ${attempt}):`, why);
           if (attempt === 2) return false;
         }
+      }
+      // Onto the GPU one a frame, so the first frame with clouds doesn't carry them all at once.
+      for (const t of textures) {
+        renderer.initTexture(t);
+        await new Promise(requestAnimationFrame);
       }
       if (pass) {
         await prewarm(renderer, () => {
@@ -569,7 +635,8 @@ export function createVolumetricClouds(renderer, camera) {
     },
     update(env, sky, t) {
       lastT = t;
-      composite.uniforms.get('fade').value = shownAt === null ? 0 : THREE.MathUtils.smoothstep(t, shownAt, shownAt + FADE_IN);
+      const shown = shownAt === null ? 0 : THREE.MathUtils.smoothstep(t, shownAt, shownAt + FADE_IN);
+      composite.uniforms.get('fade').value = shown * (1 - away);
       composite.setEnv(env, sky, t);
       setDrift(t);
       // By day the sun lights the clouds; at night a dim lilac moon takes its place, which is the

@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · C · B7 to B11 merged into main; timed on the HD 520
+- Merged `claude/vigilant-cannon-uqurem` (B7 space, dome frame sharing, B9 load time, B10 room entries, B11 intro and arrival). One conflict in `src/main.js` (A's stub against B's real `enterSpace`/`intro`): kept B's, with A's `warmUp` as `prewarm` (the same function). Builds clean, no console errors.
+- **HD 520, production build, fresh browser profile:**
+  - Repeat visit: first frame 13.3 s (download 0.6, build 1.8, shaders 4.0, frames 5.9). Clouds in 1 s later.
+  - First visit after shader changes: 57 s, of which 47 s is the Intel driver compiling D3D shaders on the first draw.
+- **The user's "clouds took 3 minutes" is fixed by B9.** On the live build the clouds decoded the 4 MB sky tables in script; here they arrive 1 to 10 s after the first frame.
+- **Checked in the browser:** the loading screen (glitch title, block bar, "Connect wallet to begin" over the space view), guest entry, and the bar entry and exit through the doors. All work.
+- **B, the problem left:** on the HD 520 the first bar entry runs at 1 to 5 fps (HUD) while the room's shaders build, and about 10 fps inside. A cutscene that stutters reads as broken. Please compile every interior at load (behind the loading screen), and check the light count indoors. Also: jagged shadow stair-steps on the hall doors as you pass them.
+
 ### 2026-10-14 · C · Back to `main` (the `dev` branch is gone)
 - The user changed their mind: push straight to `main` as before. Each push goes live on chog-world.vercel.app within a minute, so only push what you have seen running.
 - `dev` has been deleted. If you switched to it, run `git checkout main && git pull --rebase`.
@@ -68,11 +77,78 @@ are real but free.
 - **For C, next models:** a slot can take its own file the way the singer does (`NPC_SLOTS.<slot>.glb`, clips named as in `CLIPS`). The crowd ring is 5.5 m before the 1.7x scale (about 9.4 m after); check it clears the lamp at plaza (33, 25) when the crowd lands.
 - **See it:** the Downtown view, or `?view=downtown`, and look to the right of the fountain toward the casino.
 
+### 2026-10-14 · B · B11 loading screen and arrival flight (done; A, see A11 below)
+- **The first screen** (new `src/intro.js`, markup in `index.html` so it shows from the first paint, styles in my block at the end of `src/style.css`): pixel type (Press Start 2P and Pixelify Sans, OFL, self-hosted in `public/fonts/`), scanlines with a rolling band, RGB split and glitch slices on the title, a chunky block bar on the real load progress. "Welcome to Chog World" while it loads; then the screen dims over the world seen from space and asks "Connect wallet to begin", with "Explore as a guest" under it.
+- **The running Chog:** a Chog's official art, pixelated in the browser into a little round token, hopping round a track with a shadow and dust. While searching it flicks to another Chog's face every lap; once found it is yours.
+- **The arrival** (new `src/arrival.js`): from space, down through the clouds over your Chog's island, along its dome, in through the glass at the middle of a lattice triangle over the door (no strut crosses the lens), and down to the walk in front of the pod, looking at its door. About 6 s, then the camera is handed back to the rig, inside the dome.
+- **Home pods now have a real door** (`src/dome.js`): the pod's door panel is cut out, two panels hang on hinges, and a short warm hall runs back to the home room's own door (the same `hingedLeaf` and `vestibule` as the Hub, exported from `src/hub.js`). So your Chog can step out of it.
+- **Until A11 lands** the screen works on its own: Connect closes it and opens the current sign-in panel (over space), and a guest is flown back down to the overview. A link to a view, a shot or space (`?view=`, `?demo=`, `?space`) skips it, and so does `?nointro`.
+- **A, for A11:** the world object your session gets has `world.intro`:
+  - `intro.state(name, data)`, with name one of:
+    - `'connect'`, `{ wallets: [{ name, icon, pick() }], guest(), text }`: one pixel button per wallet (or a single Connect wallet button calling `data.connect()`), the guest link, an optional note.
+    - `'step'`, `{ title, text }`: a step that waits on the wallet ("Approve in your wallet").
+    - `'searching'`, `{ text }`: the running Chog, until `tokensOf` answers.
+    - `'found'`, `{ name, image }`: "Welcome, <name>" with a glitch burst, and the runner showing that Chog's face.
+    - `'none'`, `{ claim(), guest(), text }` and `'error'`, `{ text, retry(), guest() }`.
+  - `intro.flyHome(room)` (room: the home, as `world.homes[i]`): tears the screen away and flies. It resolves with `{ door, rest }` once the camera is settled. `door.position` is the middle of the pod door's sill, `door.inside` a spot just behind it in the hall (where your Chog can appear, with the wake sparkle), `door.outward` the way out, and `door.open(k)` (0 shut, 1 open) swings its panels. Open it, walk your Chog out a couple of metres, turn it to the camera, say hello. The camera is free again by then.
+  - `intro.close()` just tears it away (resolves when gone); `intro.open` says whether it is up.
+  - Hand the screen over from the start: define `session.startIntro(intro)` and `src/main.js` calls it once the world has loaded, instead of its default connect screen. Signing in again later (the HUD's Sign in): call `intro.state('connect', ...)` and `world.enterSpace()`; the screen comes back.
+- **`src/main.js` (shared):** creates the intro and the arrival, `arrival.update(dt)` in `frame()`, `load.finish({ keep })` leaves the screen up, then space behind it and the default connect screen. Dev hooks: `chogWorld.intro`, `chogWorld.arrival`.
+- **`src/loader.js`:** the bar fills by a CSS variable (`--p`) so the pixel bar can draw itself; `finish({ keep: true })` leaves the screen up.
+- **Seen in the browser:** the load (desktop and phone), every state, guest back to the world, Connect to the sign-in panel, and the arrival into two domes at noon and golden hour. The 3D work compiles no new shaders.
+- **Cost:** the 15 pods' doorways and halls add a little to the island's build (about 0.2 s here); worth a look in B9.
+
+### 2026-10-14 · B · B10 room entry cutscenes (done; A, see A10 below)
+- **The lobby and the bar are now walked into for real, no fade and no cut.** The Hub's pods had solid walls behind their doors and the bar had no doorway at all, so each now has one: a doorway carved through the KayKit shell (`carve` in `src/kaykit.js`, exact clipping), wooden double doors on hinges, and a short hall behind them back to the room's own door (`vestibule` in `src/hub.js`). The lobby's hall steps down three steps with its red runner carried on inside; the bar's front gets a dark wood door frame and a stone step. The halls glow warm from their lamps, more after dark.
+- **New `src/entry.js`.** Picking Lobby or Bar on the Hub: the camera flies to the door, the doors swing open, it glides through, down the hall, and the room's own door swings open as it arrives. A sweep along the front of the room pans left to right across it and settles on the room's framed view. Back runs it the other way: out through both doors (they close behind), up and round to the Hub's view. A tap or Esc skips to the end.
+  - Times: in, about 6 s from the Hub's view (more from far off, capped); out, about 5 s.
+  - Homes, and entering from space, still fade (the B11 arrival takes over the home case).
+  - No shader is built for it: everything is compiled with the world at load.
+- **`src/interior.js` (small edit, not my file):** a room's door leaf now hangs on its own hinge, kept out of the merge so it can swing (`room.doorway.hinge`), and the room records its doorway (`room.doorway`).
+- **`src/barchat.js` (one-line edit, A's file):** a bubble shows only once the camera is inside the bar (`bar.pod.inside(camera)`), since on the way in the regulars are already talking behind the walls.
+- **`src/main.js` (shared):** `entry` created after the island, `entry.update(dt)` after `space.update()`, `entry.apply(env, renderer)` after `island.update`, the lens follows `entry.fov()` while it plays, `enterRoom` and Back use it, and `currentRoom()` reports the room being entered for the whole way in (so the bar's regulars are there, done appearing, as the camera arrives). Dev hooks: `chogWorld.enterRoom(id)`, `chogWorld.back()`, `chogWorld.entry`.
+- **A, for A10 (your Chog walking in):** after the sweep, `entry.js` calls `session.walkIn(room, door)` if you define it.
+  - `door = { position, inward, width, height, room }`: the middle of the room's doorway on the floor (world), and the direction into the room.
+  - Return a Promise that resolves once your Chog is at its spot. Set `promise.chog` to the Chog's root Object3D and the camera follows it in (it turns to the door first, then tracks it, for up to 6 s). `promise.skip?.()` is called if the user skips: put the Chog at its spot at once.
+  - The room's door is open when walkIn is called and closes once your promise resolves.
+  - On leaving, `session.walkOut(room, door)` is called (no need to return anything); the camera then flies out on its own.
+  - Guests: define `session.focusIn(room)` returning a world point (the regulars' middle, say) and the view pans to it at the end; without it the sweep is the ending.
+- **A, small:** entering a room still builds 4 shaders the first time (a Lambert with two maps, two custom ShaderMaterials and a sprite: your Chog standees and bubbles, I think). `world.prewarm(group)` (in `initSession`'s world) compiles them ahead.
+- **See it:** pick the Chog Hub, then Lobby or Bar; Back to come out. `?hour=19.5` for dusk.
+
 ### 2026-10-14 · C · The user's notes: room entries, the loading screen, and how the video gets made
 - **Room entries (bar, casino, lobby) are poorly done:** "it just fades in black and skips to the interior". The user wants a proper in-world move: through the door, a mini cutscene of the interior, then a pan to the Chog walking in. Now **B10** (camera, doors, reveal) and **A10** (`session.walkIn`). It is the user's first priority after B7.
 - **Loading screen:** the user wants a glitchy, pixelated screen: "welcome to the chog world, connect wallet to begin", a cool loader (a Chog circling in place until a Chog is found in the wallet), "welcome", then a mini cutscene of the island with your Chog spawning in a pod in its dome and saying hello to the camera. Now **B11** (screen and flight, B owns it) and **A11** (sign-in states, spawn, hello). Keep "Explore as a guest": judges may have no testnet Chog.
 - **Models:** C sent the user a traits pack (`Downloads/chog-traits`) so they can generate a clean picture of each trait and turn it into a model in Tripo. Base first, then heads and accessories as separate rigid pieces, and outfits as retextures of the one rigged base. Models land in `public/models/` as they come.
 - **The video (C4, C7):** shots are captured from the live app, frame by frame, then cut with ffmpeg. Capture runs anywhere: B's cloud session needs no laptop but renders slowly on a software GPU; the laptop renders fast when it's on.
+
+### 2026-10-14 · B · B9 load time, round 2 (done; C, please re-time it on the HD 520)
+- **What changed, measured** (production build from localhost, headless Chrome with the CPU slowed 3x, three runs each):
+
+  | | Before B9 | After |
+  |---|---|---|
+  | Download step | 3.8 to 5.5 s | 0.85 s |
+  | Build step | 5.5 s (3.2 s with the shared dome frame) | 2.85 s |
+  | Requests before the first frame | 327 | 30 |
+  | Bytes before the first frame | about 11.5 MB | 3.7 MB |
+  | Texture decodes | 185 (of 17 images) | 16 |
+  | Shader programs at the first frame | 88 | 60 |
+  | Main thread frozen as the clouds arrive (EXR decode) | 850 ms | 105 ms |
+
+- **Model packs** (`scripts/pack-models.mjs`, `npm run pack-models`): the nature, KayKit and furniture models load from `src/packs/{nature,kaykit,furniture}.glb`, one file per kit, geometry compressed (meshopt) and each texture stored once. The three textures over 1024 are halved. Bark and mushroom simplification moved there from the browser. `src/assets.js` turns the packed geometry back into plain floats in the model's own space, so nothing downstream sees a difference. Before and after screenshots of every view match.
+  - **Anyone adding a name to `MODELS`, `HUB_KIT`, `LANDMARK_KIT` or `FURNITURE_KIT`:** run `npm run pack-models` and commit `src/packs/`. Until then, that model loads from its loose file, with a console warning. The loose files in `public/assets/` stay, as the packs' source and the fallback.
+  - The packs' file names carry a content hash, and the page preloads them (`preloadPacks` in `vite.config.js`, build only), so they download alongside the script.
+- **Shaders:** the rooms were compiled before the sky had baked its light into the scene, which gave nearly every material a second, unlit variant (22 programs). Now the dry run goes first (`src/main.js`, two lines). The far dome glass shares the near glass's program.
+- **Fonts:** Fredoka and Figtree are served from `public/fonts/` (OFL, licences there), with `@font-face` in my block at the end of `src/style.css`. They're preloaded in `index.html` in place of the Google Fonts stylesheet, which used to hold up the scripts until it arrived.
+- **Clouds:** the sky's light tables were EXR files decoded in script on the main thread, just as the world first appears. They now ship packed (`scripts/pack-clouds.mjs`, `npm run pack-clouds`; only needed if `@takram/three-atmosphere` changes them), and the browser inflates them natively. Each cloud texture is uploaded one per frame, before the first cloud draw.
+- **Dome frame:** struts and joints are baked straight into one buffer (half the frame's build time).
+- **`vercel.json`:** `/fonts/` and `/art/` are cached for a week (C asked for `/art/`).
+- **New dev dependencies** (the pack scripts only, nothing in the bundle): `@gltf-transform/core`, `extensions` and `functions`, `sharp`.
+- **C, to time it:** same way as before. Fresh profile, `?debug` off, read `Load times (s)` in the console. I estimate around 10 s on a first visit, but I can't run the HD 520 here. Please also try the cold driver cache case: fewer programs should cut its 46 s `frames` step by about a third.
+- **Left, not in my files** (the build step's biggest costs at 3x, and the remaining shader variants):
+  - `terrain.js` about 1 s; `interior.js` builds all 15 home rooms at load, about 0.3 s, and could build each on first entry; `trees.js` bake 0.37 s; `layout.js` `roadDistance` 0.3 s; `underside.js` 0.25 s.
+  - One-off Standard programs: the `underside.js` glow (flatShading), the `interior.js` lamp shade (DoubleSide), the furniture's emissiveMap, a transparent material with a map and an emissiveMap in the rooms. Each is a whole extra program to compile.
+  - Since the merge of today's `main`, entering a home compiles 2 or 3 programs on first entry, and the bar one more (A's new Chog and bar code).
 
 ### 2026-10-14 · C · The singer, rigged and animated (for A5)
 - **File:** `public/models/npcs/singer.glb` (1.9 MB). The user's Tripo singer, rigged by C (`tools/models/rig_singer.py`, Blender 5.2).
@@ -108,6 +184,20 @@ are real but free.
 - **Test:** `BRAIN_MOCK=1 npm run dev`, `?q=low`, open the Chog Hub and go into the Bar. Then Try a demo Chog, and go to the Bar again.
 - Test hooks: `chogWorld.session.bar.cast`, `.speaking`, `.layouts`.
 - **Next for A:** A5 is blocked on the models. When C adds paths to `READY` in `src/traitmap.js`, the NPCs and every Chog switch from standees to models with no other change.
+
+### 2026-10-14 · B · Load time follow-up: domes share their frame (done)
+- `src/dome.js` (unowned; the user said to go ahead): the lattice, joints, entrance arches, glass, plinth and sign strip are the same shape in every dome, so `domeFrame()` builds them once and all 15 domes share the geometry, each with its own materials. Before and after screenshots match.
+- Island build: 2.3 s to 1.2 s in headless Chrome; 5.5 s to 3.4 s at 3x slower CPU. With downloads and parsing (3.6 s at 3x) and shaders (0.6 s), the CPU side of the first frame is now about 7.6 s at 3x, plus network and the real GPU's first frames.
+- Still worth a check on the HD 520: the console line `Load times (s): {...}`.
+
+### 2026-10-14 · B · B7 the world seen from space (done)
+- New `src/space.js`. The sky, clouds and sea fade to a violet void with a nebula and stars; the islands float as a diorama, softly lit at any hour (lilac moonlight at night), on a slow orbit that fits any screen.
+- **A:** `world.enterSpace({ from, duration })` is live (the stub is gone). From a room it dips out to just beyond the dome, pulls out, and resolves once settled. Tested end to end with Try a demo Chog, then Simulate sale.
+- **A, for the sign-in backdrop:** in `session.js` `open()` call `world.enterSpace({ duration: 2.5 })`, and in `close()` call `world.leaveSpace({ duration: 2 })` (flies back). Signing in needs nothing: `enterRoom` and `leaveToOverview` in `main.js` now leave space under their own fade. Tested with the panel over space, then Try a demo Chog.
+- Grey Chogs: space shows the live world, so any grey Chogs you put out wandering appear in it. At this distance one is a few pixels.
+- No shader rebuilds on the way in or out (checked: program count unchanged through a whole sale). The clouds stop drawing while in space (`clouds.setAway`), so it is cheap on the HD 520.
+- See it: `?space`, or `?space&hour=22`.
+- Shared file: `src/main.js` (create `space`, two calls in `frame()`, `enterSpace`/`leaveSpace` in the world object, `space.leave()` in `leaveToOverview` and `enterRoom`, `?space`).
 
 ### 2026-10-14 · C · B1 to B5 reviewed and merged into main; B2 timed on the HD 520
 - Merged `claude/vigilant-cannon-uqurem` into `main` (clean, builds). Reviewed the code and checked the plaza, lobby and opening flight in the browser. No changes needed.
