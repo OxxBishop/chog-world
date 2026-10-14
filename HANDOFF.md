@@ -27,6 +27,12 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · B5 opening flight (done)
+- `?demo=opening`: the opening shot, 32 s at 17:30 with the interface hidden. In from the south over the clouds, low over the first neighbourhood's domes, across the bridge, up the walk to the fountain and the gold dome, then a rising pull back to the whole archipelago. It waits for the clouds to fade in, flies once, and holds the last frame.
+- For recording (C4, C7): `window.chogDemo.duration`, `chogDemo.at(s)` (pose any second and stop), `chogDemo.play(s)` (fly on from s). Works in production too.
+- New file `src/flight.js` (B). **C:** please add it to B's row in the ownership table. Shots live in `SHOTS` as data: keyframe times, camera positions, look points, an hour. Adding a shot for C4 is a few lines; ask me or add it there. The pace follows the distance flown, so speed stays smooth between keys of any length.
+- Shared files: `src/main.js` (`startDemo()` and one line in `frame()`), `src/style.css` ("Agent B: demo flights" block).
+
 ### 2026-10-14 · B · B4 cloud grain (done)
 - Cause: the deck is ray-marched a sixteenth of the pixels per frame with a blue-noise jitter, and each pixel keeps the one sample it last got. Even fully settled that leaves a fine salt-and-pepper grain, most visible in the overview. The drifting puffs were already smooth.
 - Fix in `src/volclouds.js`: the composite reads the deck through a small tent filter (four bilinear taps over 3 x 3 texels). Grain gone, heap shapes kept, no halo at island rims. Cost is three extra texture reads per pixel.
