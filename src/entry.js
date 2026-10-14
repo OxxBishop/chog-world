@@ -59,8 +59,8 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
   /*
    * The path in, as keys { t, pos, look } in the world. From wherever the camera is to just in front
    * of the outside door, through it and down the hall, in through the room's door, then a sweep across
-   * the room that ends on the room's framed view. With your Chog walking in, the sweep runs the other
-   * way and comes on round to the door, to meet it coming through.
+   * the room that ends on the room's framed view. With your Chog walking in, the sweep comes on round
+   * to the door instead, to meet it coming through.
    */
   function pathIn(r, e, owner, doorLook) {
     const room = r.room;
@@ -79,7 +79,8 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
       { t: t1 + 1.5, pos: H(e.x, e.floor(mid) + eye, mid), look: L(0, h * 0.4, -d * 0.2) },
     ];
     // In through the room's door, then along the front wall and up to the room's framed view while
-    // the gaze sweeps across the room, keeping clear of whoever stands in it.
+    // the gaze sweeps right to left across the room (away from the open door), keeping clear of
+    // whoever stands in it.
     if (owner)
       keys.push(
         { t: t1 + 2.05, pos: L(0, eye + 0.2, d / 2 - 1.6), look: L(w * 0.32, h * 0.3, -d * 0.3) },
@@ -88,8 +89,8 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
       );
     else
       keys.push(
-        { t: t1 + 2.05, pos: L(0, eye + 0.2, d / 2 - 1.6), look: L(-w * 0.32, h * 0.3, -d * 0.3) },
-        { t: t1 + 3.2, pos: L(w * 0.12, h * 0.5, d * 0.36), look: L(w * 0.3, h * 0.28, -d * 0.36) },
+        { t: t1 + 2.05, pos: L(0, eye + 0.2, d / 2 - 1.6), look: L(w * 0.32, h * 0.3, -d * 0.3) },
+        { t: t1 + 3.2, pos: L(w * 0.12, h * 0.5, d * 0.36), look: L(-w * 0.24, h * 0.28, -d * 0.36) },
         { t: t1 + 4.4, pos: r.view.pos.clone(), look: r.view.target.clone() },
       );
     return { keys, t1, eye };

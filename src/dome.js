@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { piece, repaint, carve } from './kaykit.js';
-import { hingedLeaf, vestibule } from './hub.js';
+import { hingedLeaf, vestibule, sunScaled, NO_SUN, doorMats, doorSun, shadeHalls, shadeRoomDoor } from './hub.js';
 import { buildHomeRoom } from './interior.js';
 import { createGlows } from './glows.js';
 import { DOME_R, WORLD } from './layout.js';
@@ -22,9 +22,9 @@ let FRAME = null;
 let HOME_MATS = null;
 const homeMats = () =>
   (HOME_MATS ??= {
-    hallCream: new THREE.MeshLambertMaterial({ color: '#f1ebf7', emissive: new THREE.Color('#ffb46e') }),
-    hallWood: new THREE.MeshLambertMaterial({ color: '#6e4630', emissive: new THREE.Color('#ffb46e') }),
-    hallStone: new THREE.MeshLambertMaterial({ color: '#e9e2f2', emissive: new THREE.Color('#ffb46e') }),
+    hallCream: sunScaled(new THREE.MeshLambertMaterial({ color: '#f1ebf7', emissive: new THREE.Color('#ffb46e') }), NO_SUN),
+    hallWood: sunScaled(new THREE.MeshLambertMaterial({ color: '#6e4630', emissive: new THREE.Color('#ffb46e') }), NO_SUN),
+    hallStone: sunScaled(new THREE.MeshLambertMaterial({ color: '#e9e2f2', emissive: new THREE.Color('#ffb46e') }), NO_SUN),
     lantern: new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.3 }),
     brass: new THREE.MeshStandardMaterial({ color: '#cfa84e', metalness: 0.75, roughness: 0.35 }),
     panel: new THREE.MeshLambertMaterial({ color: '#c9c6d8' }),
@@ -274,14 +274,16 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     this.home = { halfW: 7.6, back: -7.8, front: 8.6, center: this.homeZ + 0.35 };
     // The room inside the home, drawn only while the camera is in it.
     this.room = buildHomeRoom(biome);
+    shadeRoomDoor(this.room);
     // The home's door opens for real, so your Chog can step out of it (A11): a doorway cut through the
     // pod's door panel, two panels on hinges, and a short hall back to the room's own door.
     const hm = homeMats();
     const PD = { half: 1.95, bottom: 1.05, top: 4.5, z: this.homeZ + 7.8 };
     const roomFront = this.home.center + this.room.d / 2;
     carve(pod, new THREE.Box3(new THREE.Vector3(-PD.half, PD.bottom, roomFront + 0.5), new THREE.Vector3(PD.half, PD.top, PD.z + 0.4)), this.group);
+    const door = doorMats({ darkWood: hm.panel, wood: hm.trim, brass: hm.brass });
     const leaves = [-1, 1].map((sx) => {
-      const l = hingedLeaf({ hinge: new THREE.Vector3(sx * PD.half, 0, PD.z), dir: -sx, width: PD.half, bottom: PD.bottom, height: PD.top - 0.05 - PD.bottom, mats: { darkWood: hm.panel, wood: hm.trim, brass: hm.brass } });
+      const l = hingedLeaf({ hinge: new THREE.Vector3(sx * PD.half, 0, PD.z), dir: -sx, width: PD.half, bottom: PD.bottom, height: PD.top - 0.05 - PD.bottom, mats: door });
       this.group.add(l);
       return l;
     });
@@ -299,10 +301,11 @@ diffuseColor.a = mix(0.07, 0.8, fres);
       at: () => L(0, PD.bottom, PD.z + 0.3),
       inside: () => L(0, PD.bottom, PD.z - 0.9),
       outward: () => L(0, 0, 1).sub(L(0, 0, 0)).normalize(),
-      // Swings its two panels: 0 shut, 1 open.
+      // Swings its two panels: 0 shut, 1 open. Open, they are in the hall's shade.
       open(k) {
         const a = THREE.MathUtils.smootherstep(k, 0, 1) * 1.6;
         for (const l of leaves) l.rotation.y = l.userData.dir * a;
+        doorSun(door, k);
       },
     };
     // A lamp by its door, lit after dark.
@@ -320,6 +323,7 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     }
     this.group.add(lod);
     mergeByMaterial(this.group);
+    shadeHalls(this.group);
     this.group.add(this.lampGlow.points);
     this.room.group.position.set(0, 0.2, this.home.center);
     this.room.group.visible = false;

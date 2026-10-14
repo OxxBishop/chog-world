@@ -233,6 +233,53 @@ const post = (r, h, mat, x, z, y = 0) => {
 };
 
 /*
+ * Sunlight on a material scaled by sun.value (0 to 1), its sky light and glow untouched. The halls
+ * behind the doors are never in the sun (NO_SUN), and the doors go into the hall's shade as they
+ * open: the patch of sun that came in through a doorway showed the shadow map's coarse stair-steps
+ * along its edge, on the open doors and the hall walls.
+ */
+const SUN_SCALED = THREE.ShaderChunk.lights_fragment_begin
+  .replace('getDirectionalLightInfo( directionalLight, directLight );', '$&\n\t\tdirectLight.color *= sunScale;')
+  .replace('getSunLightInfo( sunLight, directLight );', '$&\n\t\tdirectLight.color *= sunScale;');
+export const NO_SUN = { value: 0 };
+export function sunScaled(m, sun) {
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.sunScale = sun;
+    sh.fragmentShader = `uniform float sunScale;\n${sh.fragmentShader.replace('#include <lights_fragment_begin>', SUN_SCALED)}`;
+  };
+  m.customProgramCacheKey = () => 'sunScaled';
+  m.userData.sunless = sun === NO_SUN;
+  return m;
+}
+// A door's own copies of its materials, whose sunlight fades as it opens (doorSun(set, k)). The
+// handles keep theirs: too small to show the steps, and one shader fewer to build.
+export function doorMats({ darkWood, wood, brass }) {
+  const sun = { value: 1 };
+  return { darkWood: sunScaled(darkWood.clone(), sun), wood: sunScaled(wood.clone(), sun), brass, sun };
+}
+export const doorSun = (set, k) => (set.sun.value = 1 - THREE.MathUtils.smoothstep(k, 0.1, 0.6));
+// A room's own door, seen from its hall and from inside: never in the sun either. Its copy of the
+// room's trim keeps the room's lamplight (room.lit).
+const shaded = new WeakMap();
+export function shadeRoomDoor(room) {
+  room.doorway.hinge.traverse((o) => {
+    if (!o.isMesh) return;
+    if (!shaded.has(o.material)) {
+      const m = sunScaled(o.material.clone(), NO_SUN);
+      if (room.lit?.includes(o.material)) room.lit.push(m);
+      shaded.set(o.material, m);
+    }
+    o.material = shaded.get(o.material);
+  });
+}
+// Nothing in a hall takes part in the sun's shadows: it is indoors, under the building's own.
+export function shadeHalls(root) {
+  root.traverse((o) => {
+    if (o.isMesh && o.material.userData?.sunless) o.castShadow = o.receiveShadow = false;
+  });
+}
+
+/*
  * A door leaf on its hinge (a point in hub space at ground level), reaching `width` from it along x
  * in direction dir (-1 or 1). Merged into one mesh per material and kept out of the hub's big merge,
  * so it can swing: rotation.y = dir * angle turns it inward, into the building.
@@ -267,7 +314,7 @@ export function hingedLeaf({ hinge, dir, width, bottom, height, mats }) {
  */
 export function vestibule(parent, { x, half, top, zOut, zIn, sill, floorIn, roomDoor, mats: m, lamps, runner = 0 }) {
   // The hall's own surfaces, warmed by its lamps after dark (hallLight in buildHub).
-  const mats = { ...m, cream: m.hallCream, darkWood: m.hallWood, steps: m.hallStone };
+  const mats = { ...m, cream: m.hallCream, darkWood: m.hallWood, steps: m.hallStone, runner: m.hallRunner ?? m.runner };
   const len = zOut - zIn;
   const mid = (zOut + zIn) / 2;
   const RISE = 0.8, RUN = 0.8;
@@ -446,10 +493,12 @@ export function buildHub() {
   mats.steps = new THREE.MeshLambertMaterial({ color: '#efd3ae' });
   // The halls behind the doors: lit only by their lamps, so they glow a little, more after dark.
   const hallLight = new THREE.Color('#ffb46e');
-  mats.hallCream = new THREE.MeshLambertMaterial({ color: '#f3e6cf', emissive: hallLight });
-  mats.hallWood = new THREE.MeshLambertMaterial({ color: '#6e4630', emissive: hallLight });
-  mats.hallStone = new THREE.MeshLambertMaterial({ color: '#efd3ae', emissive: hallLight });
-  const hallMats = [mats.hallCream, mats.hallWood, mats.hallStone];
+  mats.hallCream = sunScaled(new THREE.MeshLambertMaterial({ color: '#f3e6cf', emissive: hallLight }), NO_SUN);
+  mats.hallWood = sunScaled(new THREE.MeshLambertMaterial({ color: '#6e4630', emissive: hallLight }), NO_SUN);
+  mats.hallStone = sunScaled(new THREE.MeshLambertMaterial({ color: '#efd3ae', emissive: hallLight }), NO_SUN);
+  // The runner glows in its own red, so it stays the same red as it comes in off the steps.
+  mats.hallRunner = sunScaled(new THREE.MeshLambertMaterial({ color: '#8e2436', emissive: new THREE.Color('#8e2436').multiply(hallLight) }), NO_SUN);
+  const hallMats = [mats.hallCream, mats.hallWood, mats.hallStone, mats.hallRunner];
   for (let i = 0; i < 3; i++) {
     const top = DOOR.bottom - STEP.rise * (i + 1);
     const z0 = STEP.from + STEP.run * i;
@@ -460,8 +509,9 @@ export function buildHub() {
   }
   props.add(box(4.2, STEP.rise, 0.04, mats.runner, 0, STEP.rise / 2, STEP.from + STEP.run * 3 + 0.02));
   const doorH = DOOR.top - 0.85 - DOOR.bottom;
+  const lobbyDoor = doorMats(mats);
   const lobbyLeaves = [-1, 1].map((sx) => {
-    const l = hingedLeaf({ hinge: new THREE.Vector3(sx * DOOR.half, 0, DOOR.z), dir: -sx, width: DOOR.half, bottom: DOOR.bottom, height: doorH, mats });
+    const l = hingedLeaf({ hinge: new THREE.Vector3(sx * DOOR.half, 0, DOOR.z), dir: -sx, width: DOOR.half, bottom: DOOR.bottom, height: doorH, mats: lobbyDoor });
     group.add(l);
     return l;
   });
@@ -481,6 +531,8 @@ export function buildHub() {
   // door, so the camera can fly in from the plaza without a cut (src/entry.js).
   const lobbyRoom = buildLobbyRoom();
   const barRoom = buildBarRoom();
+  shadeRoomDoor(lobbyRoom);
+  shadeRoomDoor(barRoom);
   const lobbyIn = LOBBY_ROOM.z + lobbyRoom.d / 2;
   carve(lobbyPod, new THREE.Box3(new THREE.Vector3(-DOOR.half, DOOR.bottom, lobbyIn + 1), new THREE.Vector3(DOOR.half, DOOR.top - 0.85, DOOR.z + 0.3)), group);
   const lobbyFloor = vestibule(props, {
@@ -550,8 +602,9 @@ export function buildHub() {
   for (const side of [-1, 1]) props.add(box(0.35, BAR_DOOR.top + 0.35, 1.8, mats.darkWood, bx + side * (BAR_DOOR.half + 0.175), (BAR_DOOR.top + 0.35) / 2, WING_FRONT - 0.45));
   props.add(box(BAR_DOOR.half * 2 + 0.7, 0.35, 1.8, mats.darkWood, bx, BAR_DOOR.top + 0.175, WING_FRONT - 0.45));
   props.add(box(BAR_DOOR.half * 2 + 0.8, BAR_DOOR.bottom, 0.9, mats.steps, bx, BAR_DOOR.bottom / 2, BAR_DOOR.z + 0.55));
+  const barDoor = doorMats(mats);
   const barLeaves = [-1, 1].map((sx) => {
-    const l = hingedLeaf({ hinge: new THREE.Vector3(bx + sx * BAR_DOOR.half, 0, BAR_DOOR.z), dir: -sx, width: BAR_DOOR.half, bottom: BAR_DOOR.bottom, height: BAR_DOOR.top - 0.1 - BAR_DOOR.bottom, mats });
+    const l = hingedLeaf({ hinge: new THREE.Vector3(bx + sx * BAR_DOOR.half, 0, BAR_DOOR.z), dir: -sx, width: BAR_DOOR.half, bottom: BAR_DOOR.bottom, height: BAR_DOOR.top - 0.1 - BAR_DOOR.bottom, mats: barDoor });
     group.add(l);
     return l;
   });
@@ -649,26 +702,28 @@ export function buildHub() {
       o.receiveShadow = true;
     }
   });
+  shadeHalls(group);
 
   lobbyRoom.group.position.set(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z);
   barRoom.group.position.set(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z);
   // How to walk in (hub space): the outside door, its leaves, the hall's floor, and the room's door.
-  const entrance = (x, d, leaves, floor, zIn, room) => ({
+  const entrance = (x, d, leaves, door, floor, zIn, room) => ({
     x, half: d.half, sill: d.bottom, top: d.top, z: d.z, zIn, floor, room,
-    // Swings the outside doors: 0 shut, 1 open.
+    // Swings the outside doors: 0 shut, 1 open. Open, they are in the hall's shade.
     open(k) {
       const a = THREE.MathUtils.smootherstep(k, 0, 1) * 1.6;
       for (const l of leaves) l.rotation.y = l.userData.dir * a;
+      doorSun(door, k);
     },
   });
   const rooms = [
     {
       id: 'lobby', name: 'Lobby', room: lobbyRoom, at: new THREE.Vector3(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z), shell: 'lobby',
-      entrance: entrance(0, { ...DOOR, top: DOOR.top - 0.85 }, lobbyLeaves, lobbyFloor, lobbyIn, lobbyRoom),
+      entrance: entrance(0, { ...DOOR, top: DOOR.top - 0.85 }, lobbyLeaves, lobbyDoor, lobbyFloor, lobbyIn, lobbyRoom),
     },
     {
       id: 'bar', name: 'Bar', room: barRoom, at: new THREE.Vector3(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z), shell: 'bar',
-      entrance: entrance(bx, BAR_DOOR, barLeaves, barFloor, barIn, barRoom),
+      entrance: entrance(bx, BAR_DOOR, barLeaves, barDoor, barFloor, barIn, barRoom),
     },
   ];
   for (const r of rooms) {
