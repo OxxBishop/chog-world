@@ -286,6 +286,11 @@ export function createBarChat({ world, getMine }) {
       // Your own Chog is kept moving by the session; the regulars are moved here.
       for (const s of ['a', 'b']) if (seated[s] && !seated[s].mine) seated[s].chog.update(dt, world.camera);
       if (!speaking || bubble.hidden) return;
+      // Only once the camera is in the bar: on the way in (src/entry.js) its walls still hide them.
+      if (!bar.pod.inside(world.camera.position, 0.3)) {
+        bubble.style.opacity = '0';
+        return;
+      }
       speaking.chog.root.localToWorld(_p.set(0, CHOG_HEIGHT + 0.7, 0));
       _p.project(world.camera);
       if (_p.z > 1 || Math.abs(_p.x) > 1.2 || Math.abs(_p.y) > 1.2) {

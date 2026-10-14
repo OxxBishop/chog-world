@@ -21,6 +21,7 @@ import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createFlight } from './flight.js';
 import { createSpace } from './space.js';
+import { createEntry } from './entry.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -116,6 +117,7 @@ let island;
 let clouds;
 let session = null;
 let space = null;
+let entry = null;
 let npcs = null;
 let debug = null;
 
@@ -174,6 +176,8 @@ async function init() {
   buildPickables();
   // The world seen from space, ready before the shaders are built so it never stalls.
   space = createSpace({ scene, camera, renderer, sky, clouds, rig, dip: fadeThrough });
+  // Walking into the Hub's rooms and out again, as one move (src/entry.js).
+  entry = createEntry({ camera, rig, hub: island.hub, fovs: { outdoor: outdoorFov, indoor: () => (camera.aspect < 1 ? 64 : 52) }, dom: renderer.domElement, session: () => session });
   load.set('build', 1);
   // Build every shader the world needs (the rooms and the post chain too) in the background, so the
   // first frame you see is finished.
@@ -223,7 +227,7 @@ async function init() {
     homes: island.rooms.filter((r) => r.id.startsWith('home')),
     bar: island.rooms.find((r) => r.id === 'bar'),
     enterRoom: (r) => enterRoom(r),
-    currentRoom: () => island.rooms.find((r) => r.pod === rig.room) ?? null,
+    currentRoom: () => (entry?.active ? entry.room : island.rooms.find((r) => r.pod === rig.room) ?? null),
     leaveToOverview: () =>
       fadeThrough(() => {
         leaveRoomUI();
@@ -270,7 +274,7 @@ async function init() {
   if (SHOTS[params.get('demo')]) startDemo(SHOTS[params.get('demo')], cloudsIn);
   // ?space opens on the world seen from space.
   if (params.has('space')) space.enter({ duration: 0 });
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: a camera flight for the video (src/flight.js) with the interface hidden. It holds its
@@ -417,13 +421,19 @@ function showBar(name, rooms = []) {
 }
 function enterRoom(r) {
   const place = pickables.find((m) => m.userData.place.id === r.place)?.userData.place;
+  inRoom = { room: r, place };
+  markView(null);
+  // From outside, the Hub's rooms are flown into through their doors; anything else fades.
+  if (entry.can(r) && !space.active) {
+    $('focus-bar').hidden = true;
+    entry.enter(r).then(() => inRoom?.room === r && showBar(r.name));
+    return;
+  }
   fadeThrough(() => {
     space.leave();
     rig.jump(r.id);
   });
-  inRoom = { room: r, place };
   showBar(r.name);
-  markView(null);
 }
 function leaveRoomUI() {
   if (!inRoom) return;
@@ -442,9 +452,12 @@ rig.onFocusChange = (place) => {
 };
 $('btn-back').addEventListener('click', () => {
   if (inRoom?.place) {
-    const { place } = inRoom;
+    const { place, room } = inRoom;
     inRoom = null;
-    fadeThrough(() => rig.focusOn(place, { instant: true }));
+    if (entry.canLeave(room)) {
+      $('focus-bar').hidden = true;
+      entry.leave(room, place);
+    } else fadeThrough(() => rig.focusOn(place, { instant: true }));
   } else rig.exitFocus();
 });
 
@@ -521,8 +534,9 @@ function frame() {
   rig.update(dt);
   demo?.update(dt);
   space?.update();
+  entry?.update(dt);
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
-  const fov = rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov();
+  const fov = entry?.fov() ?? (rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov());
   if (Math.abs(camera.fov - fov) > 0.05) {
     camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
@@ -540,6 +554,7 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
+  entry?.apply(env, renderer);
   session?.update(dt);
   npcs?.update(dt, camera);
   clouds?.update(env, sky, t);
