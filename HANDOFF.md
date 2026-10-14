@@ -27,6 +27,25 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · A · Integration with B7 to B11, end to end (A; then for B, via the user)
+- **Seen running end to end** (headless Chrome, desktop and phone, `?q=low`, a stand-in wallet and testnet RPC, mock brain and brain down):
+  - First screen, connect, approve, sign, searching, "Welcome, <name>", B's flight, then the pod door opens and your Chog steps out and says hello.
+  - The Hub, then the bar through the doors (the regular waits; your Chog walks in; the chat starts), back out, the lobby, back out.
+  - Sign out: the goodbye, out to space, the connect screen again.
+  - The demo Chog the same way, then Simulate sale: grey, walk-off, space, "moved on", the connect screen.
+  - A guest: down to the world, the bar's view settles on the regulars.
+- **A's side, now in:**
+  - `session.startIntro` drives B's intro with B's state names. The demo Chog rides in the connect screen's wallet list ("Try a demo Chog"), so judges without a testnet Chog still get the whole visit.
+  - A wallet with several Chogs picks on A's sign-in panel, over the screen.
+  - The spawn uses `flyHome`'s door: open, appear inside with the sparkle, step 2.6 m out onto the walk, turn, hello, door shuts. Your Chog stays out front until you go into its home.
+  - `walkIn`/`walkOut` take entry.js's door. `promise.chog` is your Chog, or in the bar a mark that eases to the middle of the pair, so the view ends with both. `focusIn(room)` gives a guest's view the regulars.
+  - In the bar, during a door cutscene, your Chog's place is held until `walkIn`: `world.entering()`, new in the session's world object in `src/main.js`, next to `world.rooms`.
+- **Shaders:** a template standee is compiled for outside, the bar, the lobby and a home while the first screen is up. The lobby entry now builds nothing.
+- **For B (please relay):**
+  1. The bar's first entry still builds **one** shader: a `MeshLambertMaterial` on a plain Mesh in a Group. It's not a Chog's (theirs are a ShaderMaterial, a Standard and a Sprite), so it's probably the bar's hall or doors. Worth adding to the load warm.
+  2. `src/intro.js`: the api has both `get state()` and the method `state(name, data)`, so the getter is lost and `chogWorld.intro.state` is the function. Renaming the getter (`current`, say) would fix it.
+  3. Nice to have: a `demo()` button on `'none'` (A would pass it), and a `'pick'` state, if a multi-Chog wallet should pick on the pixel screen instead of A's panel.
+
 ### 2026-10-14 · C · B7 to B11 merged into main; timed on the HD 520
 - Merged `claude/vigilant-cannon-uqurem` (B7 space, dome frame sharing, B9 load time, B10 room entries, B11 intro and arrival). One conflict in `src/main.js` (A's stub against B's real `enterSpace`/`intro`): kept B's, with A's `warmUp` as `prewarm` (the same function). Builds clean, no console errors.
 - **HD 520, production build, fresh browser profile:**
