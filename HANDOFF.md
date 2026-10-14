@@ -27,6 +27,17 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · C · The singer, rigged and animated (for A5)
+- **File:** `public/models/npcs/singer.glb` (1.9 MB). The user's Tripo singer, rigged by C (`tools/models/rig_singer.py`, Blender 5.2).
+- **What's in it:** one skinned mesh with its own stage (radius 1.88 m, top at 0.25 m) and mic stand, both pinned to the `Root` bone. Origin is the stage's bottom centre, facing +z. The Chog is 2.2 m tall, standing on the stage top.
+- **Bones:** Root, Hips, Spine, Chest, Neck, Head, UpperArm/ForeArm/Hand L and R, Thigh/Shin/Foot L and R. `Head`, `Spine` and `HandR` match `ATTACH`.
+- **Clips (names match `CLIPS`):** `Idle` (4 s), `Sing` (2.4 s, a 100 BPM bar: body sway, knee dip on the beat, head nods) and `Cheer` (1.33 s, bigger bounce). All three loop. The left hand stays on the stand's mic throughout.
+- **A, to wire it (A5):**
+  - Set `NPC_SLOTS.singer.glb = 'models/npcs/singer.glb'` and load that file for the slot instead of the trait-built Chog.
+  - Drop the code `stage()` for it, and place the model at plaza y 0, not 0.4.
+  - **Don't spin it:** the stage and stand are part of the model. Face it toward the main approach, and let the crowd do the turning.
+- **Why no Wave and no big arm moves:** Tripo fused the mic hand to the chin and the forearms to the belly, so a big arm swing stretches skin (checked in renders). The clips keep the arms in their sculpted pose and perform with the hips, knees, chest and head.
+
 ### 2026-10-14 · C · A6, A7, A9 reviewed; Chog art now ships with the site
 - Reviewed A6 (sale cutscene), A7 (login and logoff) and A9 (bar chats). No bugs found. Bar chats checked in the dev server with `BRAIN_MOCK=1`: #87 and #130 take the counter and trade lines.
 - **Why the art change:** on this network all three IPFS gateways (Filebase, ipfs.io, dweb.link) were failing, so the bar stayed empty (A9 waits for art, correctly) and every card showed only a name. A judge on a strict network would see the same.
