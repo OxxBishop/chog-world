@@ -57,13 +57,14 @@ const key = ([c, r]) => `${c},${r}`;
 /*
  * Give a kit piece its own colours without new textures: move each face's UVs to another cell of the
  * atlas, keeping its place in the cell so the cell's shading gradient still reads. With a roof
- * material, faces turned up on the top half (the roof) come away into their own mesh in it.
+ * material, faces turned up on the top half (the roof) come away into their own mesh in it. isRoof
+ * can pick the roof faces another way: it gets the face normal, the face's height as a share of the
+ * piece's height, and its atlas cell.
  */
-export function repaint(obj, swaps, roofMat = null) {
+export function repaint(obj, swaps, roofMat = null, isRoof = (n, h) => n.y > 0.6 && h > 0.55) {
   const map = new Map(Object.entries(swaps).map(([from, to]) => [key(CELL[from]), CELL[to]]));
   obj.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(obj);
-  const roofY = box.min.y + (box.max.y - box.min.y) * 0.55;
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
   const meshes = [];
   obj.traverse((o) => o.isMesh && meshes.push(o));
@@ -77,11 +78,11 @@ export function repaint(obj, swaps, roofMat = null) {
       b.fromBufferAttribute(pos, t + 1).applyMatrix4(o.matrixWorld);
       c.fromBufferAttribute(pos, t + 2).applyMatrix4(o.matrixWorld);
       n.subVectors(b, a).cross(c.clone().sub(a)).normalize();
-      const isRoof = roofMat && n.y > 0.6 && (a.y + b.y + c.y) / 3 > roofY;
       const cu = Math.floor(((uv.getX(t) + uv.getX(t + 1) + uv.getX(t + 2)) / 3) * 8);
       const cv = Math.floor(((uv.getY(t) + uv.getY(t + 1) + uv.getY(t + 2)) / 3) * 4);
       const to = map.get(`${cu},${cv}`);
-      const out = isRoof ? roof : keep;
+      const h = ((a.y + b.y + c.y) / 3 - box.min.y) / (box.max.y - box.min.y);
+      const out = roofMat && isRoof(n, h, [cu, cv]) ? roof : keep;
       for (let k = t; k < t + 3; k++) {
         out.position.push(pos.getX(k), pos.getY(k), pos.getZ(k));
         out.normal.push(nor.getX(k), nor.getY(k), nor.getZ(k));

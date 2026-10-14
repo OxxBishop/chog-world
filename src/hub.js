@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { piece, kitMaterial, repaint } from './kaykit.js';
+import { piece, kitMaterial, repaint, CELL } from './kaykit.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from './merge.js';
@@ -123,6 +123,35 @@ function stringOfBulbs(a, b, spacing, sag, out) {
   }
 }
 
+// The lobby's runner: deep red with a gold border and a row of small diamonds down the middle.
+function rugTexture() {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 512;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#8e2436';
+  ctx.fillRect(0, 0, 128, 512);
+  ctx.fillStyle = '#e8b84a';
+  ctx.fillRect(8, 0, 6, 512);
+  ctx.fillRect(114, 0, 6, 512);
+  ctx.fillStyle = '#b8434f';
+  ctx.fillRect(20, 0, 3, 512);
+  ctx.fillRect(105, 0, 3, 512);
+  ctx.fillStyle = '#e8b84a';
+  for (let y = 32; y < 512; y += 64) {
+    ctx.beginPath();
+    ctx.moveTo(64, y - 14);
+    ctx.lineTo(78, y);
+    ctx.lineTo(64, y + 14);
+    ctx.lineTo(50, y);
+    ctx.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
 // Casino chips: [base, stripe] colours. Red, black and gold.
 const CHIPS = [['#c4334a', '#fff0dc'], ['#2a1a2e', '#e8b84a'], ['#e8b84a', '#7a1f2e']];
 
@@ -222,8 +251,18 @@ export function buildHub() {
   // The pods themselves, in warm cream instead of cool white and grey.
   const warm = kitMaterial().clone();
   warm.color.set('#fff0dc');
+  // The lobby is the warmest of the three: sand plaster walls, wooden panels and frames, and a gold
+  // dome that stands out from every island. The tubes out to the wings match it.
+  const plaster = kitMaterial().clone();
+  plaster.name = 'lobby-plaster';
+  plaster.color.set('#ecb87e');
   const kit = new THREE.Group();
-  kit.add(piece('basemodule_E', LOBBY_S));
+  const lobbyPod = piece('basemodule_E', LOBBY_S);
+  // The dome is the purple above the walls (the top 43% of the pod): it comes away whole, in gold.
+  const isDome = (n, h, [c, r]) => c === CELL.purple[0] && r === CELL.purple[1] && h > 0.57;
+  repaint(lobbyPod, { grey: 'brown', purple: 'brown', dark: 'brown' }, mats.gold, isDome);
+  lobbyPod.traverse((o) => o.isMesh && !o.userData.roof && (o.userData.lobby = true));
+  kit.add(lobbyPod);
   for (const side of [-1, 1]) {
     const wing = piece(side < 0 ? 'basemodule_A' : 'basemodule_D', WING_S);
     wing.position.x = side * WING_X;
@@ -234,10 +273,12 @@ export function buildHub() {
     kit.add(wing);
     const tube = piece('tunnel_straight_A', WING_S);
     tube.position.x = side * (LOBBY_FRONT + (WING_X - 1.1 * WING_S - LOBBY_FRONT) / 2);
+    repaint(tube, { grey: 'brown' });
+    tube.traverse((o) => o.isMesh && (o.userData.lobby = true));
     kit.add(tube);
   }
   kit.traverse((o) => {
-    if (o.isMesh && !o.userData.roof) o.material = warm;
+    if (o.isMesh && !o.userData.roof) o.material = o.userData.lobby ? plaster : warm;
   });
   group.add(kit);
 
@@ -301,6 +342,49 @@ export function buildHub() {
     banners.push(flag);
     group.add(flag);
   }
+  // The entrance. The pod's door is raised 3 m on its plinth: stone steps climb to its threshold, a
+  // red runner comes down them and out to the arch, two wooden doors fill the doorway under a
+  // transom that glows warm, and a lantern hangs on the wall either side.
+  const DOOR = { half: 3.2, bottom: 3.0, top: 8.85, z: 17.25 };
+  const STEP = { rise: 0.75, run: 0.9, half: 3.9, from: 18.08 };
+  mats.runner = new THREE.MeshLambertMaterial({ color: '#8e2436' });
+  mats.steps = new THREE.MeshLambertMaterial({ color: '#efd3ae' });
+  for (let i = 0; i < 3; i++) {
+    const top = DOOR.bottom - STEP.rise * (i + 1);
+    const z0 = STEP.from + STEP.run * i;
+    props.add(box(STEP.half * 2, top, STEP.run, mats.steps, 0, top / 2, z0 + STEP.run / 2));
+    // The runner over the tread, and down the face above it (the threshold's, for the top step).
+    props.add(box(4.2, 0.04, STEP.run, mats.runner, 0, top + 0.02, z0 + STEP.run / 2));
+    props.add(box(4.2, STEP.rise, 0.04, mats.runner, 0, top + STEP.rise / 2, z0 + 0.02));
+  }
+  props.add(box(4.2, STEP.rise, 0.04, mats.runner, 0, STEP.rise / 2, STEP.from + STEP.run * 3 + 0.02));
+  for (const sx of [-1, 1]) {
+    const x = (sx * DOOR.half) / 2;
+    const h = DOOR.top - 0.85 - DOOR.bottom;
+    props.add(box(DOOR.half - 0.08, h, 0.2, mats.darkWood, x, DOOR.bottom + h / 2, DOOR.z));
+    for (const y of [DOOR.bottom + 1.1, DOOR.bottom + h - 1.1]) props.add(box(DOOR.half - 0.6, 0.14, 0.08, mats.wood, x, y, DOOR.z + 0.13));
+    props.add(box(0.12, 1.2, 0.14, mats.brass, sx * 0.35, DOOR.bottom + h / 2, DOOR.z + 0.16));
+  }
+  props.add(box(DOOR.half * 2 + 0.3, 0.22, 0.3, mats.wood, 0, DOOR.top - 0.85, DOOR.z + 0.02));
+  mats.fanlight = new THREE.MeshStandardMaterial({ color: '#ffe2b0', emissive: new THREE.Color('#ffc477'), emissiveIntensity: 0.4 });
+  props.add(box(DOOR.half * 2, 0.6, 0.1, mats.fanlight, 0, DOOR.top - 0.42, DOOR.z - 0.04));
+  const lanterns = [-5.1, 5.1].map((x) => new THREE.Vector3(x, 7.0, 16.0));
+  mats.lantern = new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.3 });
+  for (const p of lanterns) {
+    props.add(box(0.14, 0.14, 1.1, mats.brass, p.x, p.y + 0.5, 15.5));
+    props.add(new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.32, 8).translate(p.x, p.y + 0.42, p.z), mats.brass));
+    props.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8).translate(p.x, p.y, p.z), mats.lantern));
+  }
+  const rugFrom = STEP.from + STEP.run * 3;
+  const rugLen = archZ + 1.5 - rugFrom;
+  // Pulled forward further than the plaza's paving (see roads.js), so it never sinks into it.
+  const rugMat = new THREE.MeshLambertMaterial({ map: rugTexture(), polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
+  const rug = new THREE.Mesh(new THREE.PlaneGeometry(4.2, rugLen).rotateX(-Math.PI / 2), rugMat);
+  rug.position.set(0, 0.05, rugFrom + rugLen / 2);
+  rug.receiveShadow = true;
+  rug.userData.keep = true;
+  group.add(rug);
+
   // The statue: a placeholder Chog in brass on a stone plinth, until the real model arrives.
   const statue = new THREE.Group();
   statue.add(box(3, 1.6, 3, mats.cream, 0, 0.8, 0));
@@ -464,6 +548,8 @@ export function buildHub() {
     marqueeMesh.setColorAt(i, new THREE.Color('#ffd27a'));
   });
   group.add(marqueeMesh);
+  const lanternGlow = createGlows(lanterns, { size: 1.6, minPx: 3 });
+  group.add(lanternGlow.points);
   const stringGlow = createGlows(bulbs, { color: '#ffcf8a', size: 0.9, minPx: 3 });
   const marqueeGlow = createGlows(marquee, { color: '#ffd27a', size: 0.8, minPx: 3 });
   group.add(stringGlow.points, marqueeGlow.points);
@@ -480,6 +566,9 @@ export function buildHub() {
       for (const r of rooms) if (r.room.group.visible) r.room.update(env, renderer);
       const n = env.night;
       for (const s of signs) s.material.emissiveIntensity = 0.35 + n * 1.6;
+      mats.lantern.emissiveIntensity = 0.3 + n * 2.2;
+      mats.fanlight.emissiveIntensity = 0.4 + n * 1.8;
+      lanternGlow.update(env, renderer);
       // Bulbs glow by day as decoration and properly at night.
       warmBulbs.color.set('#ffd9a0').multiplyScalar(1 + n * 2.5);
       const step = Math.floor(t * 6);

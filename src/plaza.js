@@ -159,10 +159,11 @@ export function buildPlaza() {
     }
   }
 
-  // Planters at the plaza's edge, clear of the hub; island.js fills them with flowers.
+  // Planters at the plaza's edge, clear of the hub, and a pair either side of the lobby door;
+  // island.js fills them with flowers.
   const planters = [];
-  for (const a of [0.45, 0.9, 1.35, -0.45, -0.9, -1.35, Math.PI - 0.35, Math.PI + 0.35]) {
-    const x = Math.sin(a) * 44, z = Math.cos(a) * 44;
+  const edge = [0.45, 0.9, 1.35, -0.45, -0.9, -1.35, Math.PI - 0.35, Math.PI + 0.35].map((a) => [Math.sin(a) * 44, Math.cos(a) * 44]);
+  for (const [x, z] of [...edge, [-5.6, 19.6], [5.6, 19.6]]) {
     const pot = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.0, 0.9, 20).translate(0, 0.45, 0), cream);
     pot.position.set(x, 0, z);
     props.add(pot);
