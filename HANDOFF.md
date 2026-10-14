@@ -27,6 +27,34 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · B9 load time, round 2 (done; C, please re-time it on the HD 520)
+- **What changed, measured** (production build from localhost, headless Chrome with the CPU slowed 3x, three runs each):
+
+  | | Before B9 | After |
+  |---|---|---|
+  | Download step | 3.8 to 5.5 s | 0.85 s |
+  | Build step | 5.5 s (3.2 s with the shared dome frame) | 2.85 s |
+  | Requests before the first frame | 327 | 30 |
+  | Bytes before the first frame | about 11.5 MB | 3.7 MB |
+  | Texture decodes | 185 (of 17 images) | 16 |
+  | Shader programs at the first frame | 88 | 60 |
+  | Main thread frozen as the clouds arrive (EXR decode) | 850 ms | 105 ms |
+
+- **Model packs** (`scripts/pack-models.mjs`, `npm run pack-models`): the nature, KayKit and furniture models load from `src/packs/{nature,kaykit,furniture}.glb`, one file per kit, geometry compressed (meshopt) and each texture stored once. The three textures over 1024 are halved. Bark and mushroom simplification moved there from the browser. `src/assets.js` turns the packed geometry back into plain floats in the model's own space, so nothing downstream sees a difference. Before and after screenshots of every view match.
+  - **Anyone adding a name to `MODELS`, `HUB_KIT`, `LANDMARK_KIT` or `FURNITURE_KIT`:** run `npm run pack-models` and commit `src/packs/`. Until then, that model loads from its loose file, with a console warning. The loose files in `public/assets/` stay, as the packs' source and the fallback.
+  - The packs' file names carry a content hash, and the page preloads them (`preloadPacks` in `vite.config.js`, build only), so they download alongside the script.
+- **Shaders:** the rooms were compiled before the sky had baked its light into the scene, which gave nearly every material a second, unlit variant (22 programs). Now the dry run goes first (`src/main.js`, two lines). The far dome glass shares the near glass's program.
+- **Fonts:** Fredoka and Figtree are served from `public/fonts/` (OFL, licences there), with `@font-face` in my block at the end of `src/style.css`. They're preloaded in `index.html` in place of the Google Fonts stylesheet, which used to hold up the scripts until it arrived.
+- **Clouds:** the sky's light tables were EXR files decoded in script on the main thread, just as the world first appears. They now ship packed (`scripts/pack-clouds.mjs`, `npm run pack-clouds`; only needed if `@takram/three-atmosphere` changes them), and the browser inflates them natively. Each cloud texture is uploaded one per frame, before the first cloud draw.
+- **Dome frame:** struts and joints are baked straight into one buffer (half the frame's build time).
+- **`vercel.json`:** `/fonts/` and `/art/` are cached for a week (C asked for `/art/`).
+- **New dev dependencies** (the pack scripts only, nothing in the bundle): `@gltf-transform/core`, `extensions` and `functions`, `sharp`.
+- **C, to time it:** same way as before. Fresh profile, `?debug` off, read `Load times (s)` in the console. I estimate around 10 s on a first visit, but I can't run the HD 520 here. Please also try the cold driver cache case: fewer programs should cut its 46 s `frames` step by about a third.
+- **Left, not in my files** (the build step's biggest costs at 3x, and the remaining shader variants):
+  - `terrain.js` about 1 s; `interior.js` builds all 15 home rooms at load, about 0.3 s, and could build each on first entry; `trees.js` bake 0.37 s; `layout.js` `roadDistance` 0.3 s; `underside.js` 0.25 s.
+  - One-off Standard programs: the `underside.js` glow (flatShading), the `interior.js` lamp shade (DoubleSide), the furniture's emissiveMap, a transparent material with a map and an emissiveMap in the rooms. Each is a whole extra program to compile.
+  - Since the merge of today's `main`, entering a home compiles 2 or 3 programs on first entry, and the bar one more (A's new Chog and bar code).
+
 ### 2026-10-14 · C · The singer, rigged and animated (for A5)
 - **File:** `public/models/npcs/singer.glb` (1.9 MB). The user's Tripo singer, rigged by C (`tools/models/rig_singer.py`, Blender 5.2).
 - **What's in it:** one skinned mesh with its own stage (radius 1.88 m, top at 0.25 m) and mic stand, both pinned to the `Root` bone. Origin is the stage's bottom centre, facing +z. The Chog is 2.2 m tall, standing on the stage top.
