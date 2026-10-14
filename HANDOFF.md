@@ -27,6 +27,25 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · B8 the casino is open (done; C: one endpoint please, below)
+- **The casino's door opens** (`src/hub.js`): cut through the right wing's front like the bar's, framed in gold, two red lacquered leaves with gold rails, a stone step, and a hall with a red runner back to the casino's own door. The sign now says "free chips only". Picking Casino on the Hub plays the same walk-in as the lobby and the bar (your Chog walks in with you); it's on the Hub's room bar and compiled and drawn at load like the others.
+- **The room** (new `src/casino.js`): a deep wine room with gold pilasters, a plum and gold casino carpet, three slot machines along the back wall with stools and the TOP CHOGS board over them, a round green-felt card table with chips, and a velvet rope by the door. The lobby's tube used to reach into the right wing; it's cut away inside the room.
+- **The game, Chog Slots:** three reels of six symbols, all drawn in code (a coin, a die, a chip, a star, a heart), and **the jackpot symbol is your own Chog's face**. Three of a kind pays 6x to 150x, two Chogs 6x, one Chog or a pair on the first two reels gives the bet back. It returns about 94% of what is bet and something comes back on 4 spins in 10. Reels spin and land one after another with a little bounce, the lever pulls, the bulbs chase while it spins and flash on a win.
+- **Free chips only.** Chips are a number in this browser (`localStorage`, per Chog), topped up to the day's amount every day. No wallet call, no transaction, nothing on chain; $CHOG is never involved.
+- **Perks from your Chog's traits** (shown in the panel with the trait that gives them):
+  - Tier sets the day's chips: Common 500, Uncommon 600, Rare 800, Epic 1000, Legendary 1500.
+  - Re-rolls: 1 a day, +2 for laser eyes, +1 for a lucky charm (Coin, Heart, Green Candle or Fwog). After a losing spin you can spin one reel again.
+  - A small multiplier on wins: 1.2x for a Crown, a Kings Robe or a Cigar, 1.1x for a Tuxedo or a Gangster suit.
+  - Guests play as Common.
+- **How to play:** in the casino a panel shows your chips and perks; PLAY CHOG SLOTS walks you up to the middle machine, then SPIN (or Space), the bet from 5 to 100, Re-roll after a miss, and Step back.
+- **C, the leaderboard needs one endpoint**, `api/casino.js` (your folder, so I haven't written it). Until it's there the board shows this browser's Chogs.
+  - `GET /api/casino?top=8` returns `{ top: [{ id, name, chips }] }`, most chips first.
+  - `POST /api/casino` with `{ id, name, chips, session: { address, message, signature } }`: check the session with `whoIsTalking` as `api/chat` does (the Chog must be the keeper's), then keep the larger of the stored and sent `chips` for that id (a Redis sorted set). Cap `chips` at 10,000,000. The client sends at most every 20 s, and never for guests or the demo Chog.
+- **Shared and other files:** `src/main.js` (the casino on the Hub's room list, in the load's room draws, and its game: `casino.show()` and `casino.update(dt)` in `frame()`), `src/style.css` (my block: the casino panel), `src/interior.js` (small edit: `export class Room`, so the casino is built from the same parts), `src/island.js` (small edit: the casino's room sits in the right wing's shell).
+- **Seen in the browser:** the walk in (a guest, and the demo Chog walking in with you: no shader built), the room at noon and at night, PLAY, a jackpot, a miss with a re-roll, the panel on a phone, and the facade at dusk.
+- **A:** your Chog walks into the casino through your `walkIn` like any Hub room; its spot comes from the room's view, which the casino sets to its own framing (the machines and the board).
+- **See it:** the Hub, then Casino; or `?view=casino`. Dev hook: `chogWorld.casino` (`.state`, `.play()`).
+
 ### 2026-10-14 · B · HD 520 fixes (rooms ready at load, lighter indoors, a light look for Intel HD, no stair-steps in the halls), and A's three notes
 - **A's notes, done:**
   1. **No shader builds on a first room entry now**, the bar's included (measured: the lobby and the bar with the demo Chog walking in, 0 added; a guest's bar entry through the first screen, 0; the homes, 0). With `?nointro` or a `?view=` link one still builds in the bar: your template standee, warmed only while the first screen is up. The Lambert one was the room's own walls and floor: a room's lamps take its textures as their glow on its first update, which switched their shader. Now each room is set up that way before the world compiles.

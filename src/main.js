@@ -23,6 +23,7 @@ import { createSpace } from './space.js';
 import { createEntry } from './entry.js';
 import { createIntro } from './intro.js';
 import { createArrival } from './arrival.js';
+import { createCasino } from './casino.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -176,6 +177,7 @@ let space = null;
 let entry = null;
 let intro = null;
 let arrival = null;
+let casino = null;
 let npcs = null;
 let debug = null;
 
@@ -262,7 +264,7 @@ async function init() {
   // Then each kind of room is drawn once, on its own, from its own view (every home shares one set of
   // materials). Building a shader isn't enough everywhere: Intel's driver finishes one only the first
   // time it draws with it, and on the HD 520 that made the first walk into a room crawl for seconds.
-  for (const id of ['lobby', 'bar', 'home0']) drawAlone(island.rooms.find((r) => r.id === id));
+  for (const id of ['lobby', 'bar', 'casino', 'home0']) drawAlone(island.rooms.find((r) => r.id === id));
   frame();
   frame();
   // Wait for the GPU to finish that first work (texture uploads) while the loader is still up, then
@@ -355,6 +357,8 @@ async function init() {
         }, 3800);
       }),
   });
+  // The casino's game (B8): its panel shows while you're inside.
+  casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, session: () => session });
   // The Chogs about town, each once its model is in; ?npcs shows every slot, with stand-ins.
   buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs'), prewarm: warmUp }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
@@ -374,7 +378,7 @@ async function init() {
       });
     }
   }
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: a camera flight for the video (src/flight.js) with the interface hidden. It holds its
@@ -482,7 +486,7 @@ function buildPickables() {
   const hub = island.hub;
   const box = new THREE.Mesh(new THREE.BoxGeometry(hub.width, hub.height, hub.depth), proxyMat);
   box.position.set(DOWNTOWN.x, T + hub.height / 2, DOWNTOWN.z);
-  add(box, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(DOWNTOWN.x, T + 7, DOWNTOWN.z), radius: hub.width * 0.42, theta: 0.25, phi: 1.2, rooms: ['lobby', 'bar'] });
+  add(box, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(DOWNTOWN.x, T + 7, DOWNTOWN.z), radius: hub.width * 0.42, theta: 0.25, phi: 1.2, rooms: ['lobby', 'bar', 'casino'] });
   island.terrain.tops.forEach((top, i) => {
     const isl = ISLANDS[i];
     const name = isl.id === 'downtown' ? 'Downtown' : `Neighbourhood ${Number(isl.id.slice(4)) + 1}`;
@@ -658,6 +662,8 @@ function frame() {
   island.update(env, t, camera, dt);
   entry?.apply(env, renderer);
   session?.update(dt);
+  casino?.show(!entry?.active && rig.room === casino.room.pod);
+  casino?.update(dt);
   npcs?.update(dt, camera);
   // On a lighter look, settled in a room, the clouds fade out: they show only through its windows and
   // cost nearly half a frame. They come back as you leave, before the doors open.

@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from './merge.js';
 import { createGlows } from './glows.js';
 import { buildLobbyRoom, buildBarRoom } from './interior.js';
+import { buildCasinoRoom } from './casino.js';
 
 /*
  * The Chog Hub: one building on the downtown plaza with three doors, each wing with its own
@@ -19,6 +20,7 @@ export const HUB_KIT = ['basemodule_E', 'basemodule_A', 'basemodule_D', 'tunnel_
 // Where the rooms sit inside the pods (hub space): floor heights just above each pod's base.
 const LOBBY_ROOM = { x: 0, y: 0.6, z: 0 };
 const BAR_ROOM = { x: -37, y: 0.45, z: 0.6 };
+const CASINO_ROOM = { x: 37, y: 0.45, z: 0.6 };
 
 const LOBBY_S = 15;
 const WING_S = 10;
@@ -403,11 +405,12 @@ export function buildHub() {
   repaint(lobbyPod, { grey: 'brown', purple: 'brown', dark: 'brown' }, mats.gold, isDome);
   lobbyPod.traverse((o) => o.isMesh && !o.userData.roof && (o.userData.lobby = true));
   kit.add(lobbyPod);
-  let barWing = null;
+  let barWing = null, casinoWing = null, casinoTube = null;
   for (const side of [-1, 1]) {
     const wing = piece(side < 0 ? 'basemodule_A' : 'basemodule_D', WING_S);
     wing.position.x = side * WING_X;
     if (side < 0) barWing = wing;
+    else casinoWing = wing;
     // Each wing in its own colours: the bar in warm taupe and wood brown under a green roof, like
     // a cosy pub; the casino in charcoal with gold trim under a deep red roof.
     if (side < 0) repaint(wing, { white: 'taupe', grey: 'brown', purple: 'brown' }, mats.barRoof);
@@ -415,6 +418,7 @@ export function buildHub() {
     kit.add(wing);
     const tube = piece('tunnel_straight_A', WING_S);
     tube.position.x = side * (LOBBY_FRONT + (WING_X - 1.1 * WING_S - LOBBY_FRONT) / 2);
+    if (side > 0) casinoTube = tube;
     repaint(tube, { grey: 'brown' });
     tube.traverse((o) => o.isMesh && (o.userData.lobby = true));
     kit.add(tube);
@@ -526,13 +530,13 @@ export function buildHub() {
     props.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8).translate(p.x, p.y, p.z), mats.lantern));
   }
 
-  // The rooms inside: the lobby in the middle pod, the bar in the left wing. The casino stays shut.
+  // The rooms inside: the lobby in the middle pod, the bar in the left wing, the casino in the right.
   // Each is reached for real: its door in the pod's shell opens onto a short hall to the room's own
   // door, so the camera can fly in from the plaza without a cut (src/entry.js).
   const lobbyRoom = buildLobbyRoom();
   const barRoom = buildBarRoom();
-  shadeRoomDoor(lobbyRoom);
-  shadeRoomDoor(barRoom);
+  const casinoRoom = buildCasinoRoom();
+  for (const r of [lobbyRoom, barRoom, casinoRoom]) shadeRoomDoor(r);
   const lobbyIn = LOBBY_ROOM.z + lobbyRoom.d / 2;
   carve(lobbyPod, new THREE.Box3(new THREE.Vector3(-DOOR.half, DOOR.bottom, lobbyIn + 1), new THREE.Vector3(DOOR.half, DOOR.top - 0.85, DOOR.z + 0.3)), group);
   const lobbyFloor = vestibule(props, {
@@ -625,12 +629,31 @@ export function buildHub() {
   stringOfBulbs(new THREE.Vector3(cx + mw / 2, my + mh / 2, mz), new THREE.Vector3(cx + mw / 2, my - mh / 2, mz), 0.55, 0, marquee);
   props.add(box(mw + 0.6, 0.3, 0.25, mats.gold, cx, my + mh / 2 + 0.05, mz - 0.15));
   for (const sx of [-1, 1]) props.add(box(0.3, mh, 0.25, mats.gold, cx + (sx * mw) / 2, my, mz - 0.15));
-  const casinoSign = signMesh(signTexture('CASINO', 'opening soon', '#e8b84a', 'rgba(60,14,26,0.95)'), 8.5);
+  const casinoSign = signMesh(signTexture('CASINO', 'free chips only', '#e8b84a', 'rgba(60,14,26,0.95)'), 8.5);
   casinoSign.position.set(cx, 7.4, WING_FRONT + 0.3);
   signs.push(casinoSign);
-  // A closed door: dark panel with a brass bar across it.
-  props.add(box(4.2, 5.4, 0.2, mats.darkWood, cx, 2.7, WING_FRONT + 0.25));
-  props.add(box(4.6, 0.25, 0.3, mats.brass, cx, 3.2, WING_FRONT + 0.4));
+  // Its door, cut through the wing's front like the bar's and framed in gold: two red lacquered leaves
+  // with gold rails, a stone step up to the sill, and a hall back to the casino's own door.
+  const CASINO_DOOR = { half: 1.8, bottom: CASINO_ROOM.y, top: 5.0, z: WING_FRONT + 0.35 };
+  const casinoIn = CASINO_ROOM.z + casinoRoom.d / 2;
+  // The tube from the lobby reaches into the right wing, through where the casino's room stands: cut
+  // it (and any of the wing's own shell) away inside the room, whose walls stand there.
+  const casinoBox = new THREE.Box3(new THREE.Vector3(cx - casinoRoom.w / 2, CASINO_ROOM.y + 0.02, CASINO_ROOM.z - casinoRoom.d / 2), new THREE.Vector3(cx + casinoRoom.w / 2, CASINO_ROOM.y + casinoRoom.h, casinoIn));
+  for (const o of [casinoWing, casinoTube]) carve(o, casinoBox, group);
+  carve(casinoWing, new THREE.Box3(new THREE.Vector3(cx - CASINO_DOOR.half, CASINO_DOOR.bottom, casinoIn + 1), new THREE.Vector3(cx + CASINO_DOOR.half, CASINO_DOOR.top, CASINO_DOOR.z + 0.4)), group);
+  for (const side of [-1, 1]) props.add(box(0.35, CASINO_DOOR.top + 0.35, 1.8, mats.gold, cx + side * (CASINO_DOOR.half + 0.175), (CASINO_DOOR.top + 0.35) / 2, WING_FRONT - 0.45));
+  props.add(box(CASINO_DOOR.half * 2 + 0.7, 0.35, 1.8, mats.gold, cx, CASINO_DOOR.top + 0.175, WING_FRONT - 0.45));
+  props.add(box(CASINO_DOOR.half * 2 + 0.8, CASINO_DOOR.bottom, 0.9, mats.steps, cx, CASINO_DOOR.bottom / 2, CASINO_DOOR.z + 0.55));
+  const casinoDoor = doorMats({ darkWood: new THREE.MeshLambertMaterial({ color: '#7a1626' }), wood: new THREE.MeshLambertMaterial({ color: '#d9a944' }), brass: mats.gold });
+  const casinoLeaves = [-1, 1].map((sx) => {
+    const l = hingedLeaf({ hinge: new THREE.Vector3(cx + sx * CASINO_DOOR.half, 0, CASINO_DOOR.z), dir: -sx, width: CASINO_DOOR.half, bottom: CASINO_DOOR.bottom, height: CASINO_DOOR.top - 0.1 - CASINO_DOOR.bottom, mats: casinoDoor });
+    group.add(l);
+    return l;
+  });
+  const casinoFloor = vestibule(props, {
+    x: cx, half: CASINO_DOOR.half, top: CASINO_DOOR.top - 0.05, zOut: CASINO_DOOR.z - 0.12, zIn: casinoIn, sill: CASINO_DOOR.bottom, floorIn: CASINO_ROOM.y,
+    roomDoor: { half: casinoRoom.doorway.w / 2, h: casinoRoom.doorway.h }, mats, lamps: lanterns, runner: 2.4,
+  });
   // A giant die resting on the roof: rounded cream cube, every face pipped properly (opposite faces
   // add up to seven), the six toward the plaza.
   const die = new THREE.Group();
@@ -706,6 +729,7 @@ export function buildHub() {
 
   lobbyRoom.group.position.set(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z);
   barRoom.group.position.set(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z);
+  casinoRoom.group.position.set(CASINO_ROOM.x, CASINO_ROOM.y, CASINO_ROOM.z);
   // How to walk in (hub space): the outside door, its leaves, the hall's floor, and the room's door.
   const entrance = (x, d, leaves, door, floor, zIn, room) => ({
     x, half: d.half, sill: d.bottom, top: d.top, z: d.z, zIn, floor, room,
@@ -724,6 +748,10 @@ export function buildHub() {
     {
       id: 'bar', name: 'Bar', room: barRoom, at: new THREE.Vector3(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z), shell: 'bar',
       entrance: entrance(bx, BAR_DOOR, barLeaves, barDoor, barFloor, barIn, barRoom),
+    },
+    {
+      id: 'casino', name: 'Casino', room: casinoRoom, at: new THREE.Vector3(CASINO_ROOM.x, CASINO_ROOM.y, CASINO_ROOM.z), shell: 'casino',
+      entrance: entrance(cx, CASINO_DOOR, casinoLeaves, casinoDoor, casinoFloor, casinoIn, casinoRoom),
     },
   ];
   for (const r of rooms) {

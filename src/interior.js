@@ -106,7 +106,7 @@ function recolour(obj, swaps) {
  * Openings are cut in the walls: { wall, x, y, w, h, kind: 'window' | 'door' }, with x along the wall
  * as seen from inside it (from its middle) and y up from the floor. Windows look straight out.
  */
-class Room {
+export class Room {
   constructor({ w, d, h, wall, wainscot, floor, ceiling = '#fbf4ea', trim = '#6e4630', openings = [] }) {
     Object.assign(this, { w, d, h });
     this.group = new THREE.Group();
