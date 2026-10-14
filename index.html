@@ -31,6 +31,16 @@
       </div>
     </div>
 
+    <div id="chat" class="chat" role="dialog" aria-label="Chat with your Chog" hidden>
+      <div class="chat-head"><strong class="chat-title">Your Chog</strong><button class="chat-close" aria-label="Close chat">&times;</button></div>
+      <ul class="chat-list" aria-live="polite"></ul>
+      <form class="chat-form" autocomplete="off">
+        <input type="text" maxlength="400" enterkeyhint="send" aria-label="Message" />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+    <div id="chog-bubble" class="chog-bubble" aria-hidden="true" hidden></div>
+
     <div id="story" class="story" aria-live="polite" hidden>
       <div class="story-title"></div>
       <div class="story-sub"></div>

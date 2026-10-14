@@ -57,6 +57,27 @@ are real but free.
 - Each walk from the plaza out to a bridge now has benches in facing pairs either side of it, square to the walk, between its lamp posts. They sit on the grass at ground height and skip any spot that would touch another walk.
 - See it: Chog Hub view, or `?view=ground`, and look down the walk toward the first neighbourhood's bridge.
 - For A5: the open paving left and right of the fountain (toward the bar yard and the casino) is still free for the singer's stage and the gathered Chogs.
+### 2026-10-14 · A (A6, A7)
+- **A6 done:** the sale cutscene (`playGreyOut` in `src/cutscenes.js`). The Chog turns to face you, goes grey from the feet up, walks off fading, then `world.enterSpace({ from: room, duration: 5 })`, then "Your Chog has moved on." It always ends back at the overview, signed out.
+- **A7 done:** login and logoff.
+  - Wake: the Chog wakes on its bed, hops down, waves, with a burst of twinkles in its aura colour. Its shaders and its home room are compiled before the view goes in (`world.prewarm` in `src/main.js`), so the wake doesn't stall.
+  - Sign out: takes you home first if you're elsewhere, the Chog waves ("See you soon"), then `world.enterSpace({ from: room, duration: 4 })`, then the overview.
+- **For B7:** both cutscenes await `world.enterSpace(...)` from the session world object in `src/main.js` (now `async () => {}`). When `src/space.js` lands, swap the stub for the real `enterSpace`. The session calls `world.leaveToOverview()` straight after, so `leaveSpace()` can go in there.
+- Captions (`#story`) now sit on a soft glass panel so they read over bright rooms.
+- **Test:** `npm run dev`, `?q=low`, Try a demo Chog, then Sign out, or Simulate sale.
+- **Next:** A9 (bar chats with `chogsChat`), then A5 when models land.
+
+### 2026-10-14 · A (A8)
+- **A8 done:** chat with your Chog (`src/chat.js`, wired in `src/session.js`).
+  - Open it from Talk on the chip, or by tapping the Chog.
+  - Calls `talk({ id, session, text, place })`, where place is "at home in its dome", "in the Lobby" and so on.
+  - The reply shows in the panel and in a speech bubble over the Chog. `chog.setMood(mood)` plays a move and a badge.
+  - The mood map is `MOODS` in `src/traitmap.js`. Each mood has a face morph target name for the rigged models (Happy, Excited, ...).
+- Notes when the brain says `newKeeper` or `learned`. Errors show in the chat, and a 503 reads "resting".
+- Markup: `#chat` and `#chog-bubble` in `index.html`. Styles in the "Chat with your Chog (A8)" block of `src/style.css`. One line in `src/main.js` `onTap` checks for a tap on the Chog first.
+- **Test:** `BRAIN_MOCK=1 npm run dev`, then `?q=low`, Try a demo Chog, Talk.
+- **Next in order:** A6/A7 with B7's `enterSpace` (stubbed in `src/main.js`), then A5 when models land, then A9.
+
 ### 2026-10-14 · A
 - **A1 to A4 done, A6 in, A5 slots in.** Commits 9d4285f, 0a15edc, 7a977ab, 2a8c1ba, 6a78fbf.
 - **Sign in** (`src/chain.js`, `src/session.js`, panel in `index.html`, styles in the "Signing in" block of `src/style.css`):

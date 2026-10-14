@@ -343,7 +343,14 @@ button:disabled { opacity: 0.45; cursor: default; }
   left: 50%;
   top: 22%;
   transform: translate(-50%, 8px);
-  width: min(560px, calc(100vw - 32px));
+  width: max-content;
+  max-width: min(560px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 12px 22px 14px;
+  border-radius: 18px;
+  background: rgba(24, 12, 52, 0.42);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   text-align: center;
   opacity: 0;
   pointer-events: none;
@@ -356,8 +363,76 @@ button:disabled { opacity: 0.45; cursor: default; }
 .story-sub { margin-top: 6px; font-size: 15px; color: #e6dcff; }
 @media (max-width: 760px) {
   .signin-btn, .chog-chip { top: 70px; }
+  .chog-chip { gap: 5px; padding: 5px 6px 5px 5px; }
+  .chog-chip img { width: 34px; height: 34px; }
+  .chog-chip div { margin-right: 0; }
+  .chog-chip strong { font-size: 13px; white-space: nowrap; }
+  .chog-chip div .small { display: none; }
+  .chog-chip button { padding: 6px 8px; font-size: 12px; white-space: nowrap; }
 }
 .fade.slow { transition-duration: 1.4s; }
+
+/* ---------- Chat with your Chog (A8) ---------- */
+.chat {
+  position: fixed;
+  z-index: 9;
+  right: 16px;
+  bottom: 128px;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(460px, calc(100vh - 200px));
+  display: flex;
+  flex-direction: column;
+  background: #1d1336;
+  border: 1px solid var(--panel-line);
+  border-radius: 18px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: pan-y;
+}
+.chat.on { opacity: 1; transform: none; }
+.chat[hidden] { display: none; }
+.chat-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 8px 16px; border-bottom: 1px solid var(--panel-line); }
+.chat-head strong { font: 600 16px var(--display); }
+.chat-close { width: 32px; height: 32px; padding: 0; font-size: 18px; line-height: 1; }
+.chat-list { list-style: none; margin: 0; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 140px; }
+.msg { max-width: 82%; padding: 8px 12px; border-radius: 14px; line-height: 1.4; font-size: 15px; word-wrap: break-word; }
+.msg.you { align-self: flex-end; background: var(--accent); color: #1a1030; border-bottom-right-radius: 4px; }
+.msg.chog { align-self: flex-start; background: rgba(255, 255, 255, 0.08); border-bottom-left-radius: 4px; }
+.msg.note { align-self: center; max-width: 100%; padding: 2px 8px; font-size: 12px; color: var(--muted); background: none; }
+.msg.note.error { color: #ffc2d0; }
+.msg.typing span { display: inline-block; width: 6px; height: 6px; margin: 0 2px; border-radius: 50%; background: var(--muted); animation: typing 1s infinite ease-in-out; }
+.msg.typing span:nth-child(2) { animation-delay: 0.15s; }
+.msg.typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .msg.typing span { animation: none; } }
+.chat-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--panel-line); }
+.chat-form input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--panel-line); background: rgba(255, 255, 255, 0.06); color: var(--text); font: 15px var(--body); }
+.chat-form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chat-form button { padding: 0 16px; background: var(--accent); color: #1a1030; border: none; font-weight: 600; }
+.chog-bubble {
+  position: fixed;
+  z-index: 6;
+  left: 0;
+  top: 0;
+  max-width: 260px;
+  padding: 9px 13px;
+  background: #fff8ee;
+  color: #2a1c40;
+  border-radius: 16px;
+  font: 500 15px/1.35 var(--body);
+  box-shadow: 0 6px 20px rgba(20, 8, 40, 0.3);
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.chog-bubble::after { content: ''; position: absolute; left: 50%; bottom: -8px; margin-left: -8px; border: 8px solid transparent; border-bottom: 0; border-top-color: #fff8ee; }
+.chog-bubble[hidden] { display: none; }
+@media (max-width: 760px) {
+  .chat { right: 16px; left: 16px; width: auto; bottom: 134px; max-height: 46vh; }
+}
 
 /* Agent B: the loading bar. */
 .load-bar { width: min(240px, 60vw); height: 4px; margin: 10px auto 4px; border-radius: 2px; background: rgba(196, 176, 255, 0.18); overflow: hidden; }

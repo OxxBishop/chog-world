@@ -1,6 +1,8 @@
 import { chogInfo, loadChogs, DEMO_CHOG, homeFor } from './chogdata.js';
 import { makeChog } from './chog.js';
-import { playWake, playGreyOut } from './cutscenes.js';
+import { prepareWake, playWake, playGreyOut, playLogoff } from './cutscenes.js';
+import { createChat } from './chat.js';
+import * as THREE from 'three';
 
 /*
  * Signing in and waking your Chog. Connect a wallet on Monad testnet, sign a free message, pick one of
@@ -21,6 +23,15 @@ export function initSession(world) {
   const body = panel.querySelector('.signin-body');
   let session = null; // { address, wallet, provider, demo, id, chog, room, stopWatch }
   let busy = false;
+  // Where the Chog is, for the brain to know what it's looking at.
+  const placeName = () => {
+    const here = world.currentRoom();
+    if (here && here === session?.room) return 'at home in its dome';
+    if (here) return `in the ${here.name}`;
+    return 'out on the islands of Chog World';
+  };
+  const chat = createChat({ camera: world.camera, getSession: () => session, placeName });
+  const ray = new THREE.Raycaster();
 
   const open = () => {
     panel.hidden = false;
@@ -159,6 +170,8 @@ export function initSession(world) {
       const home = homeFor(id, world.homes.length);
       const room = world.homes[home];
       room.room.group.add(chog.root);
+      prepareWake(chog);
+      await world.prewarm?.(room.room.group);
       session.id = id;
       session.info = info;
       session.chog = chog;
@@ -194,6 +207,7 @@ export function initSession(world) {
     const s = session;
     if (!s?.chog || s.leaving) return;
     s.leaving = true;
+    chat.close();
     s.stopWatch?.();
     clearInterval(s.ownerCheck);
     if (world.currentRoom() !== s.room) {
@@ -202,8 +216,7 @@ export function initSession(world) {
     }
     $('chog-chip').hidden = true;
     await playGreyOut({ chog: s.chog, name: s.info.name, room: s.room, world });
-    signOut();
-    world.leaveToOverview();
+    signOut(null, { toOverview: true });
   }
 
   // ---------- guests ----------
@@ -219,19 +232,37 @@ export function initSession(world) {
     chip.innerHTML = `
       ${s.info.image ? `<img src="${esc(s.info.image)}" alt="">` : ''}
       <div><strong>${esc(s.info.name)}</strong><span class="muted small">${s.demo ? 'Demo Chog' : esc(short(s.address))}</span></div>
+      <button class="talk">Talk</button>
       <button class="home">Home</button>
       ${s.demo ? '<button class="sale">Simulate sale</button>' : ''}
       <button class="out">Sign out</button>`;
     chip.hidden = false;
     $('btn-signin').hidden = true;
+    chip.querySelector('.talk').addEventListener('click', () => (chat.isOpen ? chat.close() : chat.open()));
     chip.querySelector('.home').addEventListener('click', () => world.enterRoom(s.room));
-    chip.querySelector('.out').addEventListener('click', () => signOut());
+    chip.querySelector('.out').addEventListener('click', () => logOff());
     chip.querySelector('.sale')?.addEventListener('click', () => sold());
   }
 
-  function signOut(note) {
+  // Sign out with a goodbye: home if you're elsewhere, a wave, then out to the world from space.
+  async function logOff() {
+    const s = session;
+    if (!s?.chog || s.leaving) return signOut();
+    s.leaving = true;
+    chat.close();
+    $('chog-chip').hidden = true;
+    if (world.currentRoom() !== s.room) {
+      world.enterRoom(s.room);
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    await playLogoff({ chog: s.chog, name: s.info.name, room: s.room, world });
+    signOut(null, { toOverview: true });
+  }
+
+  function signOut(note, { toOverview = false } = {}) {
     const s = session;
     session = null;
+    chat.reset();
     if (s) {
       s.stopWatch?.();
       clearInterval(s.ownerCheck);
@@ -240,7 +271,7 @@ export function initSession(world) {
         s.chog.root.removeFromParent();
         s.chog.dispose();
       }
-      if (s.room && world.currentRoom() === s.room) world.leaveToOverview();
+      if (toOverview || (s.room && world.currentRoom() === s.room)) world.leaveToOverview();
     }
     $('chog-chip').hidden = true;
     $('btn-signin').hidden = false;
@@ -258,7 +289,18 @@ export function initSession(world) {
   return {
     update(dt) {
       if (session?.chog && session.room.room.group.visible) session.chog.update(dt, world.camera);
+      chat.update(dt);
     },
+    // A tap on your Chog opens the chat. True if the tap was on it.
+    tapChog(x, y) {
+      const root = session?.chog?.root;
+      if (!root || !root.visible || !session.room.room.group.visible) return false;
+      ray.setFromCamera(new THREE.Vector2((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1), world.camera);
+      if (!ray.intersectObject(root, true).length) return false;
+      chat.open();
+      return true;
+    },
+    chat,
     get active() {
       return session;
     },
