@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { loadModel, loadPack, unpack } from './assets.js';
 
 /*
  * KayKit kits by Kay Lousberg (CC0). Space Base Bits gives the modular pods, tubes and towers the hub,
@@ -8,23 +8,23 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
  * draw call per kit.
  */
 
-const ROOT = `${import.meta.env.BASE_URL}assets/`;
 const kit = new Map();
 const shared = new Map();
 
 export async function loadKit(names, dir = 'kaykit', onProgress) {
-  const loader = new GLTFLoader();
+  const pack = await loadPack(dir, (f) => onProgress?.(0.9 * f));
   let done = 0;
   await Promise.all(
     names.map(async (name) => {
-      const gltf = await loader.loadAsync(`${ROOT}${dir}/${name}.gltf`);
-      gltf.scene.traverse((o) => {
+      const scene = await loadModel(pack, dir, name);
+      unpack(scene);
+      scene.traverse((o) => {
         if (!o.isMesh) return;
         if (!shared.has(dir)) shared.set(dir, o.material);
         o.material = shared.get(dir);
       });
-      kit.set(name, gltf.scene);
-      onProgress?.(++done / names.length);
+      kit.set(name, scene);
+      onProgress?.(0.9 + (0.1 * ++done) / names.length);
     }),
   );
 }
