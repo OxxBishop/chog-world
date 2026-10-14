@@ -67,8 +67,8 @@ doesn't yet, stub it and move on, then come back.
 | 2 | B1 | Plaza benches: tidy rings facing the fountain and rows along the paths, no random angles | Oct 14 | | done |
 | 3 | B7 | **World seen from space** (`src/space.js`): the whole archipelago as a little diorama floating in a starry void, with the grey Chogs still visible wandering. Used when the user is carried out (sale, logoff) and as the backdrop behind sign-in. Export `enterSpace({from, duration})` and `leaveSpace()` so A's cutscenes just call it. A needs this by Oct 17 | Oct 16 | | todo |
 | 4 | B3 | Lobby facade: warm and welcoming like the bar and casino (it is still the grey sci-fi panel body) | Oct 16 | | done |
-| 5 | B4 | Clouds: check for a grainy, dithered look in the overview at normal frame rates and fix it | Oct 17 | | doing |
-| 6 | B5 | World overview flight for the demo's opening shot (drone path over the islands at golden hour) | Oct 18 | | todo |
+| 5 | B4 | Clouds: check for a grainy, dithered look in the overview at normal frame rates and fix it | Oct 17 | | done |
+| 6 | B5 | World overview flight for the demo's opening shot (drone path over the islands at golden hour) | Oct 18 | | doing |
 | 7 | B8 | Casino (only if everything above, and A1 to A7, are done): one game, free chips only, Chog traits give perks (bonus chips, re-rolls, small multipliers), leaderboard. Never wager $CHOG | Oct 19 | | todo |
 | 8 | B6 | Casino spin effect, the casino's own cutscene | Oct 19 | B8 | todo |
 

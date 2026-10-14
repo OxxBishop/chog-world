@@ -27,6 +27,12 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · B4 cloud grain (done)
+- Cause: the deck is ray-marched a sixteenth of the pixels per frame with a blue-noise jitter, and each pixel keeps the one sample it last got. Even fully settled that leaves a fine salt-and-pepper grain, most visible in the overview. The drifting puffs were already smooth.
+- Fix in `src/volclouds.js`: the composite reads the deck through a small tent filter (four bilinear taps over 3 x 3 texels). Grain gone, heap shapes kept, no halo at island rims. Cost is three extra texture reads per pixel.
+- See it: the overview with the camera still, at any `?q=`.
+- Not changed: the dome glass sparkles from afar. That is the glass and lattice in `dome.js`, not the clouds.
+
 ### 2026-10-14 · B · B3 lobby facade (done)
 - `src/hub.js`: the lobby pod has sand plaster walls, wood frames and side panels, and a gold dome (the dome's faces come away whole into the gold material). The tubes to the wings match the walls.
 - Entrance: the pod's door is raised 3 m, so there are now stone steps up to it with a red runner down them and out to the arch, wooden double doors with brass handles, a warm transom, and a wall lantern either side. Lanterns and transom brighten at night.
