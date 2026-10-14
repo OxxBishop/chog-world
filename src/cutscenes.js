@@ -2,8 +2,8 @@ import * as THREE from 'three';
 
 /*
  * The moments a Chog has with its owner: waking in its home when you sign in, waving goodbye when you
- * sign out, and going grey when it leaves your wallet. All are hooks the session calls; they can grow
- * here (sound, the rigged animations) without the session changing.
+ * sign out, walking into rooms with you, and going grey when it leaves your wallet. All are hooks the
+ * session calls; they can grow here (sound, the rigged animations) without the session changing.
  */
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -163,11 +163,7 @@ export async function playGreyOut({ chog, name, room, world }) {
   chog.play('idle');
   caption(`${name} left your wallet`);
   // It turns to face you.
-  const eye = room.room.group.worldToLocal(world.camera.getWorldPosition(new THREE.Vector3()));
-  const turnFrom = chog.root.rotation.y;
-  let turnBy = Math.atan2(eye.x - chog.root.position.x, eye.z - chog.root.position.z) - turnFrom;
-  turnBy = Math.atan2(Math.sin(turnBy), Math.cos(turnBy));
-  await tween(700, (k) => (chog.root.rotation.y = turnFrom + turnBy * THREE.MathUtils.smoothstep(k, 0, 1)));
+  await faceCamera(chog, room.room.group, world.camera, 700);
   await wait(400);
   // Colour drains from the feet up.
   await tween(2600, (k) => chog.setGrey(THREE.MathUtils.smoothstep(k, 0, 1)));
@@ -201,12 +197,66 @@ export async function playLogoff({ chog, name, room, world }) {
   await world.enterSpace({ from: room, duration: 4 });
 }
 
-// Run fn(k) for k from 0 to 1 over ms, one step a frame.
-function tween(ms, fn) {
+/**
+ * Walking in with you (A10): the Chog steps in at the door, fading in as it comes through, walks to its
+ * spot and turns to face the camera. from and to are in the room's space; delay (s) holds it outside
+ * while the room is shown. Returns { done, skip }: skip() puts it in its spot at once.
+ */
+export function playWalkIn({ chog, group, from, to, camera, delay = 0 }) {
+  let skipped = false;
+  const stop = () => skipped;
+  const done = (async () => {
+    chog.root.position.copy(from);
+    chog.root.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+    chog.setFade(0);
+    chog.play('idle');
+    await tween(delay * 1000, () => {}, stop);
+    if (!skipped) {
+      chog.play('walk');
+      await tween(walkMs(from, to), (k) => {
+        chog.root.position.lerpVectors(from, to, THREE.MathUtils.smoothstep(k, 0, 1));
+        chog.setFade(Math.min(1, k * 4));
+      }, stop);
+    }
+    chog.root.position.copy(to);
+    chog.setFade(1);
+    chog.play('idle');
+    await faceCamera(chog, group, camera, skipped ? 0 : 500);
+  })();
+  return { done, skip: () => (skipped = true) };
+}
+
+/** Walking out (A10): it turns to the door, walks there and fades out as it goes through. */
+export async function playWalkOut({ chog, to }) {
+  const from = chog.root.position.clone();
+  chog.root.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+  chog.play('walk');
+  await tween(walkMs(from, to), (k) => {
+    chog.root.position.lerpVectors(from, to, THREE.MathUtils.smoothstep(k, 0, 1));
+    chog.setFade(1 - THREE.MathUtils.smoothstep(k, 0.6, 1));
+  });
+  chog.play('idle');
+}
+
+// A stroll's length: a brisk 2.4 m a second, kept short enough for the camera move around it.
+const walkMs = (from, to) => THREE.MathUtils.clamp((from.distanceTo(to) / 2.4) * 1000, 1400, 3400);
+
+// Turn the Chog to face the camera (a rigged model shows it; a standee's card always faces you).
+function faceCamera(chog, group, camera, ms) {
+  const eye = group.worldToLocal(camera.getWorldPosition(new THREE.Vector3()));
+  const from = chog.root.rotation.y;
+  let by = Math.atan2(eye.x - chog.root.position.x, eye.z - chog.root.position.z) - from;
+  by = Math.atan2(Math.sin(by), Math.cos(by));
+  return tween(ms, (k) => (chog.root.rotation.y = from + by * THREE.MathUtils.smoothstep(k, 0, 1)));
+}
+
+// Run fn(k) for k from 0 to 1 over ms, one step a frame. stop() returning true ends it early.
+function tween(ms, fn, stop) {
   const t0 = performance.now();
   return new Promise((resolve) => {
     const step = () => {
-      const k = Math.min(1, (performance.now() - t0) / ms);
+      if (stop?.()) return resolve();
+      const k = ms > 0 ? Math.min(1, (performance.now() - t0) / ms) : 1;
       fn(k);
       if (k < 1) requestAnimationFrame(step);
       else resolve();

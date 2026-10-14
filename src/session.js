@@ -1,6 +1,6 @@
 import { chogInfo, loadChogs, DEMO_CHOG, homeFor, artFallbacks } from './chogdata.js';
 import { makeChog } from './chog.js';
-import { prepareWake, playWake, playGreyOut, playLogoff } from './cutscenes.js';
+import { prepareWake, playWake, playGreyOut, playLogoff, playWalkIn, playWalkOut, SPOT } from './cutscenes.js';
 import { createChat } from './chat.js';
 import { createBarChat } from './barchat.js';
 import * as THREE from 'three';
@@ -33,7 +33,7 @@ export function initSession(world) {
   };
   const chat = createChat({ camera: world.camera, getSession: () => session, placeName });
   // Your Chog comes along to the bar and chats with the regulars there.
-  const bar = createBarChat({ world, getMine: () => (session?.chog ? session : null) });
+  const bar = createBarChat({ world, getMine: () => (session?.chog ? session : null), sendHome: (s) => sendHome(s) });
   setTimeout(() => (window.requestIdleCallback ?? setTimeout)(() => bar.preload()), 12000);
   const ray = new THREE.Raycaster();
 
@@ -253,6 +253,57 @@ export function initSession(world) {
     chip.querySelector('.sale')?.addEventListener('click', () => sold());
   }
 
+  // ---------- walking into rooms with you (A10) ----------
+  // Back to its spot at home, from wherever it went with you.
+  function sendHome(s) {
+    if (session !== s || !s.chog) return;
+    s.room.room.group.add(s.chog.root);
+    s.chog.root.position.copy(SPOT);
+    s.chog.root.rotation.y = 0.5;
+    s.chog.root.scale.setScalar(1);
+    s.chog.setFade(1);
+    s.chog.play('idle');
+  }
+
+  // The doorway, in the room's space: the given world point, or just inside the front door.
+  const doorIn = (room, door) =>
+    door ? room.room.group.worldToLocal(door.clone()).setY(0) : new THREE.Vector3(0, 0, room.room.d / 2 - 0.6);
+
+  // Where it stands in a room it walked into: out on the floor in the middle of the room's own view,
+  // nearly three quarters of the way from the camera to what it looks at.
+  function spotIn(room) {
+    const g = room.room.group;
+    const eye = g.worldToLocal(room.view.pos.clone());
+    const look = g.worldToLocal(room.view.target.clone());
+    return eye.lerp(look, 0.72).setY(0);
+  }
+
+  /**
+   * Your Chog walks into a room with you: call it at the cut into the room. Resolves once it stands in
+   * its spot facing you (at once for guests); skip() puts it there now.
+   */
+  function walkIn(room, door, { delay = 0 } = {}) {
+    const s = session;
+    if (!s?.chog || s.leaving || !room || room === s.room) return Object.assign(Promise.resolve(), { skip() {} });
+    const group = room.room.group;
+    const from = doorIn(room, door);
+    const to = room === world.bar ? bar.spotFor(s) : spotIn(room);
+    group.add(s.chog.root);
+    s.chog.root.scale.setScalar(1);
+    const walk = playWalkIn({ chog: s.chog, group, from, to, camera: world.camera, delay });
+    if (room === world.bar) bar.expect(walk.done);
+    return Object.assign(walk.done, { skip: walk.skip });
+  }
+
+  /** It walks back out of the room ahead of you. Resolves once it's out of the door. */
+  async function walkOut(room, door) {
+    const s = session;
+    if (!s?.chog || !room || s.chog.root.parent !== room.room.group) return;
+    if (room === world.bar) bar.release();
+    await playWalkOut({ chog: s.chog, to: doorIn(room, door) });
+    sendHome(s);
+  }
+
   // Sign out with a goodbye: home if you're elsewhere, a wave, then out to the world from space.
   async function logOff() {
     const s = session;
@@ -298,10 +349,16 @@ export function initSession(world) {
   return {
     update(dt) {
       bar.update(dt);
-      // The Chog moves wherever it is: at home, or out at the bar with you.
-      if (session?.chog?.root.parent?.visible) session.chog.update(dt, world.camera);
+      const s = session;
+      const parent = s?.chog?.root.parent;
+      // Out in a room you've left: it goes home.
+      if (parent && parent !== s.room.room.group && !parent.visible && !s.leaving) sendHome(s);
+      // The Chog moves wherever it is: at home, or out in a room with you.
+      if (s?.chog?.root.parent?.visible) s.chog.update(dt, world.camera);
       chat.update(dt);
     },
+    walkIn,
+    walkOut,
     // A tap on your Chog opens the chat. True if the tap was on it.
     tapChog(x, y) {
       const root = session?.chog?.root;

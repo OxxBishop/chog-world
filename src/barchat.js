@@ -60,7 +60,7 @@ const SPARE = [
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const _p = new THREE.Vector3();
 
-export function createBarChat({ world, getMine }) {
+export function createBarChat({ world, getMine, sendHome: home }) {
   const bar = world.bar;
   const regulars = new Map();
   const scenes = new Map();
@@ -72,6 +72,8 @@ export function createBarChat({ world, getMine }) {
   let spare = 0;
   let speaking = null;
   let layout = null;
+  // Your Chog walking in from the door (A10): the scene waits for it.
+  let arriving = null;
   const layoutNow = () => LAYOUTS[world.camera.aspect < 1 ? 'tall' : 'wide'];
 
   const bubble = document.createElement('div');
@@ -150,6 +152,7 @@ export function createBarChat({ world, getMine }) {
     const s = o.session;
     // Signed out meanwhile: the Chog is already gone.
     if (getMine() !== s || s.chog !== o.chog) return;
+    if (home) return home(s);
     s.room.room.group.add(o.chog.root);
     o.chog.root.position.copy(SPOT);
     o.chog.root.rotation.y = 0.5;
@@ -173,20 +176,22 @@ export function createBarChat({ world, getMine }) {
     await fade(moving.filter((o) => !o.mine), 1, 0, 450);
     if (token !== run) return false;
     for (const o of moving) if (!same(o, cast.a) && !same(o, cast.b)) leaveSeat(o);
-    const arriving = [];
+    const fadingIn = [];
     for (const s of ['a', 'b']) {
       const o = cast[s];
+      // Still walking in from the door: it takes its place when it gets there.
+      if (o.mine && arriving) continue;
       if (same(seated[s], o)) continue;
       seated[s] = o;
       bar.room.group.add(o.chog.root);
       o.chog.play('idle');
       if (!o.mine) {
         o.chog.setFade(0);
-        arriving.push(o);
+        fadingIn.push(o);
       }
     }
     place(layoutNow());
-    await fade(arriving, 0, 1, 600);
+    await fade(fadingIn, 0, 1, 600);
     return token === run;
   }
 
@@ -239,7 +244,13 @@ export function createBarChat({ world, getMine }) {
         continue;
       }
       const [lines, seatedOk] = await Promise.all([sceneFor(cast.a.id, cast.b.id), seat(cast, token)]);
-      if (!seatedOk || !(await wait(900, token))) return;
+      if (!seatedOk) return;
+      // Your Chog takes its place once it has walked in (or straight away if it already has).
+      if (cast.a.mine || cast.b.mine) {
+        if (arriving) await arriving;
+        if (token !== run || !(await seat(cast, token))) return;
+      }
+      if (!(await wait(900, token))) return;
       await play(lines, cast, token);
       if (!(await wait(7000, token))) return;
     }
@@ -297,6 +308,28 @@ export function createBarChat({ world, getMine }) {
     },
     get active() {
       return active;
+    },
+    // Where your Chog stands in the bar: the side it faces in its art (room space).
+    spotFor(s) {
+      return layoutNow()[s.info.traits.Side !== 'Left' ? 'a' : 'b'].clone();
+    },
+    // Your Chog is walking in (A10): hold the scene until it's at its spot.
+    expect(walk) {
+      // Already chatting with it in place (it was here first): start over with it walking in.
+      if (active) {
+        run++;
+        quiet();
+        for (const s of ['a', 'b']) if (seated[s]?.mine) seated[s] = null;
+        active = false;
+      }
+      arriving = walk;
+      walk.then(() => arriving === walk && (arriving = null));
+    },
+    // Your Chog is walking out ahead of you: the chat stops, the regular stays.
+    release() {
+      run++;
+      quiet();
+      for (const s of ['a', 'b']) if (seated[s]?.mine) seated[s] = null;
     },
     // For tests: who's at the bar, and where they stand.
     layouts: LAYOUTS,
