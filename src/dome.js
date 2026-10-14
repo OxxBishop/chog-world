@@ -3,7 +3,6 @@ import { piece, repaint } from './kaykit.js';
 import { buildHomeRoom } from './interior.js';
 import { createGlows } from './glows.js';
 import { DOME_R, WORLD } from './layout.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from './merge.js';
 
 const DOOR_HALF = 2.2;
@@ -17,6 +16,31 @@ const DOOR_H = 5.2;
 // all the domes share it, each in its own materials. Building it per dome was most of the island's
 // build time.
 let FRAME = null;
+
+// Copies of one geometry, each moved by its own matrix, in one geometry: what merging moved clones
+// gives, without making a geometry for every copy.
+function bakeCopies(base, matrices) {
+  const g = base.index ? base.toNonIndexed() : base;
+  const pos = g.attributes.position.array, nor = g.attributes.normal.array, uv = g.attributes.uv.array;
+  const n = pos.length;
+  const P = new Float32Array(n * matrices.length), N = new Float32Array(n * matrices.length);
+  const U = new Float32Array(uv.length * matrices.length);
+  const v = new THREE.Vector3(), nm = new THREE.Matrix3();
+  matrices.forEach((m, k) => {
+    nm.getNormalMatrix(m);
+    for (let i = 0; i < n; i += 3) {
+      v.fromArray(pos, i).applyMatrix4(m).toArray(P, k * n + i);
+      v.fromArray(nor, i).applyMatrix3(nm).normalize().toArray(N, k * n + i);
+    }
+    U.set(uv, k * uv.length);
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+  return out;
+}
+
 function domeFrame() {
   if (FRAME) return FRAME;
   const R = DOME_R;
@@ -67,26 +91,22 @@ function domeFrame() {
 
   // Stands in for each dome's steel while the parts are merged.
   const steel = new THREE.MeshBasicMaterial();
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
   // Every strut baked into one geometry; `sides` lets the far version use plainer struts.
-  const lattice = (sides) => {
-    const base = new THREE.CylinderGeometry(0.09, 0.09, 1, sides, 1, true);
-    return mergeGeometries(
-      edges.map(([a, b]) => {
-        const dir = b.clone().sub(a);
-        const len = dir.length();
-        q.setFromUnitVectors(up, dir.normalize());
-        return base.clone().applyMatrix4(m.compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, len, 1)));
-      }),
-    );
-  };
+  const struts = edges.map(([a, b]) => {
+    const dir = b.clone().sub(a);
+    const len = dir.length();
+    q.setFromUnitVectors(up, dir.normalize());
+    return new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, len, 1));
+  });
+  const lattice = (sides) => bakeCopies(new THREE.CylinderGeometry(0.09, 0.09, 1, sides, 1, true), struts);
   // Close up the full lattice with its joints; from afar (where a joint is under a pixel) a lighter one.
   const near = new THREE.Group();
   const far = new THREE.Group();
   near.add(new THREE.Mesh(lattice(6), steel));
   const nodes = rings.flat().concat([crown]).filter((p) => !inDoor(p));
-  const nodeGeo = new THREE.IcosahedronGeometry(0.18, 1);
-  near.add(new THREE.Mesh(mergeGeometries(nodes.map((p) => nodeGeo.clone().translate(p.x, p.y, p.z))), steel));
+  const joints = nodes.map((p) => new THREE.Matrix4().makeTranslation(p.x, p.y, p.z));
+  near.add(new THREE.Mesh(bakeCopies(new THREE.IcosahedronGeometry(0.18, 1), joints), steel));
   far.add(new THREE.Mesh(lattice(4), steel));
 
   // Entrance: a steel arch frame that steps out from the dome.
