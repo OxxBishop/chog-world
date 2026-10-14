@@ -110,9 +110,11 @@ export function prepareWake(chog) {
   chog.sparkle = makeSparkle(chog.root, chog.look.aura ?? '#d0b4ff');
 }
 
-// Where a Chog sleeps and stands in its home room (room space, metres).
+// Where a Chog sleeps and stands in its home room, and where it appears when you arrive: back by the
+// desk, so it steps out towards you (room space, metres).
 export const BED = new THREE.Vector3(-2.7, 0.5, 0.2);
 export const SPOT = new THREE.Vector3(0.3, 0, -0.8);
+export const POD = new THREE.Vector3(-0.4, 0, -2.3);
 
 /**
  * Wake: the Chog is asleep on its bed when the view fades in, sits up, hops down and waves.
@@ -147,6 +149,32 @@ export async function playWake({ chog, name }) {
   await wait(2200);
   chog.play('idle');
   hideCaption();
+}
+
+/**
+ * Arriving home (A11): once the flight is into the pod, the Chog appears in a burst of sparkles, steps
+ * out towards you, turns to the camera and says hello. hello() resolves to { reply, mood } (asked for
+ * at once, so it's ready when the Chog is); say(reply, mood) shows it. Resolves once it has spoken.
+ */
+export async function playSpawn({ chog, group, camera, hello, say }) {
+  const greeting = hello();
+  chog.root.position.copy(POD);
+  chog.root.rotation.y = Math.atan2(SPOT.x - POD.x, SPOT.z - POD.z);
+  chog.setFade(0);
+  chog.play('idle');
+  (chog.sparkle ?? makeSparkle(chog.root, chog.look.aura ?? '#d0b4ff')).play();
+  chog.sparkle = null;
+  await tween(600, (k) => chog.setFade(k));
+  await wait(250);
+  chog.play('walk');
+  await tween(walkMs(POD, SPOT), (k) => chog.root.position.lerpVectors(POD, SPOT, THREE.MathUtils.smoothstep(k, 0, 1)));
+  chog.play('idle');
+  await faceCamera(chog, group, camera, 450);
+  chog.play('wave');
+  const { reply, mood } = await greeting;
+  say(reply, mood);
+  await wait(2400);
+  chog.play('idle');
 }
 
 /**
