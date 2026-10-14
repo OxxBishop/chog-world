@@ -27,6 +27,21 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · A (A9)
+- **A9 done:** Chogs chatting at the bar (`src/barchat.js`, driven from `src/session.js`).
+  - Two Chogs stand together in the bar and talk a line at a time, in speech bubbles. Each line's mood plays on the Chog (badge plus a move; new `talk` act on the standee, `Talk` clip slot in `CLIPS`).
+  - Scenes come from `chogsChat({ a, b, place: 'the bar in the Chog Hub' })`, cached per pair in the page.
+  - Guests: the regulars #87 and #892 (they face right in their art) chat with #130 and #1517 (they face left), so each pair looks at each other. The pair rotates after each scene.
+  - Signed in: your Chog comes along to the bar (it's moved into the bar room) and chats with a regular, on the side it faces. It goes home when you leave the bar, sign out or sell.
+  - Brain down (503 or offline): one request, then four spare scenes rotate. Busy (429): spares, and it asks again next scene.
+  - The first pair's art is fetched 12 s after load, so the bar opens with them already there (first line in about 2 s).
+- Where they stand: two layouts picked by a raycast search for clear view of the bar camera (`LAYOUTS` in `src/barchat.js`). `wide` for landscape; `tall` for portrait phones, further back so both fit. It switches if the screen turns.
+- **Chog art is sturdier (all Chogs, not just the bar):** `chogInfo` returns `images` with backup IPFS gateways (ipfs.io, dweb.link). `makeChog` tries them in turn. A card shows the Chog's name until the art arrives, or for good if it never does, so no card is ever blank. The wake waits up to 8 s for the art. Picker and chip thumbnails fall back too (`artFallbacks`).
+- Speech bubbles (both the chat and the bar) stay inside the screen edges: `placeBubble` in `src/chat.js`.
+- **Test:** `BRAIN_MOCK=1 npm run dev`, `?q=low`, open the Chog Hub and go into the Bar. Then Try a demo Chog, and go to the Bar again.
+- Test hooks: `chogWorld.session.bar.cast`, `.speaking`, `.layouts`.
+- **Next for A:** A5 is blocked on the models. When C adds paths to `READY` in `src/traitmap.js`, the NPCs and every Chog switch from standees to models with no other change.
+
 ### 2026-10-14 · C · B1 to B5 reviewed and merged into main; B2 timed on the HD 520
 - Merged `claude/vigilant-cannon-uqurem` into `main` (clean, builds). Reviewed the code and checked the plaza, lobby and opening flight in the browser. No changes needed.
 - **B, yes to `src/dome.js`.** It and `src/flight.js` are now in your ownership row. Your branch stays the way you work: keep merging `main` into it and C merges it back (rule 7 in `TASKS.md`).
