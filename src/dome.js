@@ -12,6 +12,130 @@ const HOME_S = 7;
 const POD_TRIM = { meadow: 'green', frost: 'sky', grove: 'pink' };
 const DOOR_H = 5.2;
 
+// Every dome's frame (the lattice and its joints, the entrance arches and their ties, the glass,
+// the plinth and the sign strip) is the same shape in the dome's own space, so it is built once and
+// all the domes share it, each in its own materials. Building it per dome was most of the island's
+// build time.
+let FRAME = null;
+function domeFrame() {
+  if (FRAME) return FRAME;
+  const R = DOME_R;
+  // Lattice: rings from the base to the crown, each joined to the next by a triangle strip.
+  const rings = [];
+  const RINGS = 8;
+  for (let i = 0; i <= RINGS; i++) {
+    const lat = (i / RINGS) * (Math.PI / 2) * 0.97;
+    const n = Math.max(5, Math.round(30 * Math.cos(lat)));
+    const ring = [];
+    for (let k = 0; k < n; k++) {
+      const az = ((k + (i % 2) * 0.5) / n) * Math.PI * 2;
+      ring.push(new THREE.Vector3(R * Math.cos(lat) * Math.sin(az), R * Math.sin(lat), R * Math.cos(lat) * Math.cos(az)));
+    }
+    rings.push(ring);
+  }
+  const crown = new THREE.Vector3(0, R, 0);
+  const edges = [];
+  const inDoor = (p) => {
+    const ax = Math.atan2(p.x, p.z) * R;
+    return Math.abs(ax) < DOOR_HALF + 0.2 && p.y < DOOR_H + 0.3 && p.z > 0;
+  };
+  const addEdge = (a, b) => {
+    if (inDoor(a) && inDoor(b)) return;
+    // Skip struts that would cross the doorway.
+    const mid = a.clone().add(b).multiplyScalar(0.5).setLength(R);
+    if (inDoor(mid)) return;
+    edges.push([a, b]);
+  };
+  for (let i = 0; i < rings.length; i++) {
+    const ring = rings[i];
+    for (let k = 0; k < ring.length; k++) {
+      if (i > 0) addEdge(ring[k], ring[(k + 1) % ring.length]);
+      if (i < rings.length - 1) {
+        // Join to the two nearest points on the next ring up.
+        const up = rings[i + 1];
+        const az = Math.atan2(ring[k].x, ring[k].z);
+        const sorted = up
+          .map((p) => ({ p, d: Math.abs(((Math.atan2(p.x, p.z) - az + Math.PI * 3) % (Math.PI * 2)) - Math.PI) }))
+          .sort((a, b) => a.d - b.d);
+        addEdge(ring[k], sorted[0].p);
+        addEdge(ring[k], sorted[1].p);
+      } else {
+        addEdge(ring[k], crown);
+      }
+    }
+  }
+
+  // Stands in for each dome's steel while the parts are merged.
+  const steel = new THREE.MeshBasicMaterial();
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  // Every strut baked into one geometry; `sides` lets the far version use plainer struts.
+  const lattice = (sides) => {
+    const base = new THREE.CylinderGeometry(0.09, 0.09, 1, sides, 1, true);
+    return mergeGeometries(
+      edges.map(([a, b]) => {
+        const dir = b.clone().sub(a);
+        const len = dir.length();
+        q.setFromUnitVectors(up, dir.normalize());
+        return base.clone().applyMatrix4(m.compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, len, 1)));
+      }),
+    );
+  };
+  // Close up the full lattice with its joints; from afar (where a joint is under a pixel) a lighter one.
+  const near = new THREE.Group();
+  const far = new THREE.Group();
+  near.add(new THREE.Mesh(lattice(6), steel));
+  const nodes = rings.flat().concat([crown]).filter((p) => !inDoor(p));
+  const nodeGeo = new THREE.IcosahedronGeometry(0.18, 1);
+  near.add(new THREE.Mesh(mergeGeometries(nodes.map((p) => nodeGeo.clone().translate(p.x, p.y, p.z))), steel));
+  far.add(new THREE.Mesh(lattice(4), steel));
+
+  // Entrance: a steel arch frame that steps out from the dome.
+  const archPts = [];
+  const postTop = DOOR_H - DOOR_HALF;
+  const onDome = (ax, y, out = 0) => {
+    const az = ax / R;
+    const rr = Math.sqrt(Math.max(R * R - y * y, 0)) + out;
+    return new THREE.Vector3(rr * Math.sin(az), y, rr * Math.cos(az));
+  };
+  for (const out of [0.05, 1.6]) {
+    const pts = [onDome(-DOOR_HALF, 0, out), onDome(-DOOR_HALF, postTop, out)];
+    for (let j = 1; j < 12; j++) {
+      const th = Math.PI - (j / 12) * Math.PI;
+      pts.push(onDome(DOOR_HALF * Math.cos(th), postTop + DOOR_HALF * Math.sin(th), out));
+    }
+    pts.push(onDome(DOOR_HALF, postTop, out), onDome(DOOR_HALF, 0, out));
+    archPts.push(pts);
+    const curve = new THREE.CatmullRomCurve3(pts);
+    near.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.16, 8), steel));
+    far.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.16, 4), steel));
+  }
+  // Ties between the two arches.
+  for (let j = 0; j < archPts[0].length; j += 3) {
+    const a = archPts[0][j], b = archPts[1][j];
+    const dir = b.clone().sub(a);
+    const tie = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, dir.length(), 6), steel);
+    tie.position.copy(a).add(b).multiplyScalar(0.5);
+    tie.quaternion.setFromUnitVectors(up, dir.normalize());
+    near.add(tie);
+  }
+  const gap = (DOOR_HALF + 0.3) / R;
+  // One mesh per level: the merge bakes every part into a single geometry.
+  const single = (g) => {
+    mergeByMaterial(g);
+    return g.children[0].geometry;
+  };
+  FRAME = {
+    near: single(near),
+    far: single(far),
+    nearGlass: new THREE.SphereGeometry(R - 0.02, 96, 32, 0, Math.PI * 2, 0, Math.PI / 2),
+    farGlass: new THREE.SphereGeometry(R - 0.02, 48, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+    plinth: new THREE.TorusGeometry(R, 0.45, 8, 96, Math.PI * 2 - gap * 2),
+    gap,
+    sign: new THREE.TubeGeometry(new THREE.CatmullRomCurve3(archPts[1].map((p) => p.clone().multiplyScalar(1.004))), 48, 0.06, 6),
+  };
+  return FRAME;
+}
+
 /**
  * A geodesic-style glass dome: triangulated steel lattice on rings, PBR glass that reflects
  * the sky, an arched doorway with a short entrance frame, and a Chog's home inside: a KayKit pod
@@ -27,87 +151,24 @@ export class Dome {
     this.group.rotation.y = facing;
     const R = this.radius;
 
-    // Lattice: rings from the base to the crown, each joined to the next by a triangle strip.
-    const rings = [];
-    const RINGS = 8;
-    for (let i = 0; i <= RINGS; i++) {
-      const lat = (i / RINGS) * (Math.PI / 2) * 0.97;
-      const n = Math.max(5, Math.round(30 * Math.cos(lat)));
-      const ring = [];
-      for (let k = 0; k < n; k++) {
-        const az = ((k + (i % 2) * 0.5) / n) * Math.PI * 2;
-        ring.push(new THREE.Vector3(R * Math.cos(lat) * Math.sin(az), R * Math.sin(lat), R * Math.cos(lat) * Math.cos(az)));
-      }
-      rings.push(ring);
-    }
-    const crown = new THREE.Vector3(0, R, 0);
-    const edges = [];
-    const inDoor = (p) => {
-      const ax = Math.atan2(p.x, p.z) * R;
-      return Math.abs(ax) < DOOR_HALF + 0.2 && p.y < DOOR_H + 0.3 && p.z > 0;
-    };
-    const addEdge = (a, b) => {
-      if (inDoor(a) && inDoor(b)) return;
-      // Skip struts that would cross the doorway.
-      const mid = a.clone().add(b).multiplyScalar(0.5).setLength(R);
-      if (inDoor(mid)) return;
-      edges.push([a, b]);
-    };
-    for (let i = 0; i < rings.length; i++) {
-      const ring = rings[i];
-      for (let k = 0; k < ring.length; k++) {
-        if (i > 0) addEdge(ring[k], ring[(k + 1) % ring.length]);
-        if (i < rings.length - 1) {
-          // Join to the two nearest points on the next ring up.
-          const up = rings[i + 1];
-          const az = Math.atan2(ring[k].x, ring[k].z);
-          const sorted = up
-            .map((p) => ({ p, d: Math.abs(((Math.atan2(p.x, p.z) - az + Math.PI * 3) % (Math.PI * 2)) - Math.PI) }))
-            .sort((a, b) => a.d - b.d);
-          addEdge(ring[k], sorted[0].p);
-          addEdge(ring[k], sorted[1].p);
-        } else {
-          addEdge(ring[k], crown);
-        }
-      }
-    }
-
+    const f = domeFrame();
     const steel = new THREE.MeshStandardMaterial({ color: '#eceaf3', roughness: 0.32, metalness: 0.75, envMapIntensity: 1.2 });
     this.steel = steel;
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
-    // Every strut baked into one geometry; `sides` lets the far version use plainer struts.
-    const lattice = (sides) => {
-      const base = new THREE.CylinderGeometry(0.09, 0.09, 1, sides, 1, true);
-      return mergeGeometries(
-        edges.map(([a, b]) => {
-          const dir = b.clone().sub(a);
-          const len = dir.length();
-          q.setFromUnitVectors(up, dir.normalize());
-          return base.clone().applyMatrix4(m.compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, len, 1)));
-        }),
-      );
-    };
     // Close up: the full lattice with its joints. From afar (where a joint is under a pixel): a lighter one.
     const near = new THREE.Group();
     const far = new THREE.Group();
-    const struts = new THREE.Mesh(lattice(6), steel);
-    struts.castShadow = true;
-    struts.receiveShadow = true;
-    near.add(struts);
-    const nodes = rings.flat().concat([crown]).filter((p) => !inDoor(p));
-    const nodeGeo = new THREE.IcosahedronGeometry(0.18, 1);
-    const joints = new THREE.Mesh(mergeGeometries(nodes.map((p) => nodeGeo.clone().translate(p.x, p.y, p.z))), steel);
-    joints.castShadow = true;
-    near.add(joints);
-    const farStruts = new THREE.Mesh(lattice(4), steel);
-    farStruts.castShadow = true;
-    far.add(farStruts);
+    const nearSteel = new THREE.Mesh(f.near, steel);
+    nearSteel.castShadow = true;
+    nearSteel.receiveShadow = true;
+    near.add(nearSteel);
+    const farSteel = new THREE.Mesh(f.far, steel);
+    farSteel.castShadow = true;
+    far.add(farSteel);
 
     // Base ring, a low concrete plinth with a gap at the door.
     const plinthMat = new THREE.MeshStandardMaterial({ color: '#d9d4e2', roughness: 0.85 });
-    const gap = (DOOR_HALF + 0.3) / R;
-    const plinth = new THREE.Mesh(new THREE.TorusGeometry(R, 0.45, 8, 96, Math.PI * 2 - gap * 2), plinthMat);
-    plinth.rotation.set(Math.PI / 2, 0, Math.PI / 2 + gap);
+    const plinth = new THREE.Mesh(f.plinth, plinthMat);
+    plinth.rotation.set(Math.PI / 2, 0, Math.PI / 2 + f.gap);
     plinth.scale.set(1, 1, 0.6);
     plinth.position.y = 0.15;
     plinth.receiveShadow = true;
@@ -151,12 +212,12 @@ diffuseColor.a = mix(0.07, 0.8, fres);
         );
     };
     this.glass.customProgramCacheKey = () => 'dome-glass';
-    const glassMesh = new THREE.Mesh(new THREE.SphereGeometry(R - 0.02, 96, 32, 0, Math.PI * 2, 0, Math.PI / 2), this.glass);
+    const glassMesh = new THREE.Mesh(f.nearGlass, this.glass);
     glassMesh.renderOrder = 2;
     glassMesh.userData.keep = true;
     near.add(glassMesh);
     // From afar only the outside of the glass shows: one side, fewer facets, half the overdraw.
-    const farGlass = new THREE.Mesh(new THREE.SphereGeometry(R - 0.02, 48, 12, 0, Math.PI * 2, 0, Math.PI / 2), this.glass.clone());
+    const farGlass = new THREE.Mesh(f.farGlass, this.glass.clone());
     farGlass.material.side = THREE.FrontSide;
     farGlass.material.onBeforeCompile = this.glass.onBeforeCompile;
     farGlass.material.customProgramCacheKey = () => 'dome-glass-far';
@@ -165,41 +226,9 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     far.add(farGlass);
     this.farGlass = farGlass.material;
 
-    // Entrance: a steel arch frame that steps out from the dome.
-    const archPts = [];
-    const postTop = DOOR_H - DOOR_HALF;
-    const onDome = (ax, y, out = 0) => {
-      const az = ax / R;
-      const rr = Math.sqrt(Math.max(R * R - y * y, 0)) + out;
-      return new THREE.Vector3(rr * Math.sin(az), y, rr * Math.cos(az));
-    };
-    for (const out of [0.05, 1.6]) {
-      const pts = [onDome(-DOOR_HALF, 0, out), onDome(-DOOR_HALF, postTop, out)];
-      for (let j = 1; j < 12; j++) {
-        const th = Math.PI - (j / 12) * Math.PI;
-        pts.push(onDome(DOOR_HALF * Math.cos(th), postTop + DOOR_HALF * Math.sin(th), out));
-      }
-      pts.push(onDome(DOOR_HALF, postTop, out), onDome(DOOR_HALF, 0, out));
-      archPts.push(pts);
-      const curve = new THREE.CatmullRomCurve3(pts);
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.16, 8), steel);
-      tube.castShadow = true;
-      near.add(tube);
-      far.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.16, 4), steel));
-    }
-    // Ties between the two arches.
-    for (let j = 0; j < archPts[0].length; j += 3) {
-      const a = archPts[0][j], b = archPts[1][j];
-      const dir = b.clone().sub(a);
-      const tie = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, dir.length(), 6), steel);
-      tie.position.copy(a).add(b).multiplyScalar(0.5);
-      tie.quaternion.setFromUnitVectors(up, dir.normalize());
-      near.add(tie);
-    }
-    // Accent light strip over the door.
+    // Accent light strip over the door, along the outer entrance arch.
     this.signMat = new THREE.MeshStandardMaterial({ color: accent, emissive: new THREE.Color(accent), emissiveIntensity: 0.4 });
-    const sign = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(archPts[1].map((p) => p.clone().multiplyScalar(1.004))), 48, 0.06, 6), this.signMat);
-    this.group.add(sign);
+    this.group.add(new THREE.Mesh(f.sign, this.signMat));
 
     // Home at the back, facing the door: the same pods as the hub, its trim in the biome's colour.
     const pod = piece('basemodule_B', HOME_S);
@@ -215,10 +244,9 @@ diffuseColor.a = mix(0.07, 0.8, fres);
     this.group.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8).translate(lampAt.x, lampAt.y, lampAt.z), this.lampMat));
     this.lampGlow = createGlows([lampAt], { size: 2, minPx: 4 });
 
-    // Dozens of small parts become one mesh per material, separately for each level of detail.
+    // The two levels of detail: each its shared steel and its glass.
     const lod = new THREE.LOD();
     for (const [level, dist] of [[near, 0], [far, 90]]) {
-      mergeByMaterial(level);
       level.traverse((o) => (o.userData.keep = true));
       lod.addLevel(level, dist);
     }
