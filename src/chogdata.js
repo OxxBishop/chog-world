@@ -5,6 +5,8 @@
  */
 
 const BASE = import.meta.env.BASE_URL;
+// Backup IPFS gateways for the art, tried in turn when the first is slow or down.
+const BACKUP_GATEWAYS = ['https://ipfs.io/ipfs/', 'https://dweb.link/ipfs/'];
 let index = null;
 
 export async function loadChogs() {
@@ -15,12 +17,25 @@ export async function loadChogs() {
   return index;
 }
 
-/** Everything the app shows about one Chog: name, art, traits. */
+/** Everything the app shows about one Chog: name, art (with backup copies), traits. */
 export async function chogInfo(id) {
   const data = await loadChogs();
   const c = data.chogs[String(id)];
-  if (!c) return { id, name: `Chog #${id}`, image: null, traits: {} };
-  return { id, name: `Chog #${id}`, image: `${data.gateway}${data.cid}/${c.n}.webp`, traits: c.t };
+  if (!c) return { id, name: `Chog #${id}`, image: null, images: [], traits: {} };
+  const images = [data.gateway, ...BACKUP_GATEWAYS.filter((g) => g !== data.gateway)].map((g) => `${g}${data.cid}/${c.n}.webp`);
+  return { id, name: `Chog #${id}`, image: images[0], images, traits: c.t };
+}
+
+/** Make the <img data-alt="url url"> tags inside el fall back to the next copy if one fails. */
+export function artFallbacks(el) {
+  el.querySelectorAll('img[data-alt]').forEach((img) =>
+    img.addEventListener('error', () => {
+      const [next, ...rest] = img.dataset.alt.split(' ').filter(Boolean);
+      if (!next) return void (img.style.display = 'none');
+      img.dataset.alt = rest.join(' ');
+      img.src = next;
+    }),
+  );
 }
 
 // The Chog for guests: cheerful, in a purple Mon Cap.

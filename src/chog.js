@@ -8,7 +8,7 @@ import { lookFor, personalityFor, CLIPS, ATTACH, MOODS } from './traitmap.js';
  * loads once it has arrived in public/models/. Until then the Chog stands in as a standee: a card
  * of its official art on a little stand, turned to face you, that bobs, hops and leans to act out the
  * same moves. Either way the world drives it the same way: play('idle' | 'walk' | 'run' | 'wave' |
- * 'sing' | 'sniff' | 'cheer' | 'sleep' | 'wake' | 'sad'), update(dt, camera), setGrey(k) for the
+ * 'talk' | 'sing' | 'sniff' | 'cheer' | 'sleep' | 'wake' | 'sad'), update(dt, camera), setGrey(k) for the
  * sold-and-gone grey-out (it drains from the feet up), and dispose().
  */
 
@@ -55,16 +55,81 @@ void main() {
   });
 }
 
-function standee(image) {
+// Load the art from the first copy that answers. A copy that fails hands over to the next at once; one
+// that's slow gets a few seconds before the next is asked as well, and whichever arrives first wins.
+// Resolves to the texture, or null if none could be loaded.
+function loadArt(urls, patience = 7000) {
+  return new Promise((resolve) => {
+    let done = false;
+    let next = 0;
+    let pending = 0;
+    let timer = 0;
+    const finish = (t) => {
+      if (done) return t?.dispose();
+      done = true;
+      clearTimeout(timer);
+      resolve(t);
+    };
+    const ask = () => {
+      clearTimeout(timer);
+      if (done) return;
+      if (next >= urls.length) return void (pending || finish(null));
+      pending++;
+      textures.load(
+        urls[next++],
+        (t) => {
+          pending--;
+          t.colorSpace = THREE.SRGBColorSpace;
+          finish(t);
+        },
+        undefined,
+        () => {
+          pending--;
+          ask();
+        },
+      );
+      timer = setTimeout(ask, patience);
+    };
+    ask();
+    // Give up in the end, so nothing waits on it forever.
+    setTimeout(() => finish(null), urls.length * patience + 8000);
+  });
+}
+
+// Until the art is in (or if it can't be had), the card says who it is rather than staying blank.
+function nameCard(name) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, '#b89cff');
+  grad.addColorStop(1, '#7a52c8');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 512, 512);
+  g.fillStyle = '#fff8ee';
+  g.textAlign = 'center';
+  g.font = '600 64px Fredoka, sans-serif';
+  g.fillText('Chog', 256, 230);
+  g.font = '700 104px Fredoka, sans-serif';
+  g.fillText(name.replace(/^Chog\s*/, ''), 256, 340);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function standee(images, name) {
   const mat = cardMaterial();
-  if (image) {
-    textures.load(image, (t) => {
-      t.colorSpace = THREE.SRGBColorSpace;
-      t.anisotropy = 4;
-      mat.uniforms.uMap.value = t;
-      mat.uniforms.uLoaded.value = 1;
-    });
-  }
+  const named = nameCard(name);
+  mat.uniforms.uMap.value = named;
+  mat.uniforms.uLoaded.value = 1;
+  // Resolves true once the art is in (it replaces the name), false if it couldn't load.
+  const ready = loadArt(images).then((t) => {
+    if (!t) return false;
+    t.anisotropy = 4;
+    mat.uniforms.uMap.value = t;
+    named.dispose();
+    return true;
+  });
   const size = CHOG_HEIGHT - 0.35;
   const card = new THREE.Mesh(new THREE.PlaneGeometry(size, size).translate(0, size / 2, 0), mat);
   card.position.y = 0.35;
@@ -80,7 +145,7 @@ function standee(image) {
   // The card turns to face the camera on its own; this group carries the moves.
   const body = new THREE.Group();
   body.add(card, stand);
-  return { body, card, stand, mat };
+  return { body, card, stand, mat, ready };
 }
 
 // A mood badge over the head: a round tag with the mood's glyph, drawn once per mood.
@@ -140,7 +205,7 @@ void main() {
 }
 
 /** Build a Chog from its info ({ traits, image }). Resolves once its model (or standee) is ready. */
-export async function makeChog({ traits = {}, image = null } = {}) {
+export async function makeChog({ traits = {}, image = null, images = image ? [image] : [], name = 'Chog' } = {}) {
   const look = lookFor(traits);
   const personality = personalityFor(traits);
   const root = new THREE.Group();
@@ -182,7 +247,7 @@ export async function makeChog({ traits = {}, image = null } = {}) {
       model = null;
     }
   }
-  const stand = model ? null : standee(image);
+  const stand = model ? null : standee(images, name);
   if (stand) root.add(stand.body);
   let aura = null;
   if (look.aura) {
@@ -218,6 +283,8 @@ export async function makeChog({ traits = {}, image = null } = {}) {
     traits,
     look,
     personality,
+    // Resolves true once it can be shown as itself: its model, or its standee's art.
+    ready: stand ? stand.ready : Promise.resolve(true),
     get state() {
       return state;
     },
@@ -334,6 +401,12 @@ function act(s, state, t, st) {
     case 'wave':
       card.rotation.z = Math.sin(t * 7) * 0.12;
       body.position.y = Math.abs(Math.sin(t * 3.5)) * 0.06;
+      break;
+    case 'talk':
+      // Little quick bobs and a lean, like it's saying something.
+      body.position.y = Math.abs(Math.sin(t * 8)) * 0.035;
+      card.rotation.z = Math.sin(t * 2.6) * 0.05;
+      card.rotation.x = -0.04 + Math.sin(t * 8) * 0.015;
       break;
     case 'sing':
       card.rotation.z = Math.sin(t * 1.6) * 0.14;

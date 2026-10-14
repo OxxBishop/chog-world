@@ -12,6 +12,18 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const _p = new THREE.Vector3();
 
+/**
+ * Put a speech bubble over a point on screen, kept inside the screen's edges, with its tail still
+ * pointing at the point.
+ */
+export function placeBubble(el, x, y) {
+  const half = el.offsetWidth / 2;
+  const cx = Math.min(Math.max(x, half + 8), window.innerWidth - half - 8);
+  const tail = Math.max(-half + 18, Math.min(half - 18, x - cx));
+  el.style.setProperty('--tail', `${tail}px`);
+  el.style.transform = `translate(-50%, -100%) translate(${cx}px, ${y}px)`;
+}
+
 export function createChat({ camera, getSession, placeName }) {
   const panel = $('chat');
   const list = panel.querySelector('.chat-list');
@@ -118,7 +130,7 @@ export function createChat({ camera, getSession, placeName }) {
       bubbleLeft -= dt;
       const s = getSession();
       const root = s?.chog?.root;
-      if (bubbleLeft <= 0 || !root || !s.room.room.group.visible || !root.visible) {
+      if (bubbleLeft <= 0 || !root || !root.parent?.visible || !root.visible) {
         bubble.hidden = true;
         return;
       }
@@ -131,7 +143,7 @@ export function createChat({ camera, getSession, placeName }) {
         return;
       }
       bubble.style.opacity = String(Math.min(1, bubbleLeft * 2));
-      bubble.style.transform = `translate(-50%, -100%) translate(${((_p.x + 1) / 2) * window.innerWidth}px, ${((1 - _p.y) / 2) * window.innerHeight}px)`;
+      placeBubble(bubble, ((_p.x + 1) / 2) * window.innerWidth, ((1 - _p.y) / 2) * window.innerHeight);
     },
   };
 }

@@ -66,7 +66,7 @@ export const FACE_DIR = 'faces/';
 export const ATTACH = { head: 'Head', body: 'Spine', accessory: 'HandR' };
 
 // Animation clip names in the rigged models, by what the world asks for.
-export const CLIPS = { idle: 'Idle', walk: 'Walk', run: 'Run', wake: 'WakeUp', wave: 'Wave', sing: 'Sing', sniff: 'Sniff', cheer: 'Cheer', sad: 'Sad' };
+export const CLIPS = { idle: 'Idle', walk: 'Walk', run: 'Run', wake: 'WakeUp', wave: 'Wave', talk: 'Talk', sing: 'Sing', sniff: 'Sniff', cheer: 'Cheer', sad: 'Sad' };
 
 // Skin colours, for the "Skin" material and the stand-in.
 export const SKIN = {

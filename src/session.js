@@ -1,7 +1,8 @@
-import { chogInfo, loadChogs, DEMO_CHOG, homeFor } from './chogdata.js';
+import { chogInfo, loadChogs, DEMO_CHOG, homeFor, artFallbacks } from './chogdata.js';
 import { makeChog } from './chog.js';
 import { prepareWake, playWake, playGreyOut, playLogoff } from './cutscenes.js';
 import { createChat } from './chat.js';
+import { createBarChat } from './barchat.js';
 import * as THREE from 'three';
 
 /*
@@ -31,6 +32,9 @@ export function initSession(world) {
     return 'out on the islands of Chog World';
   };
   const chat = createChat({ camera: world.camera, getSession: () => session, placeName });
+  // Your Chog comes along to the bar and chats with the regulars there.
+  const bar = createBarChat({ world, getMine: () => (session?.chog ? session : null) });
+  setTimeout(() => (window.requestIdleCallback ?? setTimeout)(() => bar.preload()), 12000);
   const ray = new THREE.Raycaster();
 
   const open = () => {
@@ -117,7 +121,7 @@ export function initSession(world) {
     const cards = infos
       .map(
         (c) => `<li class="chog-card">
-          <img src="${esc(c.image)}" alt="${esc(c.name)}" loading="lazy">
+          <img src="${esc(c.image)}" data-alt="${esc(c.images.slice(1).join(' '))}" alt="${esc(c.name)}" loading="lazy">
           <div><strong>${esc(c.name)}</strong><span class="tier">${esc(c.traits.Tier ?? '')}</span></div>
           <p class="muted small">${esc([c.traits.Head, c.traits.Body, c.traits.Aura].filter(Boolean).join(' · '))}</p>
           <button class="primary wake" data-id="${c.id}">Wake</button>
@@ -128,6 +132,7 @@ export function initSession(world) {
       <h2>Your Chogs</h2>
       <p class="muted">${esc(short(session.address))} on Monad Testnet. Pick one to wake in its home.</p>
       <ul class="chog-cards">${cards}</ul>`);
+    artFallbacks(el);
     el.querySelectorAll('.wake').forEach((b) => b.addEventListener('click', () => wake(Number(b.dataset.id))));
   }
 
@@ -166,7 +171,10 @@ export function initSession(world) {
         }
       }
       const info = await chogInfo(id);
+      step(`Waking ${info.name}`);
       const chog = await makeChog(info);
+      // Its art first if it comes quickly; otherwise it wakes showing its name and the art follows.
+      await Promise.race([chog.ready, new Promise((r) => setTimeout(r, 8000))]);
       const home = homeFor(id, world.homes.length);
       const room = world.homes[home];
       room.room.group.add(chog.root);
@@ -230,12 +238,13 @@ export function initSession(world) {
     const chip = $('chog-chip');
     const s = session;
     chip.innerHTML = `
-      ${s.info.image ? `<img src="${esc(s.info.image)}" alt="">` : ''}
+      ${s.info.image ? `<img src="${esc(s.info.image)}" data-alt="${esc(s.info.images.slice(1).join(' '))}" alt="">` : ''}
       <div><strong>${esc(s.info.name)}</strong><span class="muted small">${s.demo ? 'Demo Chog' : esc(short(s.address))}</span></div>
       <button class="talk">Talk</button>
       <button class="home">Home</button>
       ${s.demo ? '<button class="sale">Simulate sale</button>' : ''}
       <button class="out">Sign out</button>`;
+    artFallbacks(chip);
     chip.hidden = false;
     $('btn-signin').hidden = true;
     chip.querySelector('.talk').addEventListener('click', () => (chat.isOpen ? chat.close() : chat.open()));
@@ -288,19 +297,22 @@ export function initSession(world) {
 
   return {
     update(dt) {
-      if (session?.chog && session.room.room.group.visible) session.chog.update(dt, world.camera);
+      bar.update(dt);
+      // The Chog moves wherever it is: at home, or out at the bar with you.
+      if (session?.chog?.root.parent?.visible) session.chog.update(dt, world.camera);
       chat.update(dt);
     },
     // A tap on your Chog opens the chat. True if the tap was on it.
     tapChog(x, y) {
       const root = session?.chog?.root;
-      if (!root || !root.visible || !session.room.room.group.visible) return false;
+      if (!root || !root.visible || !root.parent?.visible) return false;
       ray.setFromCamera(new THREE.Vector2((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1), world.camera);
       if (!ray.intersectObject(root, true).length) return false;
       chat.open();
       return true;
     },
     chat,
+    bar,
     get active() {
       return session;
     },
