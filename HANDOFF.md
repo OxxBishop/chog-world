@@ -27,6 +27,34 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · A → B · APIs for B10/A10 and B11/A11, built and tested on A's side (B: reply here, the user relays)
+**A10, walking in (B10 calls these on `session`, the object `initSession` returns):**
+- `const walk = session.walkIn(room, door, { delay })`. Call it **at the cut into the room, in the same frame**, so the room never shows your Chog already placed.
+  - `room` is an `island.rooms` entry. `door` is a world-space `THREE.Vector3` on the floor just inside the doorway (omit it for the room's front door).
+  - `delay` (seconds) is how long the reveal runs before the Chog steps in.
+  - The Chog fades in at the door, walks to its spot and turns to the camera. In the bar it stands where it chats; the regular partner is already in place during the reveal.
+- `await walk` resolves when it's standing and facing you. It resolves at once for guests or with no Chog.
+- `walk.skip()` puts it there now (tap or Esc).
+- `await session.walkOut(room, door)`: it turns, walks to the door and fades out. Then play the reverse move. It goes home on its own when the room is left.
+- Rooms entered any other way (Places menu, `?view=`) behave as now.
+
+**A11, the intro (B11 gives A an `intro` object; A drives it):** pass it in as `initSession({ ..., intro })`, or later with `session.setIntro(intro)`.
+- `intro.state(name, data)`. A calls it with:
+  - `'wallets'` `{ wallets: [{ name, icon }], pick(i) }`: only if the browser has more than one wallet.
+  - `'nowallet'` `{}`: no wallet in this browser. Keep the guest and demo buttons.
+  - `'connect'` `{ wallet }`: waiting on the wallet's connect and network prompts.
+  - `'sign'` `{}`: waiting on the free signature.
+  - `'searching'` `{ address }`: the running pixel Chog, until `tokensOf` answers.
+  - `'pick'` `{ chogs: [{ id, name, image }], pick(id) }`: only if the wallet holds more than one.
+  - `'welcome'` `{ id, name, image }`: the glitch "Welcome, <name>".
+  - `'none'` `{ address, claimsLeft, faucetUrl, claim(), demo() }`: no Chog in the wallet.
+  - `'claiming'` `{}`: waiting on the claim transaction, then `'searching'` again.
+  - `'error'` `{ message, retry() }`: a cancel or a failure. Show it with a way back.
+- `await intro.flyHome(room)`: the arrival flight, resolving when the camera is in the home pod. A then plays the spawn: sparkle, the Chog steps out, turns to the camera and says hello in a bubble (the brain's answer to "Hi, I'm here!", or a canned line within 4 s).
+- `intro.done()`: A calls it once the hello has landed, so the screen can tidy up.
+- **B's buttons call A:** `session.connect()` (Connect wallet) and `session.demo()` (Try a demo Chog: #43 gets the same welcome, flight and hello). "Explore as a guest" is all B's: close the screen. Guests sign in later with the Sign in button, which opens A's panel as before (the Chog wakes on its bed there).
+- **Tested on A's side** with stand-ins for B's camera and screen and for the testnet RPC: walk into the bar (the regular waits, the chat starts once your Chog is in place), the lobby, `skip()`, `walkOut`; a demo arrival; a wallet with two Chogs (`pick`); an empty wallet (`none`, then the demo); a brain hello and a canned hello. Your Chog appears at `POD` in its home (`src/cutscenes.js`) and steps out to `SPOT`, so end the flight looking at that end of the room.
+
 ### 2026-10-14 · A (A5: the singer)
 - **The singer is in** (`src/npcs.js`). C's `models/npcs/singer.glb` loads for the singer slot, at plaza (27, 30) on the paving. It faces out over the plaza, between the fountain and the downtown walk, and doesn't turn. The stage and mic stand are part of the model.
 - It plays a set on a loop: eight bars of `Sing` (19.2 s), `Cheer` (2.66 s), `Idle` (4 s), crossfading. Its shaders are compiled before it appears (`warmUp` in `src/main.js`, shared with the session).
