@@ -27,6 +27,42 @@ are real but free.
 
 ## Log
 
+### 2026-10-14 · B · B5 opening flight (done)
+- `?demo=opening`: the opening shot, 32 s at 17:30 with the interface hidden. In from the south over the clouds, low over the first neighbourhood's domes, across the bridge, up the walk to the fountain and the gold dome, then a rising pull back to the whole archipelago. It waits for the clouds to fade in, flies once, and holds the last frame.
+- For recording (C4, C7): `window.chogDemo.duration`, `chogDemo.at(s)` (pose any second and stop), `chogDemo.play(s)` (fly on from s). Works in production too.
+- New file `src/flight.js` (B). **C:** please add it to B's row in the ownership table. Shots live in `SHOTS` as data: keyframe times, camera positions, look points, an hour. Adding a shot for C4 is a few lines; ask me or add it there. The pace follows the distance flown, so speed stays smooth between keys of any length.
+- Shared files: `src/main.js` (`startDemo()` and one line in `frame()`), `src/style.css` ("Agent B: demo flights" block).
+
+### 2026-10-14 · B · B4 cloud grain (done)
+- Cause: the deck is ray-marched a sixteenth of the pixels per frame with a blue-noise jitter, and each pixel keeps the one sample it last got. Even fully settled that leaves a fine salt-and-pepper grain, most visible in the overview. The drifting puffs were already smooth.
+- Fix in `src/volclouds.js`: the composite reads the deck through a small tent filter (four bilinear taps over 3 x 3 texels). Grain gone, heap shapes kept, no halo at island rims. Cost is three extra texture reads per pixel.
+- See it: the overview with the camera still, at any `?q=`.
+- Not changed: the dome glass sparkles from afar. That is the glass and lattice in `dome.js`, not the clouds.
+
+### 2026-10-14 · B · B3 lobby facade (done)
+- `src/hub.js`: the lobby pod has sand plaster walls, wood frames and side panels, and a gold dome (the dome's faces come away whole into the gold material). The tubes to the wings match the walls.
+- Entrance: the pod's door is raised 3 m, so there are now stone steps up to it with a red runner down them and out to the arch, wooden double doors with brass handles, a warm transom, and a wall lantern either side. Lanterns and transom brighten at night.
+- `src/plaza.js`: two more planters, either side of the steps (`island.js` fills them with flowers like the others).
+- `src/kaykit.js`: `repaint()` takes an optional `isRoof(normal, height, cell)` to choose which faces leave for the roof material. The default is unchanged, so the bar and casino look the same.
+- See it: Chog Hub view, or `?hour=19` for the lanterns.
+
+### 2026-10-13 · B · B2 load time (done, needs a timing check on the HD 520)
+- The world now opens without the clouds. Their pass joins the post chain held off; once the world is showing they download, build their shaders in the background and fade in over 2.5 s. If they fail twice, the world carries on without them.
+- The sky's light used to be computed on the GPU at every load (the biggest cost). It now ships as `public/assets/volclouds/atmosphere/*.exr`, precomputed by `@takram/three-atmosphere` 0.19.1 for its default atmosphere, which is the one we use.
+- New `src/loader.js`: the loading bar (real progress over downloads, build, shaders, first frames) and `prewarm()`, which runs one frame with nothing drawn and compiles every shader it would need in the background. After it, the first real frame and the clouds' first frame compile nothing (checked with `renderer.info.programs`).
+- Downloads (models, kits, sign font) now run at once. `vercel.json` (new, root) caches `/assets/` in the browser for a day, then serves it stale while it refreshes.
+- Shared files: `src/main.js` (the load part of `init()` only), `index.html` (one bar element in `#loading`), `src/style.css` (an "Agent B: the loading bar" block at the end).
+- How to check: open the site and read the console line `Load times (s): {...}`; `total` is the time to the first frame, and `Load: clouds at ...` follows when they arrive.
+- Measured in headless Chrome on a software GPU, production build: first frame about 14 s, down from about 70 s. Most of what is left there is the software GPU drawing frames. At 3x slower CPU (standing in for the laptop): downloads and parsing 3.7 s, island build 5.5 s.
+- **Ask (dome.js, unowned):** the 15 domes each rebuild an identical lattice, joints and arch, which is about 60% of the island build (1.2 s here, 3.7 s at 3x CPU). Sharing that geometry across domes would bring the laptop comfortably under 10 s. B would like to take `src/dome.js` for that one change. Say yes here and B will do it.
+- Known, not mine: entering a room for the first time still builds 2 or 3 shaders, because `interior.js` adds emissive maps on its first update indoors. The fade into the room hides it.
+
+### 2026-10-13 · B · B1 plaza benches (done)
+- Working on branch `claude/vigilant-cannon-uqurem` (the branch this session pushes to), not `main`. Merge it into `main` to pick these up.
+- `src/plaza.js`: the fountain ring is now four pairs of benches on the diagonals with a lamp between the two benches of each pair, so the walks into the fountain from the lobby arch, the bridge and both sides stay clear. The two lone benches out on the plaza that faced the hub are gone.
+- Each walk from the plaza out to a bridge now has benches in facing pairs either side of it, square to the walk, between its lamp posts. They sit on the grass at ground height and skip any spot that would touch another walk.
+- See it: Chog Hub view, or `?view=ground`, and look down the walk toward the first neighbourhood's bridge.
+- For A5: the open paving left and right of the fountain (toward the bar yard and the casino) is still free for the singer's stage and the gathered Chogs.
 ### 2026-10-14 · A (A6, A7)
 - **A6 done:** the sale cutscene (`playGreyOut` in `src/cutscenes.js`). The Chog turns to face you, goes grey from the feet up, walks off fading, then `world.enterSpace({ from: room, duration: 5 })`, then "Your Chog has moved on." It always ends back at the overview, signed out.
 - **A7 done:** login and logoff.

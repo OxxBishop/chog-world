@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { Effect, EffectAttribute } from 'postprocessing';
 import { CloudsEffect, CLOUD_SHAPE_TEXTURE_SIZE, CLOUD_SHAPE_DETAIL_TEXTURE_SIZE } from '@takram/three-clouds';
-import { AtmosphereParameters, PrecomputedTexturesGenerator } from '@takram/three-atmosphere';
+import { AtmosphereParameters, PrecomputedTexturesLoader } from '@takram/three-atmosphere';
 import { Ellipsoid, Geodetic, radians, DataTextureLoader, parseUint8Array } from '@takram/three-geospatial';
+import { prewarm } from './loader.js';
 
 /*
  * The sea of clouds: physically based volumetric clouds (Takram's three-clouds, MIT).
@@ -11,6 +12,10 @@ import { Ellipsoid, Geodetic, radians, DataTextureLoader, parseUint8Array } from
  * world units are metres, the islands sit at ALTITUDE and a dense cloud deck fills the air
  * just below them. The sun (or, at night, a dimmed moon) lights the clouds from the same
  * direction as our sky.
+ *
+ * They are not needed for the first frame. The world opens without them, and they stream in after:
+ * the cloud pass joins the post chain at load but stays off until its textures have arrived and its
+ * shaders are built in the background, then the clouds fade in.
  */
 
 const ALTITUDE = 1800;
@@ -54,6 +59,7 @@ uniform vec3 hazeCol;
 uniform vec2 hazeRange;
 uniform float drift;
 uniform float puffSteps;
+uniform float fade;
 
 bool aboveDeck(const in vec2 uv, const in float d) {
   if (d >= 0.9999999) return false;
@@ -61,10 +67,18 @@ bool aboveDeck(const in vec2 uv, const in float d) {
   return (camWorld * vec4(v.xyz / v.w, 1.0)).y > deckTop;
 }
 
+// The deck is marched with a blue-noise jitter and each pixel keeps a single sample, which reads as a
+// fine grain. A small tent filter (four bilinear taps spanning 3 x 3 texels) smooths it away.
+vec4 deckSample(const in vec2 uv, const in vec2 texel) {
+  vec2 h = 0.5 * texel;
+  return 0.25 * (texture(cloudsTex, uv - h) + texture(cloudsTex, uv + h) +
+    texture(cloudsTex, uv + vec2(h.x, -h.y)) + texture(cloudsTex, uv + vec2(-h.x, h.y)));
+}
+
 vec3 deckClouds(const in vec3 inputColor, const in vec2 uv, const in float depth) {
   if (aboveDeck(uv, depth)) return inputColor;
   vec2 size = vec2(textureSize(cloudsTex, 0));
-  vec4 c = texture(cloudsTex, uv);
+  vec4 c = deckSample(uv, 1.0 / size) * fade;
   // The clouds are marched at a quarter of this resolution, so a bad sample spreads about 4 texels.
   vec2 o = 5.0 / size;
   // Only open sky (where the clouds are the backdrop) gets patched; rock below the deck keeps its own sample.
@@ -87,7 +101,7 @@ vec3 deckClouds(const in vec3 inputColor, const in vec2 uv, const in float depth
         sum += s.a >= top - 0.08 ? vec4(s.rgb, 1.0) : vec4(0.0);
       }
     }
-    if (sum.a > 0.0) c = vec4(sum.rgb / sum.a, top);
+    if (sum.a > 0.0) c = vec4(sum.rgb / sum.a, top) * fade;
   }
   return inputColor * (1.0 - c.a) + c.rgb;
 }
@@ -182,11 +196,11 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
     else if (sp.x < farSpan.x) { farSpan = sp; farI = i; }
   }
   if (farI >= 0) {
-    vec4 c = marchPuff(ro, rd, puffs[farI], puffTurn[farI], farSpan, sceneT);
+    vec4 c = marchPuff(ro, rd, puffs[farI], puffTurn[farI], farSpan, sceneT) * fade;
     col = col * (1.0 - c.a) + c.rgb;
   }
   if (nearI >= 0) {
-    vec4 c = marchPuff(ro, rd, puffs[nearI], puffTurn[nearI], nearSpan, sceneT);
+    vec4 c = marchPuff(ro, rd, puffs[nearI], puffTurn[nearI], nearSpan, sceneT) * fade;
     col = col * (1.0 - c.a) + c.rgb;
   }
   // A single bad value would be smeared across the screen by the bloom, so never let one through.
@@ -246,14 +260,14 @@ function puffPaths() {
 }
 
 class CloudComposite extends Effect {
-  constructor(camera, clouds, deckTop, shape, detail) {
+  constructor(camera, clouds, deckTop) {
     super('CloudComposite', COMPOSITE, {
       attributes: EffectAttribute.DEPTH,
       defines: new Map([['PUFF_COUNT', String(PUFF_COUNT)]]),
       uniforms: new Map([
         ['cloudsTex', new THREE.Uniform(null)],
-        ['shapeTex', new THREE.Uniform(shape)],
-        ['detailTex', new THREE.Uniform(detail)],
+        ['shapeTex', new THREE.Uniform(null)],
+        ['detailTex', new THREE.Uniform(null)],
         ['invProj', new THREE.Uniform(new THREE.Matrix4())],
         ['camWorld', new THREE.Uniform(new THREE.Matrix4())],
         ['deckTop', new THREE.Uniform(deckTop)],
@@ -267,6 +281,7 @@ class CloudComposite extends Effect {
         ['hazeRange', new THREE.Uniform(new THREE.Vector2(600, 3000))],
         ['drift', new THREE.Uniform(0)],
         ['puffSteps', new THREE.Uniform(20)],
+        ['fade', new THREE.Uniform(0)],
       ]),
     });
     this.view = camera;
@@ -343,7 +358,8 @@ async function ownBlueNoise() {
   const S = 128, FRAMES = 64;
   const c = document.createElement('canvas');
   c.width = c.height = S;
-  const ctx = c.getContext('2d');
+  // Read back on the CPU: a GPU canvas would wait on the GPU, which is busy building shaders.
+  const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(img, 0, 0);
   const px = ctx.getImageData(0, 0, S, S).data;
   const data = new Uint8Array(S * S * FRAMES);
@@ -389,24 +405,14 @@ function load3D(url, size) {
   return loader.loadAsync(url);
 }
 
-export async function createVolumetricClouds(renderer, camera, quality = 'high') {
+// How long the clouds take to fade in once they are ready, in seconds.
+const FADE_IN = 2.5;
+
+export function createVolumetricClouds(renderer, camera) {
   const atmosphere = new AtmosphereParameters();
   const clouds = new CloudsEffect(camera, {}, atmosphere);
   // The library's own composite is replaced by CloudComposite.
   clouds.skipRendering = true;
-
-  const [localWeather, shape, shapeDetail, turbulence, stbn] = await Promise.all([
-    loadTexture(`${ASSETS}local_weather.png`),
-    load3D(`${ASSETS}shape.bin`, CLOUD_SHAPE_TEXTURE_SIZE),
-    load3D(`${ASSETS}shape_detail.bin`, CLOUD_SHAPE_DETAIL_TEXTURE_SIZE),
-    loadTexture(`${ASSETS}turbulence.png`),
-    ownBlueNoise(),
-  ]);
-  Object.assign(clouds, { localWeatherTexture: localWeather, shapeTexture: shape, shapeDetailTexture: shapeDetail, turbulenceTexture: turbulence, stbnTexture: stbn });
-
-  const generator = new PrecomputedTexturesGenerator(renderer);
-  await generator.update();
-  Object.assign(clouds, generator.textures);
 
   // Pin the world origin above a point on the globe: X north, Y up, Z east.
   const origin = new Geodetic(radians(139.7), radians(35.7), ALTITUDE).toECEF();
@@ -461,10 +467,84 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
   const glowVec = new THREE.Vector3();
   const dir = new THREE.Vector3();
 
-  const composite = new CloudComposite(camera, clouds, deck.altitude + deck.height - ALTITUDE + 2, shape, shapeDetail);
+  const composite = new CloudComposite(camera, clouds, deck.altitude + deck.height - ALTITUDE + 2);
+
+  // Until the clouds are loaded and their shaders built, their pass stays off whatever else asks
+  // (?debug's switch included); what was asked for takes over once they are ready.
+  let pass = null;
+  let ready = false;
+  let warming = false;
+  let wanted = true;
+  let shownAt = null;
+  let lastT = 0;
+
+  // Every texture the clouds draw from. The sky's light (transmittance, irradiance and scattering
+  // through the air) was worked out once on the GPU at every load; it is the same every time, so it
+  // now ships as files, precomputed by the library for the default atmosphere we use. Light shafts are
+  // off, so the higher-order scattering texture would change nothing and is left out.
+  async function fetchTextures() {
+    const [localWeather, shape, shapeDetail, turbulence, stbn, sky] = await Promise.all([
+      loadTexture(`${ASSETS}local_weather.png`),
+      load3D(`${ASSETS}shape.bin`, CLOUD_SHAPE_TEXTURE_SIZE),
+      load3D(`${ASSETS}shape_detail.bin`, CLOUD_SHAPE_DETAIL_TEXTURE_SIZE),
+      loadTexture(`${ASSETS}turbulence.png`),
+      ownBlueNoise(),
+      new PrecomputedTexturesLoader({ format: 'exr', higherOrderScattering: false }).loadAsync(`${ASSETS}atmosphere/`),
+    ]);
+    Object.assign(clouds, { localWeatherTexture: localWeather, shapeTexture: shape, shapeDetailTexture: shapeDetail, turbulenceTexture: turbulence, stbnTexture: stbn }, sky);
+    composite.uniforms.get('shapeTex').value = shape;
+    composite.uniforms.get('detailTex').value = shapeDetail;
+  }
+  let loading = null;
+  const load = () => {
+    if (!loading) {
+      loading = fetchTextures();
+      // A failure is reported, and the load tried again, when the clouds are streamed in.
+      loading.catch(() => {});
+    }
+    return loading;
+  };
 
   return {
     effects: [clouds, composite],
+    // Takes charge of the clouds' pass in the post chain.
+    hold(p) {
+      pass = p;
+      wanted = p.enabled;
+      Object.defineProperty(p, 'enabled', { get: () => warming || (ready && wanted), set: (v) => (wanted = v), configurable: true });
+    },
+    /**
+     * Brings the clouds in: loads their textures, builds their shaders in the background with one
+     * dry run of draw() (the whole post chain), then fades them in. A dropped request shouldn't cost
+     * the clouds, so a failed load is tried once more. If they still can't load (offline, blocked
+     * download), the world carries on without them. Resolves true once they are showing.
+     */
+    async stream(draw) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          await load();
+          break;
+        } catch (err) {
+          loading = null;
+          const why = err?.message ?? `${err?.type ?? err} ${err?.target?.src ?? err?.target?.responseURL ?? ''}`;
+          console.error(`Clouds unavailable (attempt ${attempt}):`, why);
+          if (attempt === 2) return false;
+        }
+      }
+      if (pass) {
+        await prewarm(renderer, () => {
+          warming = true;
+          try {
+            draw();
+          } finally {
+            warming = false;
+          }
+        });
+      }
+      ready = true;
+      shownAt = lastT;
+      return true;
+    },
     setQuality(q) {
       const p = PRESETS[q] ?? PRESETS.high;
       clouds.qualityPreset = p.preset;
@@ -488,6 +568,8 @@ export async function createVolumetricClouds(renderer, camera, quality = 'high')
       clouds.cloudsPass.resolveMaterial.uniforms.varianceGamma.value = 5;
     },
     update(env, sky, t) {
+      lastT = t;
+      composite.uniforms.get('fade').value = shownAt === null ? 0 : THREE.MathUtils.smoothstep(t, shownAt, shownAt + FADE_IN);
       composite.setEnv(env, sky, t);
       setDrift(t);
       // By day the sun lights the clouds; at night a dim lilac moon takes its place, which is the

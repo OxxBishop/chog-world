@@ -31,7 +31,8 @@ export const TINTED = new Set(['Leaves_NormalTree', 'Leaves_TwistedTree', 'Leave
 function averageLum(image) {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
-  const ctx = c.getContext('2d');
+  // Read back on the CPU: a GPU canvas would wait on the GPU, which is busy building shaders.
+  const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(image, 0, 0, 64, 64);
   const d = ctx.getImageData(0, 0, 64, 64).data;
   const lin = (v) => Math.pow(v / 255, 2.2);

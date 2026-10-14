@@ -18,6 +18,8 @@ import { initSession } from './session.js';
 import { buildNpcs } from './npcs.js';
 import { READY } from './traitmap.js';
 import { rng as makeRng } from './util.js';
+import { createLoader, prewarm } from './loader.js';
+import { SHOTS, createFlight } from './flight.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -131,9 +133,35 @@ function phaseName(h, night) {
 }
 
 async function init() {
-  await loadAll((p) => ($('loading').querySelector('.sub').textContent = `Waking the island... ${Math.round(p * 100)}%`));
-  await document.fonts.load('600 120px Fredoka').catch(() => {});
-  await Promise.all([loadKit([...new Set([...HUB_KIT, ...LANDMARK_KIT])]), loadKit(FURNITURE_KIT, 'furniture')]);
+  // Each step's share of the loading bar, roughly how long it takes.
+  const load = createLoader($('loading'), [
+    ['download', 5, 'Waking the island'],
+    ['build', 3, 'Raising the islands'],
+    ['shaders', 4, 'Lighting the sky'],
+    ['frames', 1, 'Almost there'],
+  ]);
+  // The nature models, the building kits and the sign font all download at once.
+  const got = { models: 0, kit: 0, furniture: 0, font: 0 };
+  const weight = { models: 0.7, kit: 0.15, furniture: 0.1, font: 0.05 };
+  const part = (k) => (f) => {
+    got[k] = f;
+    load.set('download', Object.keys(got).reduce((sum, x) => sum + got[x] * weight[x], 0));
+  };
+  await Promise.all([
+    loadAll(part('models')),
+    loadKit([...new Set([...HUB_KIT, ...LANDMARK_KIT])], 'kaykit', part('kit')),
+    loadKit(FURNITURE_KIT, 'furniture', part('furniture')),
+    document.fonts.load('600 120px Fredoka').catch(() => {}).then(() => part('font')(1)),
+  ]);
+  // The clouds are not needed for the first frame. Their pass joins the post chain now, held off;
+  // they download once the world is showing, and fade in.
+  clouds = createVolumetricClouds(renderer, camera);
+  clouds.setQuality(QUALITY === 'auto' ? 'high' : QUALITY);
+  post.addClouds(clouds.effects);
+  clouds.hold(post.cloudPass);
+  // Let the bar show the next step before the long build.
+  load.set('build', 0);
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r)));
   island = buildIsland(scene, makeRng(1969), renderer, sky, post.overlay);
   island.setQuality(perf.quality);
   rig.solids = island.solids;
@@ -142,35 +170,35 @@ async function init() {
   for (const r of island.rooms) VIEWS[r.id] = r.view;
   VIEWS.home = VIEWS[`home${DOMES.indexOf(home)}`];
   buildPickables();
-  // Compile shaders and draw a couple of frames behind the loading screen, so the first frame you see is finished.
-  $('loading').querySelector('.sub').textContent = 'Gathering clouds...';
-  // A dropped request shouldn't cost the clouds, so a failed load is tried once more. If they still
-  // can't load (offline, blocked download), the world opens without them.
-  for (let attempt = 1; attempt <= 2 && !clouds; attempt++) {
-    try {
-      clouds = await createVolumetricClouds(renderer, camera);
-      clouds.setQuality(QUALITY === 'auto' ? 'high' : QUALITY);
-      post.addClouds(clouds.effects);
-    } catch (err) {
-      const why = err?.message ?? `${err?.type ?? err} ${err?.target?.src ?? err?.target?.responseURL ?? ''}`;
-      console.error(`Clouds unavailable (attempt ${attempt}):`, why);
-    }
-  }
-  $('loading').querySelector('.sub').textContent = 'Lighting the sky...';
+  load.set('build', 1);
+  // Build every shader the world needs (the rooms and the post chain too) in the background, so the
+  // first frame you see is finished.
+  load.set('shaders', 0);
   for (const r of island.rooms) r.room.group.visible = true;
-  await renderer.compileAsync(scene, camera).catch(() => {});
+  renderer.setRenderTarget(post.composer.inputBuffer);
+  const rooms = renderer.compileAsync(scene, camera).catch(() => {});
+  renderer.setRenderTarget(null);
   for (const r of island.rooms) r.room.group.visible = false;
+  await Promise.all([rooms, prewarm(renderer, frame, (f) => load.set('shaders', f))]);
+  // The dry run took the sky's light bake with it: bake it again for real.
+  sky.envHour = -99;
+  load.set('frames', 0);
   frame();
   frame();
-  // Wait for the GPU to finish that first work (shader builds, texture uploads) while the loader
-  // is still up, then give it a couple of real frames, so the world appears already running smoothly.
+  // Wait for the GPU to finish that first work (texture uploads) while the loader is still up, then
+  // give it a couple of real frames, so the world appears already running smoothly.
   const gl = renderer.getContext();
   gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
   for (let i = 0; i < 3; i++) {
     await new Promise(requestAnimationFrame);
     frame();
+    load.set('frames', (i + 1) / 3);
   }
-  $('loading').classList.add('done');
+  load.finish();
+  const cloudsIn = clouds.stream(() => post.render(0)).then((shown) => {
+    if (shown) load.mark('clouds');
+    return shown;
+  });
   // Optional ?view=dome&hour=22 in the address, handy for sharing a specific shot.
   if (params.has('hour')) {
     time.live = false;
@@ -227,7 +255,34 @@ async function init() {
   // The Chogs about town wait for their models; ?npcs shows their slots with stand-ins.
   if (READY.size || params.has('npcs')) buildNpcs({ scene, plaza: island.plaza }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
+  if (SHOTS[params.get('demo')]) startDemo(SHOTS[params.get('demo')], cloudsIn);
   if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; } };
+}
+
+// ?demo=<shot>: a camera flight for the video (src/flight.js) with the interface hidden. It holds its
+// first frame until the clouds have faded in, then flies; window.chogDemo.at(s) poses any second of
+// it and play(s) flies on from there, for frame-by-frame takes.
+let demo = null;
+function startDemo(shot, cloudsIn) {
+  const flight = createFlight(shot);
+  document.body.classList.add('demo');
+  time.live = false;
+  time.hour = shot.hour;
+  rig.idleSpin = false;
+  demo = {
+    t: 0,
+    playing: false,
+    update(dt) {
+      if (this.playing) this.t = Math.min(flight.duration, this.t + dt);
+      flight.pose(camera, this.t);
+    },
+  };
+  window.chogDemo = {
+    duration: flight.duration,
+    at: (s) => Object.assign(demo, { t: s, playing: false }),
+    play: (from = 0) => Object.assign(demo, { t: from, playing: true }),
+  };
+  cloudsIn.then(() => setTimeout(() => !demo.playing && demo.t === 0 && window.chogDemo.play(), 3000));
 }
 
 // UI.
@@ -447,6 +502,7 @@ function frame() {
   if (time.live) slider.value = hour.toFixed(2);
 
   rig.update(dt);
+  demo?.update(dt);
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
   const fov = rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov();
   if (Math.abs(camera.fov - fov) > 0.05) {
