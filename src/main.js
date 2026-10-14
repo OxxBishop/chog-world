@@ -19,6 +19,7 @@ import { buildNpcs } from './npcs.js';
 import { READY } from './traitmap.js';
 import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
+import { SHOTS, createFlight } from './flight.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -194,7 +195,10 @@ async function init() {
     load.set('frames', (i + 1) / 3);
   }
   load.finish();
-  clouds.stream(() => post.render(0)).then((shown) => shown && load.mark('clouds'));
+  const cloudsIn = clouds.stream(() => post.render(0)).then((shown) => {
+    if (shown) load.mark('clouds');
+    return shown;
+  });
   // Optional ?view=dome&hour=22 in the address, handy for sharing a specific shot.
   if (params.has('hour')) {
     time.live = false;
@@ -251,7 +255,34 @@ async function init() {
   // The Chogs about town wait for their models; ?npcs shows their slots with stand-ins.
   if (READY.size || params.has('npcs')) buildNpcs({ scene, plaza: island.plaza }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
+  if (SHOTS[params.get('demo')]) startDemo(SHOTS[params.get('demo')], cloudsIn);
   if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; } };
+}
+
+// ?demo=<shot>: a camera flight for the video (src/flight.js) with the interface hidden. It holds its
+// first frame until the clouds have faded in, then flies; window.chogDemo.at(s) poses any second of
+// it and play(s) flies on from there, for frame-by-frame takes.
+let demo = null;
+function startDemo(shot, cloudsIn) {
+  const flight = createFlight(shot);
+  document.body.classList.add('demo');
+  time.live = false;
+  time.hour = shot.hour;
+  rig.idleSpin = false;
+  demo = {
+    t: 0,
+    playing: false,
+    update(dt) {
+      if (this.playing) this.t = Math.min(flight.duration, this.t + dt);
+      flight.pose(camera, this.t);
+    },
+  };
+  window.chogDemo = {
+    duration: flight.duration,
+    at: (s) => Object.assign(demo, { t: s, playing: false }),
+    play: (from = 0) => Object.assign(demo, { t: from, playing: true }),
+  };
+  cloudsIn.then(() => setTimeout(() => !demo.playing && demo.t === 0 && window.chogDemo.play(), 3000));
 }
 
 // UI.
@@ -471,6 +502,7 @@ function frame() {
   if (time.live) slider.value = hour.toFixed(2);
 
   rig.update(dt);
+  demo?.update(dt);
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
   const fov = rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov();
   if (Math.abs(camera.fov - fov) > 0.05) {

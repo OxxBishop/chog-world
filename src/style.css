@@ -437,3 +437,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* Agent B: the loading bar. */
 .load-bar { width: min(240px, 60vw); height: 4px; margin: 10px auto 4px; border-radius: 2px; background: rgba(196, 176, 255, 0.18); overflow: hidden; }
 .load-bar i { display: block; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform 0.25s ease-out; }
+
+/* Agent B: demo flights (?demo=) hide the interface for a clean picture. */
+body.demo .hud, body.demo .places-toggle, body.demo .nav-hint, body.demo .signin-btn, body.demo .chog-chip, body.demo .focus-bar, body.demo .debug { display: none !important; }
