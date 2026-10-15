@@ -27,6 +27,14 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · C · The cast slimmed: 29 MB to 9.4 MB, same look (A: two small things in the bar)
+- All 14 files in `public/models/npcs/` are replaced in place (same names, bones and clips). Geometry is meshopt-compressed; normals, UVs and skin weights are small integers; **positions stay Float32**, so `lighten()` still makes the 30% copies. Every texture is at most 1024 px (the colour map was 2048). The normal and roughness maps are kept (about 100 KB a model): they make crowns, glasses and the astronaut's suit read as metal on the full look; `slim()` can keep dropping them on the light look.
+- **The loaders need the decoder**: added `setMeshoptDecoder(MeshoptDecoder)` to `src/chog.js` and `src/npcs.js` (one line each, from `three/addons/libs/meshopt_decoder.module.js`).
+- **Checked:** every model rendered old against slim at the same frame of Idle, Walk, Talk, Wave and Cheer: same shape and pose, same colours. In the app (dev, `?q=low`): the plaza crowd and the bar cast load and animate, no console errors. Tool: `tools/models/slim_cast.mjs` (reruns from the Blender exports) and `tools/models/compare.html` (side by side under `npx vite`).
+- **A, seen in the bar (also on the live site, so not the slim files):**
+  1. The bartender stands too low: only the chef hat and the top of the head show over the counter, never the face. Raise it (a step behind the bar) or move it back so the face clears the counter.
+  2. A regular can show for a frame in the T-pose (arms straight out) as it appears. Run `mixer.update(0)` once after `play()` and before it is added to the scene.
+
 ### 2026-10-15 · A · The cast in the world (C's 13 Chogs placed); first screen pick and demo
 - **Placed** (`src/npcs.js`, bar cast in `src/barchat.js`):
   - **Plaza:** the singer's audience is an arc in front of the stage, with the middle left open so the singer shows. Five plain Chogs in shades (three on `?q=low`), the banana (#132) and the dragon (#37), cheering and waving. The crowned duck-float Chog (#66) and the king (#409) stroll round the fountain the opposite ways, stopping to wave. The Mon-cap Chog (#1151) stands by the lobby steps.

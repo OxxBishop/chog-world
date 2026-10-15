@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { lookFor, personalityFor, CLIPS, ATTACH, MOODS } from './traitmap.js';
 
 /*
@@ -14,7 +15,7 @@ import { lookFor, personalityFor, CLIPS, ATTACH, MOODS } from './traitmap.js';
  */
 
 const BASE = import.meta.env.BASE_URL;
-const loader = new GLTFLoader();
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const gltfs = new Map();
 // keep < 1: a lighter copy with that share of the triangles, for Chogs seen from a distance.
 const loadGltf = (url, keep = 1) => {

@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8"><title>Cast compare</title>
+<style>body{margin:0;background:#222;color:#eee;font:12px sans-serif}canvas{display:block}</style>
+<canvas id="c" width="1400" height="900"></canvas><pre id="log"></pre>
+<script type="module">
+// Models side by side, the same clip at the same time: one column per model in ?m=, one row per folder in
+// ?dirs= (default public/models/npcs). Run under `npx vite`: /tools/models/compare.html?m=plain,chog-66&clip=Walk&t=0.4
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'meshoptimizer';
+const q = new URLSearchParams(location.search);
+const names = (q.get('m') || 'plain').split(',');
+const clip = q.get('clip') || 'Walk', at = +(q.get('t') || 0.4);
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, preserveDrawingBuffer: true });
+r.setScissorTest(true);
+const W = 1400 / names.length, H = 450;
+const log = [];
+async function scene(url) {
+  const g = await loader.loadAsync(url);
+  const s = new THREE.Scene(); s.background = new THREE.Color('#8fa3b8');
+  s.add(new THREE.HemisphereLight('#fff', '#556', 1.2)); const d = new THREE.DirectionalLight('#fff', 2.2); d.position.set(2, 4, 3); s.add(d);
+  s.add(g.scene);
+  const mixer = new THREE.AnimationMixer(g.scene); const c = g.animations.find((a) => a.name === clip) || g.animations[0];
+  mixer.clipAction(c).play(); mixer.setTime(at); g.scene.updateMatrixWorld(true);
+  let info = { clips: g.animations.map((a) => a.name).join('/'), float: true, tris: 0, maps: 0 };
+  g.scene.traverse((o) => { if (o.isMesh) { info.float &&= o.geometry.attributes.position.array instanceof Float32Array; info.tris += (o.geometry.index?.count ?? o.geometry.attributes.position.count) / 3; for (const k of ['normalMap', 'roughnessMap']) if (o.material[k]) info.maps++; } });
+  return { s, info };
+}
+const cam = new THREE.PerspectiveCamera(30, W / H, 0.1, 50); cam.position.set(2.2, 1.6, 5.2); cam.lookAt(0, 1.05, 0);
+for (let i = 0; i < names.length; i++) {
+  for (const [row, dir] of (q.get('dirs') || '/models/npcs/').split(',').map((d, i) => [i, d])) {
+    let s, info;
+    try { ({ s, info } = await scene(dir + names[i] + '.glb')); } catch (e) { log.push(`${names[i]} ${dir} ERROR ${e.message}`); continue; }
+    r.setViewport(i * W, (1 - row) * H, W, H); r.setScissor(i * W, (1 - row) * H, W, H); r.render(s, cam);
+    log.push(`${names[i]} ${row ? 'slim' : 'old '} ${JSON.stringify(info)}`);
+  }
+}
+document.getElementById('log').textContent = log.join('\n'); requestAnimationFrame(() => requestAnimationFrame(() => (window.__done = log)));
+</script>

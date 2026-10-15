@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { makeChog } from './chog.js';
 import { chogInfo } from './chogdata.js';
 import { CLIPS } from './traitmap.js';
@@ -63,7 +64,7 @@ async function npc(glb, id = null, tint = null) {
  * Chog: play(name) crossfades to that clip, update(dt) runs it.
  */
 async function riggedNpc(url) {
-  const gltf = await new GLTFLoader().loadAsync(BASE + url);
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(BASE + url);
   const root = gltf.scene;
   root.traverse((o) => {
     if (!o.isMesh) return;
