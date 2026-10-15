@@ -82,3 +82,29 @@ export async function push(key, items, cap, ttlSeconds) {
   list.push(...items);
   await set(key, list.slice(-cap), ttlSeconds);
 }
+
+// A leaderboard: a sorted set that keeps each member's best score.
+const boards = new Map();
+
+/** Raise a member's score to `score` if that is higher; resolves to the member's best. */
+export async function best(key, member, score) {
+  if (persistent) {
+    await redis('ZADD', key, 'GT', String(score), member);
+    return Number(await redis('ZSCORE', key, member));
+  }
+  const b = boards.get(key) ?? new Map();
+  boards.set(key, b);
+  b.set(member, Math.max(b.get(member) ?? -Infinity, score));
+  return b.get(member);
+}
+
+/** The top `n` members, highest first, as [{ member, score }]. */
+export async function top(key, n) {
+  if (persistent) {
+    const flat = (await redis('ZRANGE', key, '0', String(n - 1), 'REV', 'WITHSCORES')) || [];
+    const out = [];
+    for (let i = 0; i < flat.length; i += 2) out.push({ member: flat[i], score: Number(flat[i + 1]) });
+    return out;
+  }
+  return [...(boards.get(key) ?? new Map())].map(([member, score]) => ({ member, score })).sort((a, b) => b.score - a.score).slice(0, n);
+}
