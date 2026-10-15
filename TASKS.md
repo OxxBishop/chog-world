@@ -66,6 +66,9 @@ doesn't yet, stub it and move on, then come back.
 ### Agent B: world polish, load time, the world from space, casino
 | Order | # | Task | Target | Needs | Status |
 |---|---|---|---|---|---|
+| 0 | B23 | **The casino, redone** (the user: "THE CASINO IS ASS"). Research the best cosy and stylised casinos and arcades (interior, lighting, machines, signage, sound, the win moment), bring the user 2 or 3 directions with visuals, live in-engine, and build the one they pick. Includes B22, a compact panel on phones | Oct 18 | | doing |
+| 0 | B24 | Casino and lobby effects: build the user's picks from A's lookbook into `src/casino.js` and the lobby, to the same standard (A builds the portal and stage effects) | Oct 19 | user's picks | todo |
+| 0 | B12 | (still stands) No long frames after the first, on the HD 520 and on phones, through all of the above | ongoing | | ongoing |
 | 1 | B2 | Load time: first frame in under 10 s on a slow laptop (show the world first and stream the clouds in after, real progress in the loader, cache assets). Today it is 40 to 60 s | Oct 14 | | done |
 | 2 | B1 | Plaza benches: tidy rings facing the fountain and rows along the paths, no random angles | Oct 14 | | done |
 | 3 | B7 | **World seen from space** (`src/space.js`): the whole archipelago as a little diorama floating in a starry void, with the grey Chogs still visible wandering. Used when the user is carried out (sale, logoff) and as the backdrop behind sign-in. Export `enterSpace({from, duration})` and `leaveSpace()` so A's cutscenes just call it. A needs this by Oct 17 | Oct 16 | | done |
@@ -78,16 +81,16 @@ doesn't yet, stub it and move on, then come back.
 | 10 | B8 | Casino (only if everything above, and A1 to A7, are done): one game, free chips only, Chog traits give perks (bonus chips, re-rolls, small multipliers), leaderboard. Never wager $CHOG | Oct 19 | | done (`api/casino` in; shared once Upstash Redis is set in Vercel) |
 | 11 | B6 | Casino spin effect, the casino's own cutscene | Oct 19 | B8 | done |
 | 12 | B12 | **No long frames after the first frame, on the HD 520.** The clouds' first real draw freezes the page 4.6 s (repeat visit) to 23 s (first visit) as the camera comes down from space after the connect screen; the first casino entry hitches up to 1.3 s on a first visit. Draw everything for the first time behind the loading screen (as B did for the rooms). Done when no frame after the first is over 500 ms, first visit and repeat, guest and demo Chog (see C's 10-15 handoff entry) | Oct 16 | | done |
-| 13 | B13 | **Demo shot paths** (was C4; camera work is B's): a `?demo=<shot>` link per shot that plays a fixed camera path at a fixed world time, and `chogDemo.at(seconds)` that sets the whole world (camera, clouds, NPCs, sun) to that moment, so C7 can capture any shot frame by frame. Shots: the overview flight (B5), the arrival through the loading screen, a room entry, the bar's Chog-to-Chog chat, a casino jackpot, the sale cutscene, the world from space. A list of shots with lengths in `video/shots.md` | Oct 18 | B5 | done |
-| 14 | B14 | **Take the tour** (the user's pick): a button on the first screen that plays the whole story hands-free in about 2 minutes (the overview flight, the demo Chog's arrival, the bar's Chog-to-Chog chat, a casino jackpot, the sale), with short captions, skippable. Built on B13's shots | Oct 18 | B13 | todo |
+| 13 | B13 | **Demo shot paths** (was C4; camera work is B's): a `?demo=<shot>` link per shot that plays a fixed camera path at a fixed world time, and `chogDemo.at(seconds)` that sets the whole world (camera, clouds, NPCs, sun) to that moment, so C7 can capture any shot frame by frame. Shots: the overview flight (B5), the arrival through the loading screen, a room entry, the bar's Chog-to-Chog chat, a casino jackpot, the sale cutscene, the world from space. A list of shots with lengths in `video/shots.md` | Oct 18 | B5 | done; on hold to redo on A's new walking rig |
+| 14 | B14 | **Take the tour** (the user's pick): a button on the first screen that plays the whole story hands-free in about 2 minutes (the overview flight, the demo Chog's arrival, the bar's Chog-to-Chog chat, a casino jackpot, the sale), with short captions, skippable. Built on B13's shots | Oct 18 | B13 | on hold (needs A's new rig) |
 | 15 | B15 | Shorter repeat room entries: the full walk-in the first time into each room per visit, a 3 s version after | Oct 18 | | todo |
-| 16 | B16 | A clean HUD for judges: the prototype and fps badge only with `?debug`, four places (Hub, Home, Neighbourhood, Sky) and the tour instead of the eight view buttons | Oct 18 | B14 | todo |
+| 16 | B16 | A clean HUD for judges: the prototype and fps badge only with `?debug`, four places (Hub, Home, Neighbourhood, Sky) and the tour instead of the eight view buttons | Oct 18 | B14 | on hold (needs A's new rig) |
 | 17 | B17 | A quality toggle in the HUD (light, full, ultra), remembered per browser | Oct 18 | | todo |
 | 18 | B18 | Proof on chain: a "verified on Monad testnet" link to your Chog on the explorer, on the welcome screen | Oct 18 | | todo |
 | 19 | B19 | A photo button: the current view with your Chog as a framed postcard, saved as a PNG | Oct 19 | | todo |
 | 20 | B20 | A time-lapse button: 24 hours in 20 seconds, then back to the live clock | Oct 19 | | todo |
 | 21 | B21 | The pixel runner on the loading screen is playable (tap or Space to jump) while a long first load runs | Oct 19 | | todo |
-| 22 | B22 | A compact casino panel on narrower screens, so it never covers a machine | Oct 19 | | todo |
+| 22 | B22 | A compact casino panel on narrower screens, so it never covers a machine | Oct 19 | | part of B23 |
 
 ### Agent C: tools, models, brain, sound, video
 | Order | # | Task | Target | Needs | Status |
