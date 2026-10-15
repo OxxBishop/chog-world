@@ -53,7 +53,9 @@ const OUTDOOR = 1.7;
 const KEEP = 0.3;
 async function npc(glb, id = null, tint = null) {
   const info = id ? await chogInfo(id) : {};
-  return makeChog({ ...info, traits: { ...info.traits, Aura: null }, model: glb, tint, keep: KEEP });
+  const chog = await makeChog({ ...info, traits: { ...info.traits, Aura: null }, model: glb, tint, keep: KEEP });
+  chog.root.userData.chogId = id;
+  return chog;
 }
 
 /**
@@ -149,6 +151,204 @@ export function dropStand(mesh) {
   geo.userData.standCut = true;
 }
 
+/*
+ * The singer's stage lights (the user's pick, "fairy lights"): four slim posts round the stage with
+ * strings of warm bulbs swagged between them that twinkle, one soft spotlight on the singer, and music
+ * notes drifting up while it sings. In the square's space (1.7 x life size outdoors). The bulbs' halos
+ * grow with the dusk; by day the bulbs still glow warm.
+ */
+function stageLights(facing) {
+  const g = new THREE.Group();
+  const posts = [];
+  // Round the stage, the front pair wider so the crowd's view stays open.
+  for (const [a, r] of [[0.75, 2.7], [-0.75, 2.7], [2.45, 2.5], [-2.45, 2.5]]) {
+    const ang = facing + a;
+    posts.push(new THREE.Vector3(Math.sin(ang) * r, 3.05, Math.cos(ang) * r));
+  }
+  const wood = new THREE.MeshStandardMaterial({ color: '#4a3a32', roughness: 0.8 });
+  const brass = new THREE.MeshStandardMaterial({ color: '#cfa84e', metalness: 0.7, roughness: 0.35 });
+  for (const p of posts) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 3.1, 8), wood);
+    post.position.set(p.x, 1.55, p.z);
+    post.castShadow = true;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), brass);
+    cap.position.set(p.x, 3.12, p.z);
+    g.add(post, cap);
+  }
+  // Swags: round the four sides, and one across the back, each sagging in the middle.
+  const cord = new THREE.MeshBasicMaterial({ color: '#2a2030' });
+  const bulbs = [];
+  for (const [i, j, sag] of [[0, 1, 0.5], [1, 3, 0.42], [3, 2, 0.42], [2, 0, 0.42], [2, 1, 0.55]]) {
+    const A = posts[i], B = posts[j];
+    const pts = [];
+    for (let k = 0; k <= 24; k++) {
+      const t = k / 24;
+      pts.push(new THREE.Vector3().lerpVectors(A, B, t).setY(A.y - Math.sin(t * Math.PI) * sag));
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.008, 4), cord));
+    const n = Math.round(curve.getLength() / 0.24);
+    for (let k = 1; k < n; k++) bulbs.push(curve.getPoint(k / n).add(new THREE.Vector3(0, -0.035, 0)));
+  }
+  const warm = ['#ffd38a', '#ffb870', '#fff0c0', '#ffc9a0'].map((c) => new THREE.Color(c));
+  const bulbMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicMaterial(), bulbs.length);
+  const m4 = new THREE.Matrix4();
+  bulbs.forEach((p, k) => {
+    bulbMesh.setMatrixAt(k, m4.makeTranslation(p.x, p.y, p.z));
+    bulbMesh.setColorAt(k, warm[k % warm.length]);
+  });
+  g.add(bulbMesh);
+  // Halos: a point each, twinkling on its own beat.
+  const geo = new THREE.BufferGeometry().setFromPoints(bulbs);
+  geo.setAttribute('phase', new THREE.Float32BufferAttribute(bulbs.map(() => Math.random() * 6.28), 1));
+  geo.setAttribute('tint', new THREE.Float32BufferAttribute(bulbs.flatMap((_, k) => warm[k % warm.length].toArray()), 3));
+  const haloMat = new THREE.ShaderMaterial({
+    uniforms: { uT: { value: 0 }, uStrength: { value: 0.4 }, uScale: { value: 400 } },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: `attribute float phase; attribute vec3 tint; uniform float uT; uniform float uScale; varying float vK; varying vec3 vC;
+      void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vK = 0.62 + 0.38 * sin(uT * (1.3 + fract(phase * 3.1) * 1.6) + phase); vC = tint;
+        gl_PointSize = max(0.22 * uScale / -mv.z, 2.5); gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform float uStrength; varying float vK; varying vec3 vC;
+      void main() { vec2 p = gl_PointCoord * 2.0 - 1.0; float r = dot(p, p); if (r > 1.0) discard;
+        float glow = exp(-r * 5.0) * 0.8 + exp(-r * 24.0) * 0.7; gl_FragColor = vec4(vC * glow * uStrength * vK, 1.0); }`,
+  });
+  const halos = new THREE.Points(geo, haloMat);
+  halos.frustumCulled = false;
+  halos.renderOrder = 4;
+  g.add(halos);
+  // One soft spotlight from up behind the back posts onto the singer.
+  const beamMat = new THREE.ShaderMaterial({
+    uniforms: { uI: { value: 0.5 } },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    vertexShader: 'varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = -mv.xyz; vN = normalMatrix * normal; gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform float uI; varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ float rim = pow(abs(dot(normalize(vN), normalize(vV))), 1.6); float fade = pow(vUv.y, 1.4); gl_FragColor = vec4(vec3(1.0, 0.85, 0.66) * rim * fade * uI * 0.4, 1.0); }',
+  });
+  const len = 4.2;
+  const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.95, len, 32, 1, true).translate(0, -len / 2, 0), beamMat);
+  const back = new THREE.Vector3(-Math.sin(facing) * 1.6, 4.1, -Math.cos(facing) * 1.6);
+  cone.position.copy(back);
+  cone.lookAt(0, 0.6, 0);
+  cone.rotateX(-Math.PI / 2);
+  g.add(cone);
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(1.0, 40), new THREE.MeshBasicMaterial({ map: glowTexture(), color: '#ffcf9a', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.55 }));
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.y = 0.32;
+  g.add(pool);
+  // Notes drifting up from the singer while it sings.
+  const notes = [];
+  for (let k = 0; k < 10; k++) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: noteTexture(k % 2), color: k % 2 ? '#fff3d6' : '#ffe0b8', transparent: true, depthWrite: false, opacity: 0 }));
+    s.scale.setScalar(0.24);
+    s.userData = { life: 0 };
+    g.add(s);
+    notes.push(s);
+  }
+  let acc = 0, next = 0, t = 0;
+  return {
+    group: g,
+    update(dt, singing, env, renderer) {
+      t += dt;
+      const night = env?.night ?? 0;
+      haloMat.uniforms.uT.value = t;
+      haloMat.uniforms.uStrength.value = 0.32 + night * 0.9;
+      if (renderer) haloMat.uniforms.uScale.value = renderer.domElement.height / 2 / Math.tan(THREE.MathUtils.degToRad(21));
+      beamMat.uniforms.uI.value = 0.35 + night * 0.65 + Math.sin(t * 0.8) * 0.05;
+      pool.material.opacity = 0.25 + night * 0.5;
+      acc += dt;
+      if (singing && acc > 0.55) {
+        acc = 0;
+        const s = notes[next++ % notes.length];
+        s.userData = { life: 1, x: (Math.random() - 0.5) * 0.6, z: (Math.random() - 0.5) * 0.4, y: 1.7, ph: Math.random() * 6 };
+      }
+      for (const s of notes) {
+        const u = s.userData;
+        if (u.life <= 0) {
+          s.material.opacity = 0;
+          continue;
+        }
+        u.life -= dt * 0.32;
+        u.y += dt * 0.32;
+        s.position.set(u.x + Math.sin(t * 1.8 + u.ph) * 0.14, u.y, u.z);
+        s.material.rotation = Math.sin(t * 2.4 + u.ph) * 0.3;
+        s.material.opacity = Math.min(1, (1 - u.life) * 5) * u.life * 0.9;
+      }
+    },
+  };
+}
+let glowTex = null;
+function glowTexture() {
+  if (glowTex) return glowTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,255,255,1)');
+  r.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r;
+  g.fillRect(0, 0, 64, 64);
+  glowTex = new THREE.CanvasTexture(c);
+  return glowTex;
+}
+const noteTex = [];
+// A quaver and a beamed pair, drawn (no font needed).
+function noteTexture(kind) {
+  if (noteTex[kind]) return noteTex[kind];
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.shadowColor = 'rgba(255,255,255,0.9)';
+  g.shadowBlur = 10;
+  g.fillStyle = g.strokeStyle = '#fff';
+  g.lineWidth = 7;
+  const head = (x, y) => {
+    g.save();
+    g.translate(x, y);
+    g.rotate(-0.45);
+    g.beginPath();
+    g.ellipse(0, 0, 15, 11, 0, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  };
+  if (kind === 0) {
+    head(50, 92);
+    g.beginPath();
+    g.moveTo(63, 88);
+    g.lineTo(63, 26);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(63, 26);
+    g.quadraticCurveTo(92, 40, 86, 66);
+    g.quadraticCurveTo(84, 50, 63, 46);
+    g.fill();
+  } else {
+    head(36, 96);
+    head(88, 84);
+    g.beginPath();
+    g.moveTo(49, 92);
+    g.lineTo(49, 36);
+    g.moveTo(101, 80);
+    g.lineTo(101, 24);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(46, 34);
+    g.lineTo(104, 20);
+    g.lineTo(104, 34);
+    g.lineTo(46, 48);
+    g.closePath();
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  noteTex[kind] = t;
+  return t;
+}
+
 // The singer's set, on a loop: eight bars of the song, a cheer, a breather.
 const SET = [['sing', 19.2], ['cheer', 2.66], ['idle', 4]];
 
@@ -204,6 +404,9 @@ function openSpot(hood, from, step = 0.35) {
 export async function buildNpcs({ scene, plaza, standees = false, prewarm, quality = 'high' }) {
   const actors = [];
   const sets = [];
+  // The light of the moment (night, the canvas), for the stage's bulbs.
+  let lastEnv = null;
+  let lastRenderer = null;
   const wp = new THREE.Vector3();
   let t = 0;
 
@@ -231,6 +434,10 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       singer.root.rotation.y = facing;
       square.add(singer.root);
       chogs.push(singer);
+      // Its fairy lights, spotlight and notes.
+      const lights = stageLights(facing);
+      square.add(lights.group);
+      ticks.push((dt) => lights.update(dt, singer.state === 'sing', lastEnv, lastRenderer));
       let part = 0;
       let left = SET[0][1];
       singer.play(SET[0][0]);
@@ -463,6 +670,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       .then((a) => {
         st.state = 'ready';
         actors.push(a);
+        applyAway();
       })
       .catch((err) => {
         st.state = 'failed';
@@ -471,14 +679,30 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   }
   if (standees) sets.forEach(load);
 
+  // A Chog a guest is walking as stays out of the crowd meanwhile (one of each).
+  const away = new Set();
+  const applyAway = () => {
+    for (const a of actors) for (const c of a.chogs) if (c.root.userData.chogId) c.root.userData.away = away.has(c.root.userData.chogId);
+  };
   return {
     actors,
+    setAway(id, on) {
+      if (on) away.add(id);
+      else away.delete(id);
+      applyAway();
+    },
+    /** Every Chog about town that's showing (their roots), for walking round them. */
+    roots() {
+      return actors.flatMap((a) => (a.group.visible ? a.chogs.map((c) => c.root) : []));
+    },
     // A set still loading: the demo's shots wait for them all (B13).
     get loading() {
       return sets.some((st) => st.state === 'loading');
     },
-    update(dt, camera) {
+    update(dt, camera, env = null, renderer = null) {
       t += dt;
+      lastEnv = env;
+      lastRenderer = renderer;
       if (!sets.some((st) => st.state === 'loading')) {
         let nearest = null;
         let best = LOAD;
@@ -499,6 +723,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         const near = camera.position.distanceTo(wp) < NEAR;
         a.group.visible = near;
         for (const r of a.extra ?? []) r.visible = near;
+        for (const c of a.chogs) if (c.root.userData.away !== undefined) c.root.visible = !c.root.userData.away && (near || !a.extra?.includes(c.root));
         if (!near) continue;
         a.tick?.(t, dt);
         for (const c of a.chogs) c.update(dt, camera);

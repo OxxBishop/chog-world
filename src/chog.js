@@ -102,14 +102,16 @@ function chogShader(material, geometry, fx, face, faceOn) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uGrey = fx.uGrey;
     shader.uniforms.uFade = fx.uFade;
+    shader.uniforms.uCut = fx.uCut;
     shader.uniforms.uYRange = range;
     Object.assign(shader.uniforms, face, { uFaceOn: faceOn });
     shader.vertexShader =
-      'varying float vChogY;\nvarying vec3 vFaceP;\nvarying float vFaceW;\nuniform mat4 uFaceM;\nuniform vec3 uFaceDir;\nuniform float uFaceHead;\n' +
+      'varying float vChogY;\nvarying vec3 vChogP;\nvarying vec3 vFaceP;\nvarying float vFaceW;\nuniform mat4 uFaceM;\nuniform vec3 uFaceDir;\nuniform float uFaceHead;\n' +
       shader.vertexShader.replace(
         '#include <skinning_vertex>',
         `#include <skinning_vertex>
   vChogY = transformed.y;
+  vChogP = transformed;
   vFaceP = vec3((uFaceM * vec4(position, 1.0)).xy, dot(normal, uFaceDir));
   #ifdef USE_SKINNING
     vFaceW = dot(skinWeight, vec4(equal(skinIndex, vec4(uFaceHead))));
@@ -118,10 +120,20 @@ function chogShader(material, geometry, fx, face, faceOn) {
   #endif`,
       );
     shader.fragmentShader =
-      'uniform float uGrey;\nuniform float uFade;\nuniform vec2 uYRange;\nvarying float vChogY;\nuniform sampler2D uFace;\nuniform float uFaceOn;\nuniform float uEye;\nuniform float uMouth;\nvarying vec3 vFaceP;\nvarying float vFaceW;\n' +
+      'uniform float uGrey;\nuniform float uFade;\nuniform vec2 uCut;\nuniform vec2 uYRange;\nvarying float vChogY;\nvarying vec3 vChogP;\nuniform sampler2D uFace;\nuniform float uFaceOn;\nuniform float uEye;\nuniform float uMouth;\nvarying vec3 vFaceP;\nvarying float vFaceW;\n' +
       shader.fragmentShader.replace(
         '#include <map_fragment>',
         `#include <map_fragment>
+  // Beaming (a portal): a cut that rises from the feet (uCut.y 1) or falls from the head (-1), with a
+  // glowing edge (added as light below).
+  float cutEdge = 0.0;
+  if (uCut.y != 0.0) {
+    float hn = (vChogY - uYRange.x) / max(uYRange.y - uYRange.x, 1e-4);
+    float jag = fract(sin(dot(floor(vChogP * 22.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453) * 0.06;
+    float dd = (hn + jag - uCut.x) * uCut.y;
+    if (dd < 0.0) discard;
+    cutEdge = 1.0 - smoothstep(0.0, 0.06, dd);
+  }
   {
     // The face: this Chog's eye and mouth states laid over its painted face (see FACES).
     vec2 fp = vFaceP.xy;
@@ -139,9 +151,9 @@ function chogShader(material, geometry, fx, face, faceOn) {
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lum * 0.7 + 0.1), drained);
     if (uFade < 0.999 && fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) > uFade) discard;
   }`,
-      );
+      ).replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(0.55, 0.95, 1.0) * cutEdge * 3.0;');
   };
-  material.customProgramCacheKey = () => 'chog-model-2';
+  material.customProgramCacheKey = () => 'chog-model-3';
 }
 
 /*
@@ -488,7 +500,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   const actions = {};
   const tintables = [];
   // A model's grey and dissolve (see chogShader), shared by all its pieces.
-  const fx = { uGrey: { value: 0 }, uFade: { value: 1 } };
+  const fx = { uGrey: { value: 0 }, uFade: { value: 1 }, uCut: { value: new THREE.Vector2(0, 0) } };
   // Its face (see FACES): the sheet, how its vertices map onto it, and the current eye and mouth state.
   const face = {
     uFace: { value: noFace },
@@ -676,6 +688,10 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     /** Play its current move faster or slower (to match how fast it is actually going). */
     setPace(k) {
       if (current) current.timeScale = k;
+    },
+    /** Beaming through a portal: cut level 0 (feet) to 1 (head), dir 1 eats upward, -1 downward, 0 off. */
+    setBeam(level, dir) {
+      fx.uCut.value.set(level, dir);
     },
     /** Hold a face for a while: calm, happy, excited, surprised, curious, sad, cross or sleepy. */
     express(name, seconds = 3) {

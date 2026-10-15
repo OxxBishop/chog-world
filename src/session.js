@@ -219,8 +219,13 @@ export function initSession(world) {
   let screen = null;
   const tell = (name, data = {}) => screen?.state(name, data);
   const step2 = (title, text) => tell('step', { title, text });
-  // A guest: the screen goes, and the view flies down from space to the world.
-  const guest = () => screen?.close().then(() => world.leaveSpace?.({ duration: 2.5 }));
+  // A guest: the screen goes, the view flies down from space to the world, and you pick a Chog from
+  // the island's crowd to walk around as (src/travel.js).
+  const guest = () =>
+    screen
+      ?.close()
+      .then(() => world.leaveSpace?.({ duration: 2.2 }))
+      .then(() => world.travel?.pickGuest());
 
   /**
    * The first screen's call to connect (src/main.js hands it over once the world has loaded; Sign in
@@ -313,6 +318,9 @@ export function initSession(world) {
       showChip();
       await playArrival({ chog: s.chog, door: landed.door, camera: world.camera, hello: () => hello(s), say: (text, mood) => chat.greet(text, mood) });
       if (session === s && !s.demo) watch();
+      // Its hello read, out you both go to explore: it steps out of its dome's door (src/travel.js).
+      await new Promise((r) => setTimeout(r, 4200));
+      if (session === s && !s.leaving && world.currentRoom() !== s.room) world.travel?.beginOwn(s);
     } catch (err) {
       console.warn('Arrival:', err);
       tell('error', { text: problem(err), retry: () => (s.demo ? demoArrival() : search()), guest });

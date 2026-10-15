@@ -27,6 +27,7 @@ import { createEntry } from './entry.js';
 import { createIntro } from './intro.js';
 import { createArrival } from './arrival.js';
 import { createCasino } from './casino.js';
+import { createTravel } from './travel.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -319,6 +320,9 @@ let arrival = null;
 let casino = null;
 let npcs = null;
 let debug = null;
+// Walking your Chog round the islands (src/travel.js), and the last frame's step for its tweens.
+let travel = null;
+let frameDt = 1 / 60;
 
 // Time of day: live local clock, or a scrubbed hour from the slider.
 const time = { live: true, hour: 12 };
@@ -467,8 +471,42 @@ async function init() {
     markView(params.get('view'));
   } else rig.jump('overview');
   renderer.setAnimationLoop(loop);
+  // Getting about (A, the user's picks): your Chog in third person, a compass and a map, portals.
+  try {
+  travel = createTravel({
+    scene,
+    camera,
+    renderer,
+    rig,
+    island,
+    world: {
+      session: () => session,
+      entryActive: () => !!entry?.active,
+      spaceActive: () => !!space?.active,
+      introOpen: () => !$('loading').classList.contains('done'),
+      canEnter: (r) => !!entry?.can(r) && !space?.active,
+      enterRoom: (r) => enterRoom(r),
+      currentRoom: () => (entry?.active ? entry.room : island.rooms.find((r) => r.pod === rig.room) ?? null),
+      npcRoots: () => npcs?.roots?.() ?? [],
+      setAway: (id, on) => npcs?.setAway?.(id, on),
+      prewarm: warmUp,
+      dip: (fn) => new Promise((resolve) => fadeThrough(() => (fn(), resolve()))),
+      hideOldHud: () => {
+        setMenu(false);
+        leaveRoomUI();
+      },
+      dt: () => frameDt,
+    },
+  });
+  } catch (err) {
+    // Never lose the world over it: without it, the old views still work.
+    console.error('Travel:', err);
+  }
   // Signing in, and the Chogs who live round the world.
   session = initSession({
+    get travel() {
+      return travel;
+    },
     camera,
     homes: island.rooms.filter((r) => r.id.startsWith('home')),
     bar: island.rooms.find((r) => r.id === 'bar'),
@@ -553,7 +591,7 @@ async function init() {
       });
     }
   }
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: one of the demo video's shots (src/shots.js), with the interface hidden. What a shot
@@ -817,7 +855,9 @@ function frame() {
   const hour = currentHour();
   if (time.live) slider.value = hour.toFixed(2);
 
-  rig.update(dt);
+  frameDt = dt;
+  // Out walking, your Chog has the camera; otherwise the rig does (rooms, cutscenes, space).
+  if (!travel?.update(dt)) rig.update(dt);
   demo?.update();
   space?.update();
   entry?.update(dt);
@@ -845,7 +885,7 @@ function frame() {
   session?.update(dt);
   casino?.show(!entry?.active && rig.room === casino.room.pod);
   casino?.update(dt, env);
-  npcs?.update(dt, camera);
+  npcs?.update(dt, camera, env, renderer);
   // On a lighter look, settled in a room, the clouds fade out: they show only through its windows and
   // cost nearly half a frame. They come back as you leave, before the doors open.
   const settled = LIGHT && rig.room instanceof RoomBox && !entry?.active && !arrival?.active;

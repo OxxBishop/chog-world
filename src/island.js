@@ -9,7 +9,8 @@ import { buildPlaza } from './plaza.js';
 import { buildLandmarks } from './landmarks.js';
 import { buildUndersides } from './underside.js';
 import { buildBridges, buildSkyRocks, buildWaterfalls } from './skyfx.js';
-import { ISLANDS, HOODS, DOWNTOWN, DOMES, DOME_R, roadDistance, nearDome } from './layout.js';
+import { buildTunnels } from './tunnels.js';
+import { ISLANDS, HOODS, DOWNTOWN, DOMES, DOME_R, roadDistance, nearDome, nearPortal } from './layout.js';
 import { fbm, noise2 } from './util.js';
 import { Pod, RoomBox } from './camera.js';
 
@@ -59,6 +60,8 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   const terrain = buildTerrain(scene);
   const roads = buildRoads(scene);
   const bridges = buildBridges(scene);
+  // Glass tunnels over the bridges, like the pods' domes (src/tunnels.js).
+  const tunnels = buildTunnels(scene, bridges.paths);
   const skyRocks = buildSkyRocks(scene, rng, MODELS);
   const falls = buildWaterfalls(overlay, rng, noise);
   const undersides = buildUndersides(scene, rng, falls.falls);
@@ -97,7 +100,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   // Each neighbourhood's landmark stands in a clearing on its central plateau.
   const nearLandmark = (x, z, pad) => HOODS.some((h) => Math.hypot(x - h.x, z - h.z) < 20 + pad);
   const built = (x, z, pad) =>
-    roadDistance(x, z) < pad || nearDome(x, z, pad) || downtownDist(x, z) < DOWNTOWN.r + 4 + pad || nearLandmark(x, z, pad) || falls.streamDistance(x, z) < pad;
+    roadDistance(x, z) < pad || nearDome(x, z, pad) || downtownDist(x, z) < DOWNTOWN.r + 4 + pad || nearLandmark(x, z, pad) || nearPortal(x, z, pad + 5) || falls.streamDistance(x, z) < pad;
 
   // Forest: jittered grid kept where a noise field says "woods", thinner in the built-up middle.
   const trees = [];
@@ -299,6 +302,8 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   return {
     domes,
     solids,
+    bridges: bridges.paths,
+    tunnels,
     rooms,
     plaza: plaza.group,
     terrain,

@@ -151,6 +151,14 @@ export function roadDistance(x, z) {
   return best;
 }
 
+// The neighbourhoods' portal hubs (src/travel.js): just off the walk in from each bridge, on the side
+// toward downtown, where there are no domes. Kept clear of trees and rocks.
+export const PORTAL_SPOTS = HOODS.map((h) => {
+  const a = h.angle + Math.PI + 0.32;
+  return { hood: h.id, x: h.x + Math.cos(a) * 35, z: h.z + Math.sin(a) * 35 };
+});
+export const nearPortal = (x, z, pad = 0) => PORTAL_SPOTS.some((p) => Math.hypot(x - p.x, z - p.z) < 4 + pad);
+
 export function nearDome(x, z, pad = 0) {
   for (const d of DOMES) if (Math.hypot(x - d.x, z - d.z) < DOME_R + pad) return d;
   return null;
