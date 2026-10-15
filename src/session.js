@@ -48,7 +48,6 @@ export function initSession(world) {
   const chat = createChat({ camera: world.camera, getSession: () => session, placeName });
   // Your Chog comes along to the bar and chats with the regulars there.
   const bar = createBarChat({ world, getMine: () => (session?.chog ? session : null), sendHome: (s) => sendHome(s) });
-  setTimeout(() => (window.requestIdleCallback ?? setTimeout)(() => bar.preload()), 12000);
   const ray = new THREE.Raycaster();
 
   const open = () => {

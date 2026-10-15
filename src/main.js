@@ -360,7 +360,7 @@ async function init() {
   // The casino's game (B8): its panel shows while you're inside.
   casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active });
   // The Chogs about town, each once its model is in; ?npcs shows every slot, with stand-ins.
-  buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs'), prewarm: warmUp }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
+  buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs'), prewarm: warmUp, quality: QUALITY }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
   if (SHOTS[params.get('demo')]) startDemo(SHOTS[params.get('demo')], cloudsIn);
   // ?space opens on the world seen from space.

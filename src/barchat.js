@@ -11,15 +11,20 @@ import { placeBubble } from './chat.js';
  * (chogsChat), so each pair has its own conversation, from their traits and what they remember.
  *
  * Guests see the bar's regulars chatting among themselves. Signed in, your Chog comes along to the bar
- * and chats with a regular, and goes back home when you leave.
+ * and chats with a regular, and goes back home when you leave. The bartender keeps the counter.
  *
- * The regulars are picked so each pair faces each other: the Side trait says which way a Chog looks in
- * its art, so the one on the left looks right and the one on the right looks left.
+ * The regulars and the bartender are C's rigged cast (public/models/npcs/), each regular the real Chog
+ * of its id, so its traits and brain persona line up. They load once the camera nears the Hub, or when
+ * the bar opens, never with the first load.
  */
 
-const FACES_RIGHT = [87, 892];
-const FACES_LEFT = [130, 1517];
-const GUEST_PAIRS = [[87, 130], [892, 1517], [87, 1517], [892, 130]];
+const REGULARS = [124, 52, 56];
+const GUEST_PAIRS = [[124, 52], [56, 124], [52, 56]];
+const regularModel = (id) => `models/npcs/chog-${id}.glb`;
+// Behind the counter, facing the room (room space, metres).
+const BARTENDER = { glb: 'models/npcs/bartender.glb', at: new THREE.Vector3(1.3, 0, -5.95) };
+// The bar's cast starts loading once the camera is this close to the bar.
+const PRELOAD_NEAR = 260;
 const PLACE = 'the bar in the Chog Hub';
 // Two spots at the counter, between its stools, in clear view of the bar's camera (room space, metres).
 // A tall phone screen sees less of the room across, so there the pair stands closer together.
@@ -79,6 +84,19 @@ export function createBarChat({ world, getMine, sendHome: home }) {
   let follow = null;
   const layoutNow = () => LAYOUTS[world.camera.aspect < 1 ? 'tall' : 'wide'];
 
+  let preloaded = false;
+  let bartender = null;
+  let barkeep = null;
+  // Compile something for the light inside the bar, so it doesn't stall the way in.
+  const warmHere = (obj) => {
+    const g = bar.room.group;
+    const was = g.visible;
+    g.visible = true;
+    const ready = world.prewarm?.(obj);
+    g.visible = was;
+    return ready ?? Promise.resolve();
+  };
+
   const bubble = document.createElement('div');
   bubble.className = 'chog-bubble bar-bubble';
   bubble.hidden = true;
@@ -98,25 +116,42 @@ export function createBarChat({ world, getMine, sendHome: home }) {
       step();
     });
 
-  // A regular: its info and its Chog, made once and kept for the next visit.
+  // A regular: its info and its Chog (its own model), made once and kept for the next visit.
   function regular(id) {
     if (!regulars.has(id)) {
       regulars.set(id, (async () => {
         const info = await chogInfo(id);
-        const chog = await makeChog(info);
-        // Only ever shown with its art in, never as a blank card. If the art won't load, try later.
-        if (!(await chog.ready)) {
-          regulars.delete(id);
-          return null;
-        }
-        await world.prewarm?.(chog.root);
+        const chog = await makeChog({ ...info, traits: { ...info.traits, Aura: null }, model: regularModel(id) });
+        await warmHere(chog.root);
         return { id, name: info.name, chog };
-      })().catch(() => {
+      })().catch((err) => {
+        console.warn('Bar regular:', err?.message ?? err);
         regulars.delete(id);
         return null;
       }));
     }
     return regulars.get(id);
+  }
+
+  // The bartender, behind the counter: a wave when you come in, then idling, and a word now and then.
+  function keepBar() {
+    bartender ??= makeChog({ model: BARTENDER.glb }).then(async (chog) => {
+      chog.root.position.copy(BARTENDER.at);
+      await warmHere(chog.root);
+      return chog;
+    });
+    return bartender;
+  }
+  function barkeeping(chog) {
+    let left = 2.6;
+    chog.play('wave');
+    return (dt) => {
+      left -= dt;
+      if (left > 0) return;
+      const move = chog.state === 'idle' ? (Math.random() < 0.5 ? 'talk' : 'wave') : 'idle';
+      chog.play(move);
+      left = move === 'idle' ? 7 + Math.random() * 8 : 2.6;
+    };
   }
 
   async function sceneFor(a, b) {
@@ -137,12 +172,14 @@ export function createBarChat({ world, getMine, sendHome: home }) {
     return SPARE[spare++ % SPARE.length];
   }
 
-  // Who's at the counter for the nth scene.
+  // Who's at the counter for the nth scene. Your Chog stands on the side it faces in its art (its card
+  // always faces you), so it looks at the regular it's talking to.
   async function castFor(n, mine) {
     if (mine) {
       const me = { id: mine.id, name: mine.info.name, chog: mine.chog, mine: true, session: mine };
       const facesRight = mine.info.traits.Side !== 'Left';
-      const other = await regular((facesRight ? FACES_LEFT : FACES_RIGHT)[n % 2]);
+      const others = REGULARS.filter((id) => id !== mine.id);
+      const other = await regular(others[n % others.length]);
       if (!other) return null;
       return facesRight ? { a: me, b: other } : { a: other, b: me };
     }
@@ -263,6 +300,13 @@ export function createBarChat({ world, getMine, sendHome: home }) {
     stop();
     active = true;
     castKey = mine ? mine.id : 'guests';
+    keepBar()
+      .then((chog) => {
+        if (!active) return;
+        bar.room.group.add(chog.root);
+        barkeep = { chog, tick: barkeeping(chog) };
+      })
+      .catch((err) => console.warn('Bartender:', err?.message ?? err));
     // On the way in through the doors, your Chog isn't here yet: it walks in at the end (walkIn).
     if (mine && world.entering?.() && !arriving) {
       arriving = new Promise((resolve) => {
@@ -281,6 +325,8 @@ export function createBarChat({ world, getMine, sendHome: home }) {
     quiet();
     follow?.proxy.removeFromParent();
     follow = null;
+    barkeep = null;
+    bartender?.then((chog) => !active && chog.root.removeFromParent()).catch(() => {});
     for (const s of ['a', 'b']) {
       if (!seated[s]) continue;
       seated[s].chog.setFade(1);
@@ -299,11 +345,15 @@ export function createBarChat({ world, getMine, sendHome: home }) {
     // Fetch the first pair ahead of time (it covers a guest's first scene and a signed-in Chog's first
     // partner either way), so walking into the bar doesn't wait on their art.
     preload() {
+      preloaded = true;
+      keepBar().catch(() => {});
       regular(GUEST_PAIRS[0][0]);
       regular(GUEST_PAIRS[0][1]);
     },
     update(dt) {
       if (!bar) return;
+      // Near the Hub: fetch the bar's cast, so it's there when you walk in.
+      if (!preloaded && world.camera.position.distanceTo(bar.room.group.getWorldPosition(_p)) < PRELOAD_NEAR) this.preload();
       const inBar = world.currentRoom() === bar;
       if (!inBar) {
         if (active) stop();
@@ -323,8 +373,12 @@ export function createBarChat({ world, getMine, sendHome: home }) {
         const k = 1 - Math.min(1, follow.root.position.distanceTo(follow.to) / follow.total);
         follow.proxy.position.lerpVectors(follow.root.position, middle(), THREE.MathUtils.smoothstep(k, 0.2, 1));
       }
-      // Your own Chog is kept moving by the session; the regulars are moved here.
+      // Your own Chog is kept moving by the session; the regulars and the bartender are moved here.
       for (const s of ['a', 'b']) if (seated[s] && !seated[s].mine) seated[s].chog.update(dt, world.camera);
+      if (barkeep) {
+        barkeep.tick(dt);
+        barkeep.chog.update(dt, world.camera);
+      }
       if (!speaking || bubble.hidden) return;
       // Only once the camera is in the bar: on the way in (src/entry.js) its walls still hide them.
       if (!bar.pod.inside(world.camera.position, 0.3)) {

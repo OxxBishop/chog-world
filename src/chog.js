@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
 import { lookFor, personalityFor, CLIPS, ATTACH, MOODS } from './traitmap.js';
 
 /*
@@ -15,10 +16,69 @@ import { lookFor, personalityFor, CLIPS, ATTACH, MOODS } from './traitmap.js';
 const BASE = import.meta.env.BASE_URL;
 const loader = new GLTFLoader();
 const gltfs = new Map();
-const loadGltf = (url) => {
-  if (!gltfs.has(url)) gltfs.set(url, loader.loadAsync(BASE + url));
-  return gltfs.get(url);
+// keep < 1: a lighter copy with that share of the triangles, for Chogs seen from a distance.
+const loadGltf = (url, keep = 1) => {
+  const key = `${url}|${keep}`;
+  if (!gltfs.has(key)) gltfs.set(key, loader.loadAsync(BASE + url).then(slim).then((g) => (keep < 1 ? lighten(g, keep) : g)));
+  return gltfs.get(key);
 };
+
+/*
+ * Fewer triangles for a model seen from afar: meshoptimizer collapses edges where it changes the shape
+ * least, writing a new index buffer over the same vertices, so the skinning still holds.
+ */
+async function lighten(gltf, keep) {
+  await MeshoptSimplifier.ready;
+  gltf.scene.traverse((o) => {
+    const g = o.geometry;
+    if (!o.isMesh || !g.index || !(g.attributes.position.array instanceof Float32Array) || g.attributes.position.isInterleavedBufferAttribute) return;
+    const src = g.index.array instanceof Uint32Array ? g.index.array : new Uint32Array(g.index.array);
+    const target = Math.floor((src.length * keep) / 3) * 3;
+    const [dst] = MeshoptSimplifier.simplify(src, g.attributes.position.array, 3, target, 0.02, []);
+    g.setIndex(new THREE.BufferAttribute(dst, 1));
+  });
+  return gltf;
+}
+
+/*
+ * Fit a model for the laptop: its colour texture down to 1024 px, and no normal or roughness maps (they
+ * barely show at the distance a Chog is seen from, and cost a lot of memory and fill). Done once per
+ * file; every copy of it shares the result.
+ */
+const SLIM_PX = 1024;
+function slim(gltf) {
+  const done = new Set();
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    for (const m of [].concat(o.material)) {
+      if (done.has(m)) continue;
+      done.add(m);
+      const img = m.map?.image;
+      if (img && Math.max(img.width, img.height) > SLIM_PX) {
+        const c = document.createElement('canvas');
+        const k = SLIM_PX / Math.max(img.width, img.height);
+        c.width = Math.round(img.width * k);
+        c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        const t = new THREE.CanvasTexture(c);
+        for (const key of ['flipY', 'colorSpace', 'wrapS', 'wrapT', 'channel']) t[key] = m.map[key];
+        t.anisotropy = 4;
+        m.map.dispose();
+        m.map = t;
+      }
+      for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) {
+        m[key]?.dispose();
+        m[key] = null;
+      }
+      if (m.isMeshStandardMaterial) {
+        m.roughness = 0.75;
+        m.metalness = 0;
+      }
+      m.needsUpdate = true;
+    }
+  });
+  return gltf;
+}
 const textures = new THREE.TextureLoader().setCrossOrigin('anonymous');
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
@@ -204,9 +264,14 @@ void main() {
   return m;
 }
 
-/** Build a Chog from its info ({ traits, image }). Resolves once its model (or standee) is ready. */
-export async function makeChog({ traits = {}, image = null, images = image ? [image] : [], name = 'Chog' } = {}) {
+/**
+ * Build a Chog from its info ({ traits, image }). Resolves once its model (or standee) is ready. model
+ * names a Chog's own rigged file (an NPC from public/models/npcs/) in place of the trait-built one;
+ * tint shades its colours, so copies of one model look like different Chogs.
+ */
+export async function makeChog({ traits = {}, image = null, images = image ? [image] : [], name = 'Chog', model: modelUrl = null, tint = null, keep = 1 } = {}) {
   const look = lookFor(traits);
+  const base = modelUrl ?? look.base;
   const personality = personalityFor(traits);
   const root = new THREE.Group();
   let mixer = null;
@@ -214,19 +279,21 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   const actions = {};
   const tintables = [];
 
-  if (look.base) {
+  if (base) {
     try {
-      const gltf = await loadGltf(look.base);
+      const gltf = await loadGltf(base, keep);
       model = cloneSkinned(gltf.scene);
       model.traverse((o) => {
         if (!o.isMesh) return;
         o.castShadow = true;
         o.material = o.material.clone();
         tintables.push(o);
-        if (o.name === 'Skin' || o.material.name === 'Skin') o.material.color.set(look.skin);
+        if (modelUrl) {
+          if (tint) o.material.color.multiply(tint);
+        } else if (o.name === 'Skin' || o.material.name === 'Skin') o.material.color.set(look.skin);
       });
-      // Separate pieces hang from their bones.
-      for (const [slot, url] of [['head', look.head], ['body', look.body], ['accessory', look.accessory]]) {
+      // Separate pieces hang from their bones (a Chog's own model has them built in).
+      for (const [slot, url] of modelUrl ? [] : [['head', look.head], ['body', look.body], ['accessory', look.accessory]]) {
         if (!url) continue;
         const piece = cloneSkinned((await loadGltf(url)).scene);
         piece.traverse((o) => {
@@ -322,10 +389,13 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         });
       }
     },
-    // Fade the Chog out (1 is solid, 0 gone), for walking off.
+    // Fade the Chog out (1 is solid, 0 gone), for walking off. A model pops in and out with a little
+    // grow and shrink instead (fading its materials would rebuild their shaders).
     setFade(k) {
       if (stand) stand.mat.uniforms.uFade.value = k;
-      root.traverse((o) => o.isMesh && o !== stand?.card && (o.visible = k > 0.02));
+      if (model) model.scale.setScalar(0.7 + 0.3 * THREE.MathUtils.smoothstep(k, 0, 1));
+      root.traverse((o) => (o.isMesh || o.isSprite) && o !== stand?.card && o !== badge && (o.visible = k > 0.02));
+      if (k <= 0.02) badge.visible = false;
     },
     setGrey(k) {
       if (stand) stand.mat.uniforms.uGrey.value = k;
