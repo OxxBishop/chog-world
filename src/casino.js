@@ -455,7 +455,7 @@ function slotMachine(mats, faceStrip) {
 export function buildCasinoRoom() {
   const room = new Room({
     w: 15, d: 13, h: 6.6,
-    wall: '#5e1c2a', wainscot: '#24101c', floor: carpet(), trim: '#8a5a22', ceiling: '#2c1220',
+    wall: '#5e1c2a', wainscot: '#6e2a3a', floor: carpet(), trim: '#8a5a22', ceiling: '#2c1220',
     openings: [{ wall: 'front', x: 0, y: 0, w: 3.2, h: 4.4, kind: 'door' }],
   });
   const mats = {

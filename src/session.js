@@ -532,7 +532,8 @@ export function initSession(world) {
     }
     t.dispose();
   }
-  setTimeout(() => warmStandees().catch((err) => console.warn('Standee warm-up:', err)), 300);
+  // Resolves once they're warm: the loader waits for it (B12).
+  const warmed = new Promise((r) => setTimeout(r, 300)).then(() => warmStandees()).catch((err) => console.warn('Standee warm-up:', err));
 
   return {
     update(dt) {
@@ -548,6 +549,7 @@ export function initSession(world) {
     walkIn,
     walkOut,
     focusIn,
+    warmed,
     startIntro,
     demo: demoArrival,
     // A tap on your Chog opens the chat. True if the tap was on it.

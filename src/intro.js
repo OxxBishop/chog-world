@@ -244,6 +244,20 @@ export function createIntro(el) {
       el.classList.add('ready');
       document.body.classList.add('intro-open');
     },
+    // The loading screen again, its bar at f (0 to 1) under label, the world hidden: for the demo's
+    // arrival shot (B13), which opens on it.
+    loading(f, label) {
+      current = 'loading';
+      el.classList.remove('done', 'leaving', 'ready');
+      document.body.classList.add('intro-open');
+      runner.stop();
+      stage.hidden = true;
+      bar.hidden = false;
+      sub.hidden = false;
+      setTitle('WELCOME TO', 'CHOG WORLD');
+      bar.style.setProperty('--p', f.toFixed(3));
+      sub.textContent = `${label}... ${Math.round(f * 100)}%`;
+    },
     state(name, data = {}) {
       current = name;
       el.classList.remove('done', 'leaving');

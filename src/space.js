@@ -218,6 +218,8 @@ export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip }) 
   }
 
   const api = {
+    // The void and the stars, drawn once behind the loader so their shaders are built (B12).
+    group,
     get active() {
       return state !== 'off';
     },

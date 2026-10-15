@@ -381,6 +381,10 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
 
   return {
     actors,
+    // A set still loading: the demo's shots wait for them all (B13).
+    get loading() {
+      return sets.some((st) => st.state === 'loading');
+    },
     update(dt, camera) {
       t += dt;
       if (!sets.some((st) => st.state === 'loading')) {

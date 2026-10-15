@@ -616,7 +616,7 @@ body.intro-reveal .hud, body.intro-reveal .places-toggle, body.intro-reveal .nav
   transition: transform 0.08s;
 }
 .intro .px:hover { filter: brightness(1.12); }
-.intro .px:active { transform: translateY(2px); }
+.intro .px:active, .intro .px.pressed { transform: translateY(2px); }
 .intro .px:focus-visible { outline: 3px solid var(--pink); outline-offset: 6px; }
 .intro .px.alt { background: var(--lilac); box-shadow: inset -4px -4px 0 rgba(0, 0, 0, 0.28), inset 4px 4px 0 rgba(255, 255, 255, 0.4), 0 0 0 3px #12082c, 0 0 0 5px var(--lilac); }
 .intro .px img { width: 16px; height: 16px; vertical-align: -3px; margin-right: 8px; image-rendering: pixelated; }

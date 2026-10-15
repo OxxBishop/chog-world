@@ -1,3 +1,5 @@
+// First, so a demo shot's clock is in place before anything reads the time (B13).
+import { demoClock } from './democlock.js';
 import * as THREE from 'three';
 import { loadAll } from './assets.js';
 import { Sky } from './sky.js';
@@ -18,7 +20,7 @@ import { initSession } from './session.js';
 import { buildNpcs } from './npcs.js';
 import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
-import { SHOTS, createFlight } from './flight.js';
+import { SHOTS, createDemo } from './shots.js';
 import { createSpace } from './space.js';
 import { createEntry } from './entry.js';
 import { createIntro } from './intro.js';
@@ -70,47 +72,172 @@ function outdoorFov() {
   return Math.min(70, Math.max(42, needed));
 }
 
-// A quick dip to dusk and back, for stepping indoors and out.
 // Compile a new object's shaders ahead of time, for the target the scene really draws into, so it
 // doesn't stall the frame it first appears in.
+// Then it is drawn once, by itself: Intel's driver finishes a shader only on its first draw. A room's
+// lights are part of its shaders, so the draw has the lights that are on now, when it is asked for. The
+// load waits for every warm-up asked for while it is still up (warming).
+const warming = new Set();
 function warmUp(obj) {
+  const lit = litNow();
   const was = renderer.getRenderTarget();
   renderer.setRenderTarget(post.composer.inputBuffer);
   const ready = renderer.compileAsync(obj, camera, scene);
   renderer.setRenderTarget(was);
-  return ready.catch(() => {});
+  const done = ready.then(() => drawOnce(obj, lit, { all: true })).catch(() => {});
+  warming.add(done);
+  done.finally(() => warming.delete(done));
+  return done;
 }
 
-// Draws one room by itself into the scene's own target, from the room's view, with the same lights
-// and sky as the world (so its shaders are the very ones the world will use), and puts it all back.
-function drawAlone(r) {
-  const hidden = [];
-  for (let o = r.room.group; o.parent; o = o.parent) {
-    for (const s of o.parent.children) {
-      if (s === o || !s.visible || s.isLight || s.getObjectByProperty('isLight', true)) continue;
-      s.visible = false;
-      hidden.push(s);
-    }
+function litNow() {
+  const on = new Set();
+  scene.traverseVisible((o) => o.isLight && on.add(o));
+  return on;
+}
+
+// One object drawn by itself into the scene's own target, framed from in front, with the world's
+// sky and the lights lit; then everything is put back. An object not in the scene is put in it for the draw.
+function drawOnce(obj, lit, opts) {
+  const added = !obj.parent;
+  if (added) scene.add(obj);
+  obj.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(obj);
+  if (!box.isEmpty()) {
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const r = Math.max(sphere.radius, 0.5);
+    drawWith(obj, sphere.center.clone().add(new THREE.Vector3(0, r * 0.4, r * 2.6)), sphere.center, lit, opts);
   }
-  const was = { pos: camera.position.clone(), quat: camera.quaternion.clone(), visible: r.room.group.visible };
-  camera.position.copy(r.view.pos);
-  camera.lookAt(r.view.target);
+  if (added) scene.remove(obj);
+}
+
+// Draws obj alone from pos looking at target, with only the lights in lit on (by default those on now)
+// and the shadows left as they are, and puts the camera and the world back. All of obj is drawn, even
+// what is out of view (the door behind a room's camera). shadows: draw obj into
+// the shadow map too (its shadow shaders), and have the next frame draw the map afresh. all: every part
+// of obj at once, the hidden ones too (a sparkle still to burst, a badge, each level of detail), since
+// each is a shader to build before it first shows.
+function drawWith(obj, pos, target, lit = litNow(), { shadows = false, all = false } = {}) {
+  const keep = new Set();
+  for (let o = obj; o; o = o.parent) keep.add(o);
+  for (const l of lit) for (let o = l; o; o = o.parent) keep.add(o);
+  const flipped = [];
+  const show = (o, v) => {
+    if (o.visible === v) return;
+    flipped.push(o);
+    o.visible = v;
+  };
+  const walk = (o) => {
+    show(o, keep.has(o));
+    if (o !== obj && keep.has(o)) o.children.forEach(walk);
+  };
+  walk(scene);
+  const lods = [];
+  const culled = [];
+  obj.traverse((o) => {
+    if (!o.frustumCulled) return;
+    o.frustumCulled = false;
+    culled.push(o);
+  });
+  if (all) {
+    obj.traverse((o) => {
+      // A badge with nothing on it yet never shows like that.
+      if (o.isSprite && !o.material.map) return;
+      show(o, true);
+      if (o.isLOD && o.autoUpdate) {
+        o.autoUpdate = false;
+        lods.push(o);
+      }
+    });
+  }
+  const was = { pos: camera.position.clone(), quat: camera.quaternion.clone() };
+  camera.position.copy(pos);
+  camera.lookAt(target);
   camera.updateMatrixWorld();
-  r.room.group.visible = true;
-  // Not the sun's shadows: they would be drawn with the rest of the world hidden.
-  const shadows = renderer.shadowMap.needsUpdate;
-  renderer.shadowMap.needsUpdate = false;
+  const mapWas = renderer.shadowMap.needsUpdate;
+  renderer.shadowMap.needsUpdate = shadows;
   renderer.setRenderTarget(post.composer.inputBuffer);
   renderer.render(scene, camera);
   renderer.setRenderTarget(null);
-  renderer.shadowMap.needsUpdate = shadows;
-  r.room.group.visible = was.visible;
-  for (const s of hidden) s.visible = true;
+  renderer.shadowMap.needsUpdate = shadows || mapWas;
+  for (const o of flipped) o.visible = !o.visible;
+  for (const o of lods) o.autoUpdate = true;
+  for (const o of culled) o.frustumCulled = true;
   camera.position.copy(was.pos);
   camera.quaternion.copy(was.quat);
   camera.updateMatrixWorld();
 }
 
+// Draws one room by itself into the scene's own target, from the room's view, with the same lights
+// and sky as the world (so its shaders are the very ones the world will use).
+function drawAlone(r) {
+  drawWith(r.room.group, r.view.pos, r.view.target);
+}
+
+/*
+ * C's rigged cast loads as the camera comes near, after the loader. Its shaders come in three kinds, all
+ * on one vertex layout: a Chog as makeChog fits it for the laptop, the dino's two-sided physical one, and
+ * the singer's with its normal and roughness maps. A stand-in of each is drawn in the load, shadows too,
+ * and the Chog's in each kind of room, with a mood badge (a sprite: its shader holds the room's lights
+ * too), so the cast's first draws never stall a frame on Intel (B12). So do the plain materials props
+ * are made of (standard, lambert, basic, physical, each with and without a texture): a prop that loads
+ * later then finds its shader built and drawn for the lights it stands in.
+ */
+function castStandIns() {
+  const geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+  const n = geo.attributes.position.count;
+  const weights = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) weights[i * 4] = 1;
+  geo.setAttribute('skinIndex', new THREE.BufferAttribute(new Uint8Array(n * 4), 4));
+  geo.setAttribute('skinWeight', new THREE.BufferAttribute(weights, 4));
+  const pixel = (space) => {
+    const t = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+    t.colorSpace = space;
+    t.needsUpdate = true;
+    return t;
+  };
+  const colour = pixel(THREE.SRGBColorSpace), data = pixel(THREE.NoColorSpace);
+  const mats = [
+    new THREE.MeshStandardMaterial({ map: colour, roughness: 0.75, metalness: 0 }),
+    new THREE.MeshPhysicalMaterial({ map: colour, roughness: 0.75, metalness: 0, side: THREE.DoubleSide }),
+    new THREE.MeshStandardMaterial({ map: colour, normalMap: data, roughnessMap: data, metalnessMap: data, side: THREE.DoubleSide }),
+  ];
+  const make = (mat) => {
+    const mesh = new THREE.SkinnedMesh(geo, mat);
+    const bone = new THREE.Bone();
+    mesh.add(bone);
+    mesh.bind(new THREE.Skeleton([bone]));
+    mesh.castShadow = mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    return mesh;
+  };
+  const plainGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+  const plainMats = [THREE.MeshStandardMaterial, THREE.MeshLambertMaterial, THREE.MeshBasicMaterial, THREE.MeshPhysicalMaterial].flatMap((M) => [new M(), new M({ map: colour })]);
+  const plain = () =>
+    plainMats.map((m) => {
+      const mesh = new THREE.Mesh(plainGeo, m);
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      return mesh;
+    });
+  const badgeMat = new THREE.SpriteMaterial({ map: colour, transparent: true, depthTest: false });
+  const badge = () => {
+    const s = new THREE.Sprite(badgeMat);
+    s.frustumCulled = false;
+    return s;
+  };
+  return {
+    chog: () => [make(mats[0]), badge(), ...plain()],
+    all: () => [...mats.map(make), badge(), ...plain()],
+    // The materials stay: disposing them would free their shaders, which the cast is to find built.
+    dispose: () => {
+      geo.dispose();
+      plainGeo.dispose();
+    },
+  };
+}
+
+// A quick dip to dusk and back, for stepping indoors and out.
 function fadeThrough(fn) {
   const f = $('fade');
   f.classList.add('on');
@@ -204,8 +331,15 @@ async function init() {
     ['download', 5, 'Waking the island'],
     ['build', 3, 'Raising the islands'],
     ['shaders', 4, 'Lighting the sky'],
+    ['clouds', 2, 'Gathering the clouds'],
     ['frames', 1, 'Almost there'],
   ]);
+  // The clouds: their pass joins the post chain held off, and their textures come down with the rest.
+  clouds = createVolumetricClouds(renderer, camera);
+  clouds.setQuality(WEAK_GPU ? 'low' : QUALITY === 'auto' ? 'high' : QUALITY);
+  post.addClouds(clouds.effects);
+  clouds.hold(post.cloudPass);
+  clouds.fetch();
   // The nature models, the building kits and the sign font all download at once.
   const got = { models: 0, kit: 0, furniture: 0, font: 0 };
   const weight = { models: 0.7, kit: 0.15, furniture: 0.1, font: 0.05 };
@@ -219,12 +353,6 @@ async function init() {
     loadKit(FURNITURE_KIT, 'furniture', part('furniture')),
     document.fonts.load('600 120px Fredoka').catch(() => {}).then(() => part('font')(1)),
   ]);
-  // The clouds are not needed for the first frame. Their pass joins the post chain now, held off;
-  // they download once the world is showing, and fade in.
-  clouds = createVolumetricClouds(renderer, camera);
-  clouds.setQuality(WEAK_GPU ? 'low' : QUALITY === 'auto' ? 'high' : QUALITY);
-  post.addClouds(clouds.effects);
-  clouds.hold(post.cloudPass);
   // Let the bar show the next step before the long build.
   load.set('build', 0);
   await new Promise((r) => requestAnimationFrame(() => setTimeout(r)));
@@ -242,6 +370,12 @@ async function init() {
   // The flight down to your Chog's home after signing in (src/arrival.js).
   arrival = createArrival({ camera, rig, space, domes: island.domes });
   entry = createEntry({ camera, rig, hub: island.hub, fovs: { outdoor: outdoorFov, indoor: () => (camera.aspect < 1 ? 64 : 52) }, dom: renderer.domElement, session: () => session });
+  // The Chogs about town, each once its model is in; ?npcs shows every slot, with stand-ins. They load
+  // with the rest, so the first one drawn (the singer) is drawn behind the loader: every rigged Chog
+  // shares its shader, which Intel builds on the first draw.
+  const npcsIn = buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs') || !!SHOTS[params.get('demo')], prewarm: warmUp, quality: QUALITY })
+    .then((n) => (npcs = n))
+    .catch((err) => console.warn('Chogs about town:', err));
   load.set('build', 1);
   // Build every shader the world needs (the rooms and the post chain too) in the background, so the
   // first frame you see is finished.
@@ -264,7 +398,33 @@ async function init() {
   // Then each kind of room is drawn once, on its own, from its own view (every home shares one set of
   // materials). Building a shader isn't enough everywhere: Intel's driver finishes one only the first
   // time it draws with it, and on the HD 520 that made the first walk into a room crawl for seconds.
-  for (const id of ['lobby', 'bar', 'casino', 'home0']) drawAlone(island.rooms.find((r) => r.id === id));
+  const cast = castStandIns();
+  for (const id of ['lobby', 'bar', 'casino', 'home0']) {
+    const r = island.rooms.find((x) => x.id === id);
+    const stand = cast.chog();
+    r.room.group.add(...stand);
+    drawAlone(r);
+    stand.forEach((o) => o.removeFromParent());
+  }
+  // The cast outside, in the sun's shadows too (the next frame draws the shadow map afresh).
+  const outside = new THREE.Group();
+  outside.add(...cast.all());
+  drawOnce(outside, litNow(), { shadows: true });
+  cast.dispose();
+  // A dome's glass and steel as you see them close up, as the arrival flies in.
+  drawOnce(island.domes[0].group.children.find((o) => o.isLOD), litNow(), { all: true });
+  // And space, the void and its stars, which the connect screen opens on.
+  drawOnce(space.group);
+  // Then the clouds go up onto the GPU and their pass is drawn for real in the frames below, still
+  // behind the loader: out from space their first draw froze the page for seconds on Intel. A slow
+  // download doesn't hold the world up for long; they come in when they can.
+  load.set('clouds', 0);
+  const cloudsIn = clouds.stream(() => post.render(0)).then((shown) => {
+    if (shown) load.mark('clouds');
+    return shown;
+  });
+  await Promise.race([Promise.all([cloudsIn, npcsIn]), new Promise((r) => setTimeout(r, 20000))]);
+  load.set('clouds', 1);
   frame();
   frame();
   // Wait for the GPU to finish that first work (texture uploads) while the loader is still up, then
@@ -279,11 +439,6 @@ async function init() {
   // A link to a view, a shot or space goes straight there; otherwise the intro stays up, over the
   // world seen from space, asking you to connect.
   const withIntro = !params.has('view') && !params.has('space') && !SHOTS[params.get('demo')] && !params.has('nointro');
-  load.finish({ keep: withIntro });
-  const cloudsIn = clouds.stream(() => post.render(0)).then((shown) => {
-    if (shown) load.mark('clouds');
-    return shown;
-  });
   // Optional ?view=dome&hour=22 in the address, handy for sharing a specific shot.
   if (params.has('hour')) {
     time.live = false;
@@ -359,10 +514,14 @@ async function init() {
   });
   // The casino's game (B8): its panel shows while you're inside.
   casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active });
-  // The Chogs about town, each once its model is in; ?npcs shows every slot, with stand-ins.
-  buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs'), prewarm: warmUp, quality: QUALITY }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
+  // The session warms its Chogs' shaders as it starts: the loader waits for those too.
+  await Promise.race([Promise.all([session.warmed, ...warming]), new Promise((r) => setTimeout(r, 15000))]);
+  load.finish({ keep: withIntro });
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
-  if (SHOTS[params.get('demo')]) startDemo(SHOTS[params.get('demo')], cloudsIn);
+  if (SHOTS[params.get('demo')]) {
+    const capture = params.has('capture') || params.has('at');
+    demo = createDemo(shotWorld(), params.get('demo'), { capture, from: params.has('at') ? parseFloat(params.get('at')) : null });
+  }
   // ?space opens on the world seen from space.
   if (params.has('space')) space.enter({ duration: 0 });
   if (withIntro) {
@@ -381,30 +540,34 @@ async function init() {
   if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
-// ?demo=<shot>: a camera flight for the video (src/flight.js) with the interface hidden. It holds its
-// first frame until the clouds have faded in, then flies; window.chogDemo.at(s) poses any second of
-// it and play(s) flies on from there, for frame-by-frame takes.
+// ?demo=<shot>: one of the demo video's shots (src/shots.js), with the interface hidden. What a shot
+// drives in the world, and how it waits for the world to be ready.
 let demo = null;
-function startDemo(shot, cloudsIn) {
-  const flight = createFlight(shot);
-  document.body.classList.add('demo');
-  time.live = false;
-  time.hour = shot.hour;
-  rig.idleSpin = false;
-  demo = {
-    t: 0,
-    playing: false,
-    update(dt) {
-      if (this.playing) this.t = Math.min(flight.duration, this.t + dt);
-      flight.pose(camera, this.t);
+function shotWorld() {
+  const room = (id) => island.rooms.find((r) => r.id === id);
+  return {
+    camera,
+    rig,
+    time,
+    space,
+    intro,
+    get session() {
+      return session;
     },
+    get casino() {
+      return casino;
+    },
+    get entry() {
+      return entry;
+    },
+    enterRoom: (id) => enterRoom(room(id)),
+    inRoom: (id) => rig.room === room(id)?.pod,
+    // Models still loading or shaders still warming, which a shot waits for before it starts.
+    busy: () => warming.size > 0 || !!npcs?.loading,
+    // One frame of the world (a held take draws its own).
+    frame,
+    loop: (on) => renderer.setAnimationLoop(on ? loop : null),
   };
-  window.chogDemo = {
-    duration: flight.duration,
-    at: (s) => Object.assign(demo, { t: s, playing: false }),
-    play: (from = 0) => Object.assign(demo, { t: from, playing: true }),
-  };
-  cloudsIn.then(() => setTimeout(() => !demo.playing && demo.t === 0 && window.chogDemo.play(), 3000));
 }
 
 // UI.
@@ -634,12 +797,12 @@ function frame() {
   timer.update();
   const realDt = timer.getDelta();
   const dt = Math.min(realDt, 0.05);
-  const t = timer.getElapsed();
+  const t = demo?.worldT ?? timer.getElapsed();
   const hour = currentHour();
   if (time.live) slider.value = hour.toFixed(2);
 
   rig.update(dt);
-  demo?.update(dt);
+  demo?.update();
   space?.update();
   entry?.update(dt);
   arrival?.update(dt);
@@ -684,13 +847,16 @@ function frame() {
   }
 
   post.setNight(env.night);
-  if (debug && !debug.state.post) {
+  // A demo shot's long seek moves the world on without drawing every step.
+  const drawn = !demo || demo.draws;
+  if (drawn && debug && !debug.state.post) {
     renderer.render(scene, camera);
     renderer.autoClear = false;
     renderer.render(post.overlay, camera);
     renderer.autoClear = true;
-  } else post.render(dt);
-  tunePerf(realDt * 1000, realDt);
+  } else if (drawn) post.render(dt);
+  // A shot holds its quality (and a held take's time isn't the GPU's).
+  if (!demo) tunePerf(realDt * 1000, realDt);
   debug?.end(realDt, performance.now() - cpu0);
 }
 

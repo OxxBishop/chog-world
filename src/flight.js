@@ -1,34 +1,12 @@
 import * as THREE from 'three';
 
 /*
- * Camera flights for the demo video. A shot is a drone path: keyframes, each a time, where the
+ * Camera flights. A flight is a drone path: keyframes, each a time, where the
  * camera is and what it looks at, joined by smooth curves, with the pace eased between the
  * keyframes' times so the drone can slow down near the ground and speed up far out without a jolt.
- * Each shot has its own hour of the day.
- *
- * ?demo=<shot> plays one with the interface hidden, once the clouds are in. window.chogDemo.at(s)
- * poses the camera at any second of it, so a recording can step through frame by frame and every
- * take matches. Coordinates are world metres: downtown is at the origin, the Hub's doors face +z.
+ * The demo's shots (src/shots.js) fly these, and so does the arrival (src/arrival.js). Coordinates
+ * are world metres: downtown is at the origin, the Hub's doors face +z.
  */
-export const SHOTS = {
-  // The opening: in from the south over the sea of clouds at golden hour, low over the first
-  // neighbourhood's domes, across its bridge and up the walk to the fountain and the gold dome, then
-  // a rising pull back to the whole archipelago. The view keeps facing north the whole way, so it
-  // never whips round.
-  opening: {
-    hour: 17.5,
-    keys: [
-      { t: 0, pos: [170, 115, 600], look: [-11, 5, 230] },
-      { t: 6, pos: [45, 72, 380], look: [-11, 8, 227] },
-      { t: 10.5, pos: [26, 50, 288], look: [-11, 14, 195] },
-      { t: 14.5, pos: [4, 42, 178], look: [-4, 26, 80] },
-      { t: 18.5, pos: [-3, 44, 105], look: [0, 36, 20] },
-      { t: 22, pos: [0, 45, 62], look: [0, 40, 0] },
-      { t: 24, pos: [2, 50, 60], look: [0, 40, 0] },
-      { t: 32, pos: [70, 240, 430], look: [0, 5, 0] },
-    ],
-  },
-};
 
 // Monotone cubic through (x, y) points (Fritsch-Carlson), flat at both ends (the flight eases in and
 // out): it never overshoots, so the camera never runs backwards along its path.

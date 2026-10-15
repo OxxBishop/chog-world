@@ -417,7 +417,13 @@ export function buildHub() {
     else repaint(wing, { white: 'charcoal', grey: 'dark', purple: 'gold' }, mats.casinoRoof);
     kit.add(wing);
     const tube = piece('tunnel_straight_A', WING_S);
-    tube.position.x = side * (LOBBY_FRONT + (WING_X - 1.1 * WING_S - LOBBY_FRONT) / 2);
+    // From just inside the lobby's wall to just inside the wing's, no further: its end used to poke
+    // through the wing's room, a dark curve behind the bar's regulars.
+    const from = LOBBY_FRONT - 1, to = WING_X - 1.1 * WING_S + 1;
+    const span = new THREE.Box3().setFromObject(tube);
+    const k = (to - from) / (span.max.x - span.min.x);
+    tube.scale.x *= k;
+    tube.position.x = side * ((from + to) / 2) - ((span.min.x + span.max.x) / 2) * k;
     if (side > 0) casinoTube = tube;
     repaint(tube, { grey: 'brown' });
     tube.traverse((o) => o.isMesh && (o.userData.lobby = true));

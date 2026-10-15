@@ -577,6 +577,10 @@ export function createVolumetricClouds(renderer, camera) {
      * (offline, blocked download), the world carries on without them. Resolves true once they are
      * showing.
      */
+    // Starts their textures downloading, ahead of stream().
+    fetch() {
+      load();
+    },
     // Fades the clouds out (k = 1, and their pass stops drawing) or back in (k = 0).
     setAway(k) {
       away = k;
