@@ -223,9 +223,9 @@ export function initSession(world) {
   // the island's crowd to walk around as (src/travel.js).
   const guest = () =>
     screen
-      ?.close()
+      ?.close({ keepHud: true })
       .then(() => world.leaveSpace?.({ duration: 2.2 }))
-      .then(() => world.travel?.pickGuest());
+      .then(() => (screen.revealHud(), world.travel?.pickGuest()));
 
   /**
    * The first screen's call to connect (src/main.js hands it over once the world has loaded; Sign in
