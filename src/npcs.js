@@ -351,6 +351,10 @@ function noteTexture(kind) {
 
 // The singer's set, on a loop: eight bars of the song, a cheer, a breather.
 const SET = [['sing', 19.2], ['cheer', 2.66], ['idle', 4]];
+// B's stage effects (src/fx/stagefx.js, the user's picks: the LED floor and confetti), once they're in:
+// createStageFx({ facing, quality }) -> { group, update(dt, { singing, songTime, part, env, renderer }) },
+// in the square's space (the singer at the origin, its stage's top at y 0.258, radius about 1.85).
+const stageFx = Object.values(import.meta.glob('./fx/stagefx.js', { eager: true }))[0] ?? null;
 
 // Someone who mostly stands about: idle, now and then a wave or a cheer (each at its own rhythm).
 function idler(chog, moves = ['wave'], every = [9, 16]) {
@@ -441,9 +445,17 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       let part = 0;
       let left = SET[0][1];
       singer.play(SET[0][0]);
+      let songTime = 0;
+      if (stageFx?.createStageFx) {
+        const fx = stageFx.createStageFx({ facing, quality });
+        square.add(fx.group);
+        ticks.push((dt) => fx.update(dt, { singing: SET[part][0] === 'sing', songTime, part: SET[part][0], env: lastEnv, renderer: lastRenderer }));
+      }
       ticks.push((dt) => {
         left -= dt;
+        songTime += dt;
         if (left > 0) return;
+        if (SET[(part + 1) % SET.length][0] === 'sing') songTime = 0;
         part = (part + 1) % SET.length;
         left = SET[part][1];
         singer.play(SET[part][0]);

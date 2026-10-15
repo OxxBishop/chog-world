@@ -6,6 +6,11 @@ import { ISLANDS, HOODS, DOMES, DOME_R, DOWNTOWN, ROADS, TERRACES, PORTAL_SPOTS 
 import { heightAt, islandAt, cameraFloor, rimPoint } from './terrain.js';
 import { RoomBox } from './camera.js';
 
+// B's portal effect (src/fx/teleport.js, built to the user's pick) takes over each trip once it's in:
+// departs({ chog, pad, scene, camera }) and arrives(...) play on your Chog at a pad (pad.centre, pad.facing),
+// and buildPad(scene, portal) can dress each hub ({ group, update(dt, { near, charge, beam }) }).
+const teleportFx = Object.values(import.meta.glob('./fx/teleport.js', { eager: true }))[0] ?? null;
+
 /*
  * Getting about (the user's picks, 2026-10-15): you walk your own Chog round the islands in third
  * person, the camera close behind. On a phone a joystick appears under your left thumb and a drag
@@ -101,6 +106,16 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
 
   // ---------- the portals in the world ----------
   const portalFx = portals.map((p) => buildPortal(scene, p));
+  // B's hubs, when its effect brings its own: drawn in place of these pads, driven by the same state.
+  if (teleportFx?.buildPad) {
+    for (const f of portalFx) {
+      const dress = teleportFx.buildPad(scene, { at: f.group.position.clone(), centre: f.centre.clone(), facing: f.facing, scale: SCALE });
+      if (!dress) continue;
+      f.group.visible = false;
+      const own = f.update;
+      f.update = (dt, on, who) => (own(dt, on, who), dress.update?.(dt, { near: on, charge: f.charge, beam: f.beam }));
+    }
+  }
   // Drawn once now, so their first sight never stalls a frame on Intel (B12); the beam too.
   for (const f of portalFx) {
     f.beamMesh.visible = true;
@@ -544,11 +559,13 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       chog.root.position.copy(state.pos);
       from.charge = t;
     });
-    // Up into the light, from the feet.
-    await tween(1.15, (t) => {
-      from.beam = Math.sin(t * Math.PI) + t * 0.4;
-      chog.setBeam?.(THREE.MathUtils.smoothstep(t, 0, 1) * 1.1, 1);
-    });
+    // Up into the light, from the feet (or B's effect, once it's in).
+    if (teleportFx?.departs) await teleportFx.departs({ chog, pad: from, scene, camera });
+    else
+      await tween(1.15, (t) => {
+        from.beam = Math.sin(t * Math.PI) + t * 0.4;
+        chog.setBeam?.(THREE.MathUtils.smoothstep(t, 0, 1) * 1.1, 1);
+      });
     chog.root.visible = false;
     await flash(true);
     // There: the camera comes round behind the pad, looking out across the place.
@@ -565,10 +582,12 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     await flash(false);
     chog.root.visible = true;
     // Down out of the light, from the head.
-    await tween(1.05, (t) => {
-      to.beam = (1 - t) * 1.4;
-      chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, -1);
-    });
+    if (teleportFx?.arrives) await teleportFx.arrives({ chog, pad: to, scene, camera });
+    else
+      await tween(1.05, (t) => {
+        to.beam = (1 - t) * 1.4;
+        chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, -1);
+      });
     chog.setBeam?.(0, 0);
     to.charge = 0;
     chog.play('wave');
@@ -1025,15 +1044,17 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
           const pad = portalFx[0];
           place(pad.centre, pad.facing);
           state.onPortal = 0;
-          chog.setBeam?.(1.1, -1);
+          if (!teleportFx?.arrives) chog.setBeam?.(1.1, -1);
           resolve();
           // Beams down onto the plaza's portal.
           pad.charge = 1;
           pad.beam = 1.4;
-          await tween(1.1, (t) => {
-            pad.beam = (1 - t) * 1.4;
-            chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, -1);
-          });
+          if (teleportFx?.arrives) await teleportFx.arrives({ chog, pad, scene, camera });
+          else
+            await tween(1.1, (t) => {
+              pad.beam = (1 - t) * 1.4;
+              chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, -1);
+            });
           chog.setBeam?.(0, 0);
           pad.charge = 0;
           chog.play('wave');

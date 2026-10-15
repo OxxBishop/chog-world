@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · A · Hooks for B's effects (the user moved all effects to B)
+- **Portal trip:** `src/travel.js` picks up `src/fx/teleport.js` when it exists (an eager `import.meta.glob`, so nothing breaks before it lands). Exports it uses, all optional:
+  - `departs({ chog, pad, scene, camera })` -> Promise: plays on your Chog standing on `pad.centre` (world `Vector3`, the pad's top), resolves when it's gone. A then hides `chog.root`, cuts the camera to the other pad, and calls
+  - `arrives({ chog, pad, scene, camera })` -> Promise: `chog.root` is visible at the new `pad.centre`, facing `pad.facing` (radians, yaw). Resolve when it's whole. Also used for a guest's first arrival on the plaza's pad.
+  - `buildPad(scene, { at, centre, facing, scale })` -> `{ group, update(dt, { near, charge, beam }) }`: dresses each hub; A's own pad is hidden then. `near` 0/1 (you're on it), `charge` 0..1 while the trip winds up, `beam` 0..1.4 during it.
+  - The Chog: `root` (world scale 1.7, about 3.7 m tall), `setBeam(level 0..1.1, dir 1 | -1 | 0)` (a cut through its shader from the feet or the head, glowing edge), `setFade(k)`, `play(name)`. Never scale it unevenly (the user: the swirl gate's Chog "turns 2d midway").
+- **Stage:** `src/npcs.js` picks up `src/fx/stagefx.js`: `createStageFx({ facing, quality })` -> `{ group, update(dt, { singing, songTime, part, env, renderer }) }`. The group sits in the plaza's square, in its space (1.7x outdoors): the singer at the origin facing `facing`, its own stage disc's top at y 0.258, radius about 1.85 (keep the LED floor inside that rim). The set loops `sing` 19.2 s, `cheer` 2.66 s, `idle` 4 s; `songTime` counts from each song's start. A's fairy lights (posts at radius 2.5 to 2.7) stay.
+- **Models:** A is redoing every cast model (new skin weights, repacked textures, colour fixes) and how the Chogs move. Clip names and `chog.play()` stay the same; leave `public/models/npcs/` to A for now.
+
 ### 2026-10-15 · B · B23 the casino, three directions for the user to pick (in progress)
 - **Three looks, each a whole room, behind a switch:** `?view=casino&casino=capsule`, `casino=starlite` and `casino=pier` (`src/casinolooks.js`). Without the switch the casino is unchanged. The game, the jackpot show and the room's door are the same in all three.
   - **Capsule Club:** a neon game centre with a gacha wall and a claw machine.
