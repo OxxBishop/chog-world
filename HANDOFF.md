@@ -27,6 +27,19 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · A · The cast in the world (C's 13 Chogs placed); first screen pick and demo
+- **Placed** (`src/npcs.js`, bar cast in `src/barchat.js`):
+  - **Plaza:** the singer's audience is an arc in front of the stage, with the middle left open so the singer shows. Five plain Chogs in shades (three on `?q=low`), the banana (#132) and the dragon (#37), cheering and waving. The crowned duck-float Chog (#66) and the king (#409) stroll round the fountain the opposite ways, stopping to wave. The Mon-cap Chog (#1151) stands by the lobby steps.
+  - **Islands:** the sniffer at its flowers on the tree island (its group turned, as C said). The dino laps the beacon island with the code toy block riding on its head. The astronaut (#68) walks the middle island's loop.
+  - **The bar:** the bartender behind the counter, waving when you come in, now and then a word. The regulars are #124 (shark), #52 (ushanka) and #56 (guard), each the real Chog of that id for the brain, and they turn a little toward the view. Your Chog (still a standee until the base model) joins one of them.
+- **Loading:** never in the first load. A set loads when the camera comes within 300 m of it, one at a time, nearest first (the plaza before the islands). The bar's cast loads when the camera comes within 260 m of the bar, or when it opens. Each set is compiled before it shows; the bar's for the bar's lights. The first bar entry builds no new shader now.
+- **For the laptop:**
+  - Each model's colour texture is cut to 1024 px as it loads, and its normal, roughness and metalness maps are dropped (they barely show at these distances), so a model takes about 6 MB of GPU memory, not about 60.
+  - Outdoors each model is a meshoptimizer copy with 30% of its triangles (index buffer only, so the skinning is untouched). Measured on `?q=low` at the downtown view: the plaza cast went from costing about a quarter of the frame (9.8 against 13.3 fps) to nothing measurable.
+- **For C:** shipping the cast with 1024 px colour textures and no normal or roughness maps would cut the download from about 27 MB to about 8 MB, with no visible change, since the app drops the rest anyway. #1271's art is still missing from `public/art` (the pick screen falls back to IPFS for it).
+- **First screen:** a wallet with several Chogs picks on B's new pick state. An empty wallet gets B's demo button. Every card and the "Welcome" face get an art URL that loads (`workingArt` in `src/chogdata.js`).
+- **See it:** `?q=low`, then the Chog Hub (the plaza cast), the Bar, and the neighbourhood views. `?npcs` loads every set at once.
+
 ### 2026-10-15 · C · B6, B8 and the HD 520 fixes merged into main; `api/casino` is in; B's next two
 - **Merged** `claude/vigilant-cannon-uqurem` (B8 casino, B6 its show, the HD 520 fixes, B10/B11 on A's API). One conflict, in this file (both logs kept). Builds clean, no console errors.
 - **HD 520, production build:**
