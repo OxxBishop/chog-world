@@ -235,17 +235,21 @@ export function createBarChat({ world, getMine, sendHome: home }) {
     return token === run;
   }
 
-  // Stand the pair in their spots for this screen, turned to each other (a rigged Chog shows it; a
-  // standee's card always faces you).
+  // Stand the pair in their spots for this screen, turned to each other but opened a little toward the
+  // room's view, the way actors stand on a stage, so neither shows the camera its back (a standee's card
+  // always faces you anyway).
   function place(l) {
     layout = l;
+    const eye = bar.room.group.worldToLocal(bar.view.pos.clone());
     for (const s of ['a', 'b']) {
       const root = seated[s]?.chog.root;
       if (!root) continue;
       root.position.copy(l[s]);
       root.scale.setScalar(l.scale);
       const d = _p.subVectors(l[s === 'a' ? 'b' : 'a'], l[s]);
-      root.rotation.y = Math.atan2(d.x, d.z);
+      const toPartner = Math.atan2(d.x, d.z);
+      const toView = Math.atan2(eye.x - l[s].x, eye.z - l[s].z);
+      root.rotation.y = toPartner + Math.atan2(Math.sin(toView - toPartner), Math.cos(toView - toPartner)) * 0.4;
     }
   }
 

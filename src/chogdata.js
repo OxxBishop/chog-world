@@ -27,6 +27,32 @@ export async function chogInfo(id) {
   return { id, name: `Chog #${id}`, image: images[0], images, traits: c.t };
 }
 
+/**
+ * The first of a Chog's art copies that actually loads (the site's own, then the IPFS gateways), for
+ * places that show a single image. Resolves to its URL, or the first one if none answer in time.
+ */
+export function workingArt(images = [], patience = 4000) {
+  return new Promise((resolve) => {
+    let i = 0;
+    const next = () => {
+      if (i >= images.length) return resolve(images[0] ?? null);
+      const img = new Image();
+      const url = images[i++];
+      const timer = setTimeout(next, patience);
+      img.onload = () => {
+        clearTimeout(timer);
+        resolve(url);
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        next();
+      };
+      img.src = url;
+    };
+    next();
+  });
+}
+
 /** Make the <img data-alt="url url"> tags inside el fall back to the next copy if one fails. */
 export function artFallbacks(el) {
   el.querySelectorAll('img[data-alt]').forEach((img) =>

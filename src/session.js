@@ -1,4 +1,4 @@
-import { chogInfo, loadChogs, DEMO_CHOG, homeFor, artFallbacks } from './chogdata.js';
+import { chogInfo, loadChogs, DEMO_CHOG, homeFor, artFallbacks, workingArt } from './chogdata.js';
 import { makeChog } from './chog.js';
 import { prepareWake, playWake, playGreyOut, playLogoff, playWalkIn, playWalkOut, playArrival, SPOT } from './cutscenes.js';
 import { talk } from './brain.js';
@@ -58,17 +58,8 @@ export function initSession(world) {
     panel.classList.remove('on');
     setTimeout(() => (panel.hidden = true), 250);
   };
-  // Closed without picking a Chog for the first screen: back to its start.
-  const dismiss = () => {
-    if (busy) return;
-    close();
-    if (pickingForIntro) {
-      pickingForIntro = false;
-      startIntro();
-    }
-  };
-  panel.querySelector('.signin-close').addEventListener('click', dismiss);
-  panel.addEventListener('click', (e) => e.target === panel && dismiss());
+  panel.querySelector('.signin-close').addEventListener('click', () => !busy && close());
+  panel.addEventListener('click', (e) => e.target === panel && !busy && close());
 
   const view = (html) => {
     body.innerHTML = html;
@@ -223,7 +214,6 @@ export function initSession(world) {
 
   // ---------- the first screen's way in (A11) ----------
   let screen = null;
-  let pickingForIntro = false;
   const tell = (name, data = {}) => screen?.state(name, data);
   const step2 = (title, text) => tell('step', { title, text });
   // A guest: the screen goes, and the view flies down from space to the world.
@@ -272,19 +262,18 @@ export function initSession(world) {
       return tell('none', {
         text: `${short(s.address)} holds no testnet Chog yet. Claim one free: it takes a little testnet MON for gas, from faucet.monad.xyz.`,
         claim: () => claimThenSearch(),
+        demo: () => demoArrival(),
         guest,
       });
     }
     if (ids.length === 1) return arrive(ids[0]);
-    // Several: pick one on the sign-in panel, over the screen.
-    step2('Pick your Chog', `${ids.length} Chogs in this wallet.`);
-    pickingForIntro = true;
-    open();
-    await picker(ids, (id) => {
-      pickingForIntro = false;
-      close();
-      arrive(id);
-    });
+    // Several: a card for each on the screen, to pick from.
+    const infos = await Promise.all(ids.map(async (id) => {
+      const info = await chogInfo(id);
+      return { ...info, image: await workingArt(info.images) };
+    }));
+    if (session !== s) return;
+    tell('pick', { chogs: infos.map(({ id, name, image }) => ({ id, name, image })), pick: (id) => arrive(id), guest });
   }
 
   async function claimThenSearch() {
@@ -310,7 +299,7 @@ export function initSession(world) {
     const s = session;
     try {
       const info = await chogInfo(id);
-      tell('found', { name: info.name, image: info.image });
+      tell('found', { name: info.name, image: await workingArt(info.images) });
       if (!s.demo && !(await (await chain()).owns(s.address, id))) {
         return tell('error', { text: `${info.name} isn't in this wallet any more.`, retry: () => search(), guest });
       }
@@ -514,15 +503,15 @@ export function initSession(world) {
     start();
   });
 
-  // Chog standees' shaders, built for each kind of place one can stand (outside, the bar, the lobby, a
-  // home) while the first screen is up, so walking in anywhere never stalls on them: the lights inside
+  // Chog standees' shaders, built for each kind of place one can stand (outside, the bar, the lobby, the
+  // casino, a home) while the first screen is up, so walking in anywhere never stalls on them: the lights inside
   // each kind of room are part of its shaders.
   async function warmStandees() {
     if (!world.prewarm || !world.rooms) return;
     const t = await makeChog({ traits: { Aura: 'Purple' }, name: 'Chog' });
     prepareWake(t);
     t.setMood('happy');
-    const kinds = [null, world.bar, world.rooms.find((r) => r.id === 'lobby'), world.homes[0]];
+    const kinds = [null, world.bar, ...['lobby', 'casino'].map((id) => world.rooms.find((r) => r.id === id)), world.homes[0]];
     for (const r of kinds) {
       if (r === undefined) continue;
       const g = r?.room.group;
