@@ -27,6 +27,9 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · B · A skill for cheap UI animation (the user's ask)
+- `.claude/skills/fixing-motion-performance/` (from Cult UI, MIT, licence in the folder): rules for keeping HTML/CSS animation off layout and paint, which counts on the HD 520. Run `/fixing-motion-performance <file>` to review a file against it, or bare to apply its rules to the session's UI work. Plain markdown, nothing runs.
+
 ### 2026-10-15 · B · B12 no shader builds after the loader, and B13 the demo video's shots
 - **B12, the HD 520's long frames:** Intel's driver finishes a shader only the first time it draws with it, so now everything the world can draw is drawn once behind the loading screen (`src/main.js`, the load):
   - **Clouds:** their textures download with the rest and their pass is drawn in the load (new step "Gathering the clouds"). This was the 4.6 to 23 s freeze coming down from space.
