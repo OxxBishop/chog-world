@@ -11,10 +11,11 @@ import { MeshoptDecoder } from 'meshoptimizer';
 import { retarget, MAPS } from '/tools/models/retarget.js';
 const q = new URLSearchParams(location.search);
 const models = q.get('m').split(',');
+// spec: name:source:clip[:armsOut[:headK[:amp]]], amp like arms=1.6;legs=1.2;spine=1.8;bob=2.5
 const spec = q.get('spec').split(',').map((s) => s.split(':'));
 const SRC = {
   ual: { file: '/models/_wip/src/ual.glb', rest: 'A_TPose', toe: 'DEF-toe.L' },
-  ual2: { file: '/models/_wip/src/ual2.glb', rest: 'A_TPose', toe: 'DEF-toe.L' },
+  ual2: { file: '/models/_wip/src/ual2.glb', rest: 'A_TPose', toe: 'ball_l' },
 };
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const srcs = {};
@@ -27,7 +28,9 @@ for (const m of models) {
     const sg = srcs[s];
     const srcClip = sg.animations.find((a) => a.name === clip);
     const rest = sg.animations.find((a) => a.name === SRC[s].rest) ?? null;
-    const c = retarget({ src: cloneSkinned(sg.scene), srcClip, srcRest: rest, map: MAPS.ual, dst: cloneSkinned(dg.scene), name, srcToe: SRC[s].toe, armsOut: arms ? +arms : 0.12, headK: head ? +head : 0.5 });
+    const amp = spec.find((x) => x[0] === name)[5];
+    const ampObj = amp ? Object.fromEntries(amp.split(';').map((kv) => kv.split('=')).map(([k, v]) => [k, +v])) : null;
+    const c = retarget({ src: cloneSkinned(sg.scene), srcClip, srcRest: rest, map: MAPS[s], dst: cloneSkinned(dg.scene), name, srcToe: SRC[s].toe, armsOut: arms ? +arms : 0.12, headK: head ? +head : 0.5, amp: ampObj });
     out[m][name] = THREE.AnimationClip.toJSON(c);
   }
 }

@@ -19,6 +19,14 @@ export const MAPS = {
     ThighL: 'DEF-thigh.L', ShinL: 'DEF-shin.L', FootL: 'DEF-foot.L',
     ThighR: 'DEF-thigh.R', ShinR: 'DEF-shin.R', FootR: 'DEF-foot.R',
   },
+  // Quaternius Universal Animation Library 2 (CC0), Unreal-style mannequin.
+  ual2: {
+    Hips: 'pelvis', Spine: 'spine_02', Chest: 'spine_03', Neck: 'neck_01', Head: 'Head',
+    UpperArmL: 'upperarm_l', ForeArmL: 'lowerarm_l', HandL: 'hand_l',
+    UpperArmR: 'upperarm_r', ForeArmR: 'lowerarm_r', HandR: 'hand_r',
+    ThighL: 'thigh_l', ShinL: 'calf_l', FootL: 'foot_l',
+    ThighR: 'thigh_r', ShinR: 'calf_r', FootR: 'foot_r',
+  },
   // KayKit Character Animations (CC0), Rig_Medium.
   kk: {
     Hips: 'hips', Spine: 'spine', Chest: 'chest', Neck: 'head', Head: 'head',
@@ -56,7 +64,23 @@ function facing(rest, foot, leg) {
   return v;
 }
 
-export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name = srcClip.name, fps = 30, armsOut = 0.12, srcToe = null, headK = 0.5 }) {
+// A turn scaled: k times its angle about the same axis (k > 1 exaggerates it).
+function scaleTurn(q, k) {
+  if (k === 1) return q;
+  const w = THREE.MathUtils.clamp(q.w, -1, 1);
+  const ang = 2 * Math.acos(Math.abs(w));
+  if (ang < 1e-5) return q;
+  const s = Math.sqrt(1 - w * w) * Math.sign(w || 1);
+  const axis = new THREE.Vector3(q.x / s, q.y / s, q.z / s);
+  return new THREE.Quaternion().setFromAxisAngle(axis, ang * k);
+}
+const PART = (b) => (/Arm|Hand/.test(b) ? 'arms' : /Thigh|Shin|Foot/.test(b) ? 'legs' : /Spine|Chest|Neck|Head/.test(b) ? 'spine' : 'hips');
+
+/*
+ * amp: cartoon exaggeration, { arms, legs, spine, hips, bob }: each part's turns from the T-pose scaled
+ * (relative to its parent part's), and the hips' up-and-down scaled by bob.
+ */
+export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name = srcClip.name, fps = 30, armsOut = 0.12, srcToe = null, headK = 0.5, amp = null }) {
   // three.js drops reserved characters from node names on load (DEF-upper_arm.L is DEF-upper_armL).
   const clean = THREE.PropertyBinding.sanitizeNodeName;
   const map = Object.fromEntries(Object.entries(rawMap).map(([k, v]) => [k, clean(v)]));
@@ -155,6 +179,28 @@ export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name 
     for (let i = 1; i < n; i++) {
       const dot = a[i * 4] * a[i * 4 - 4] + a[i * 4 + 1] * a[i * 4 - 3] + a[i * 4 + 2] * a[i * 4 - 2] + a[i * 4 + 3] * a[i * 4 - 1];
       if (dot < 0) for (let k = 0; k < 4; k++) a[i * 4 + k] *= -1;
+    }
+  }
+  // Cartoon exaggeration: each bone's motion round its own average pose made bigger (its steady lean stays
+  // as it is), and the hips' bounce round their average height.
+  if (amp) {
+    for (const b of dstNames) {
+      const k = amp[PART(b)] ?? 1;
+      const a = rot[b];
+      if (k === 1 || !a) continue;
+      const mean = new THREE.Quaternion(0, 0, 0, 0);
+      for (let i = 0; i < n; i++) (mean.x += a[i * 4]), (mean.y += a[i * 4 + 1]), (mean.z += a[i * 4 + 2]), (mean.w += a[i * 4 + 3]);
+      mean.normalize();
+      const inv = mean.clone().invert(), q = new THREE.Quaternion();
+      for (let i = 0; i < n; i++) {
+        q.fromArray(a, i * 4);
+        mean.clone().multiply(scaleTurn(inv.clone().multiply(q), k)).toArray(a, i * 4);
+      }
+    }
+    if (amp.bob) {
+      let my = 0;
+      for (let i = 0; i < n; i++) my += hipPos[i * 3 + 1] / n;
+      for (let i = 0; i < n; i++) hipPos[i * 3 + 1] = my + (hipPos[i * 3 + 1] - my) * amp.bob;
     }
   }
   const tracks = dstNames.filter((b) => rot[b] && d0[b] && src.getObjectByName(map[b])).map((b) => new THREE.QuaternionKeyframeTrack(`${b}.quaternion`, times, rot[b]));

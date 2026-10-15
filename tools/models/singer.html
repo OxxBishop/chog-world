@@ -1,0 +1,80 @@
+<!doctype html><meta charset="utf-8"><title>Singer bench</title>
+<style>body{margin:0;background:#222}</style>
+<canvas id="c"></canvas>
+<script type="module">
+// The singer rebuilt on the plain Chog (A, a proposal for the user): the plain body in the world's shader,
+// a handheld mic in its left hand held up to its mouth, the rest of it moving to a clip.
+// ?clip=talk|cheer|idle&ts=..&v=front|q|left&size=
+import * as THREE from 'three';
+import { makeChog } from '/src/chog.js';
+const q = new URLSearchParams(location.search);
+const views = (q.get('v') || 'front,q,left').split(',');
+const S = +(q.get('size') || 300);
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, preserveDrawingBuffer: true });
+r.setPixelRatio(1);
+r.setSize(S * views.length, S * 1.25);
+r.outputColorSpace = THREE.SRGBColorSpace;
+r.toneMapping = THREE.ACESFilmicToneMapping;
+r.setScissorTest(true);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#a9b8cc');
+scene.add(new THREE.HemisphereLight('#ffffff', '#6a6280', 1.4));
+const sun = new THREE.DirectionalLight('#fff4e6', 2.4); sun.position.set(2, 4, 3); scene.add(sun);
+const chog = await makeChog({ model: 'models/npcs/plain.glb' });
+await new Promise((res) => setTimeout(res, 500));
+scene.add(chog.root);
+const model = chog.root.children.find((o) => o.type !== 'Sprite') ?? chog.root;
+// The mic: a dark handle and a silver mesh head, in the hand.
+const mic = new THREE.Group();
+const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.026, 0.26, 16), new THREE.MeshStandardMaterial({ color: '#2b2a33', metalness: 0.4, roughness: 0.45 }));
+const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.036, 0.04, 16), new THREE.MeshStandardMaterial({ color: '#9a9aa6', metalness: 0.9, roughness: 0.3 }));
+collar.position.y = 0.14;
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.07, 20, 14), new THREE.MeshStandardMaterial({ color: '#c9c9d2', metalness: 0.85, roughness: 0.35 }));
+head.position.y = 0.2;
+mic.add(handle, collar, head);
+const hand = chog.root.getObjectByName('HandL');
+hand.add(mic);
+// Hold it up to the mouth: the arm bones turned after the clip each frame.
+const B = (n) => chog.root.getObjectByName(n);
+const ua = B('UpperArmL'), fa = B('ForeArmL'), hd = B('HandL'), chest = B('Chest');
+function aim(bone, child, dirModel) {
+  // Turn bone so child lies along dirModel (in the bone parent's world frame).
+  bone.updateWorldMatrix(true, true);
+  const p = bone.getWorldPosition(new THREE.Vector3()), c = child.getWorldPosition(new THREE.Vector3());
+  const cur = c.sub(p).normalize();
+  const want = dirModel.clone().applyQuaternion(chog.root.getWorldQuaternion(new THREE.Quaternion())).normalize();
+  const turn = new THREE.Quaternion().setFromUnitVectors(cur, want);
+  const wq = bone.getWorldQuaternion(new THREE.Quaternion());
+  const pq = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+  bone.quaternion.copy(pq.invert().multiply(turn.multiply(wq)));
+  bone.updateWorldMatrix(false, true);
+}
+const clip = q.get('clip') || 'talk';
+chog.play(clip);
+const ts = (q.get('ts') || '1.0').split(',').map(Number);
+const DIRS = { front: [0, 0.1, 1], q: [0.7, 0.15, 0.7], left: [1, 0.1, 0.1], ql: [-0.7, 0.15, 0.7] };
+const cam = new THREE.PerspectiveCamera(24, S / (S * 1.25), 0.05, 100);
+let t = 0;
+const dt = 1 / 60;
+const shots = [];
+for (const T of ts) {
+  while (t < T) { chog.update(dt); t += dt;
+    aim(ua, fa, new THREE.Vector3(+(q.get('ux') ?? 0.3), +(q.get('uy') ?? 0.1), +(q.get('uz') ?? 0.95)));
+    aim(fa, hd, new THREE.Vector3(+(q.get('fx') ?? -0.6), +(q.get('fy') ?? 0.75), +(q.get('fz') ?? 0.15)));
+    hd.rotation.set(0, 0, 0);
+    mic.rotation.set(+(q.get('mx') ?? 0), +(q.get('my') ?? 0), +(q.get('mz') ?? 0));
+    mic.position.set(0, 0.06, 0.02);
+  }
+}
+chog.root.updateMatrixWorld(true);
+const box = new THREE.Box3().setFromObject(chog.root, true);
+const c = box.getCenter(new THREE.Vector3()); c.y = box.min.y + (box.max.y - box.min.y) * +(q.get('focus') ?? 0.55);
+const dist = (box.max.y - box.min.y) / +(q.get('zoom') ?? 1) / (2 * Math.tan(THREE.MathUtils.degToRad(12))) * 1.1;
+views.forEach((v, j) => {
+  cam.position.copy(c).addScaledVector(new THREE.Vector3(...DIRS[v]).normalize(), dist);
+  cam.lookAt(c);
+  r.setViewport(j * S, 0, S, S * 1.25); r.setScissor(j * S, 0, S, S * 1.25);
+  r.render(scene, cam);
+});
+requestAnimationFrame(() => (window.__done = r.domElement.toDataURL('image/jpeg', 0.9).split(',')[1]));
+</script>
