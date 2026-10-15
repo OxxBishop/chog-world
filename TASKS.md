@@ -75,8 +75,10 @@ doesn't yet, stub it and move on, then come back.
 | 7 | B3 | Lobby facade: warm and welcoming like the bar and casino (it is still the grey sci-fi panel body) | Oct 16 | | done |
 | 8 | B4 | Clouds: check for a grainy, dithered look in the overview at normal frame rates and fix it | Oct 17 | | done |
 | 9 | B5 | World overview flight for the demo's opening shot (drone path over the islands at golden hour) | Oct 18 | | done |
-| 10 | B8 | Casino (only if everything above, and A1 to A7, are done): one game, free chips only, Chog traits give perks (bonus chips, re-rolls, small multipliers), leaderboard. Never wager $CHOG | Oct 19 | | todo |
-| 11 | B6 | Casino spin effect, the casino's own cutscene | Oct 19 | B8 | todo |
+| 10 | B8 | Casino (only if everything above, and A1 to A7, are done): one game, free chips only, Chog traits give perks (bonus chips, re-rolls, small multipliers), leaderboard. Never wager $CHOG | Oct 19 | | done (`api/casino` in; shared once Upstash Redis is set in Vercel) |
+| 11 | B6 | Casino spin effect, the casino's own cutscene | Oct 19 | B8 | done |
+| 12 | B12 | **No long frames after the first frame, on the HD 520.** The clouds' first real draw freezes the page 4.6 s (repeat visit) to 23 s (first visit) as the camera comes down from space after the connect screen; the first casino entry hitches up to 1.3 s on a first visit. Draw everything for the first time behind the loading screen (as B did for the rooms). Done when no frame after the first is over 500 ms, first visit and repeat, guest and demo Chog (see C's 10-15 handoff entry) | Oct 16 | | todo |
+| 13 | B13 | **Demo shot paths** (was C4; camera work is B's): a `?demo=<shot>` link per shot that plays a fixed camera path at a fixed world time, and `chogDemo.at(seconds)` that sets the whole world (camera, clouds, NPCs, sun) to that moment, so C7 can capture any shot frame by frame. Shots: the overview flight (B5), the arrival through the loading screen, a room entry, the bar's Chog-to-Chog chat, a casino jackpot, the sale cutscene, the world from space. A list of shots with lengths in `video/shots.md` | Oct 18 | B5 | todo |
 
 ### Agent C: tools, models, brain, sound, video
 | Order | # | Task | Target | Needs | Status |
@@ -86,6 +88,6 @@ doesn't yet, stub it and move on, then come back.
 | ongoing | C2 | Prep each Tripo model the user exports: check the rig, slim it for the web, drop it into `public/models/`, note it in `HANDOFF.md` | as they come | | doing |
 | ongoing | C3 | Review every push against this board, and keep the board current | daily | | doing |
 | 2 | C6 | Sound: the singer's song in the square, ambient island sound, UI and cutscene stings (all royalty-free), in `src/audio.js` | Oct 17 | | todo |
-| 3 | C4 | Demo video shot list, with matching `?demo=` camera paths in the app so each shot replays exactly | Oct 18 | B5 | todo |
-| 4 | C7 | **Demo video edit**: every shot is captured from the live app frame by frame (headless Chrome stepping `chogDemo.at(s)`, so it is smooth at any frame rate), then cut with ffmpeg: titles, music, crossfades. Scripts in `video/`, runnable by B in the cloud or on the laptop (much faster there: real GPU). 3 minutes| Oct 20 | C4, A6 | todo |
+| 3 | C4 | Demo video shot list and camera paths: moved to B (B13) | Oct 18 | B5 | moved to B13 |
+| 4 | C7 | **Demo video edit** (needs B13): every shot is captured from the live app frame by frame (headless Chrome stepping `chogDemo.at(s)`, so it is smooth at any frame rate), then cut with ffmpeg: titles, music, crossfades. Scripts in `video/`, runnable by B in the cloud or on the laptop (much faster there: real GPU). 3 minutes| Oct 20 | C4, A6 | todo |
 | 5 | C8 | Submission text: pitch, how it works, tech stack, future vision, links | Oct 21 | | todo |

@@ -23,16 +23,25 @@ import { createSpace } from './space.js';
 import { createEntry } from './entry.js';
 import { createIntro } from './intro.js';
 import { createArrival } from './arrival.js';
+import { createCasino } from './casino.js';
 
 const $ = (id) => document.getElementById(id);
 
 const params = new URLSearchParams(location.search);
 const TOUCH = window.matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
 // Quality: the full look by default. ?q=medium or ?q=low for slower machines, ?q=auto to adapt
 // on the fly, ?q=ultra for the sharpest cloud shadows.
-const QUALITY = ['low', 'medium', 'high', 'ultra', 'auto'].includes(params.get('q')) ? params.get('q') : 'high';
-const BASE_DPR = Math.min(window.devicePixelRatio, { low: 1, ultra: 2 }[QUALITY] ?? 1.5);
-const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
+const ASKED = ['low', 'medium', 'high', 'ultra', 'auto'].includes(params.get('q')) ? params.get('q') : null;
+// An integrated Intel HD or UHD chip (the HD 520 and its kin) gets a lighter look unless ?q asks for
+// another: medium shadows, the light clouds, one pixel per screen pixel. Windows resets a graphics
+// driver that spends 2 s on one job, and the full clouds came close on the HD 520. ?weakgpu tries it
+// on any machine.
+const WEAK_GPU = !ASKED && (params.has('weakgpu') || /\bIntel\b.*\bU?HD Graphics\b|\bU?HD Graphics \d{3}\b/i.test(gpuName(renderer)));
+const QUALITY = ASKED ?? (WEAK_GPU ? 'medium' : 'high');
+console.info(`GPU: ${gpuName(renderer)}; quality ${QUALITY}${WEAK_GPU ? ' (light look for this GPU)' : ''}`);
+const LIGHT = WEAK_GPU || QUALITY === 'low' || QUALITY === 'medium';
+const BASE_DPR = Math.min(window.devicePixelRatio, WEAK_GPU ? 1 : { low: 1, ultra: 2 }[QUALITY] ?? 1.5);
 renderer.setPixelRatio(BASE_DPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = QUALITY !== 'low';
@@ -48,6 +57,13 @@ if (QUALITY === 'medium') sky.light.shadow.mapSize.set(2048, 2048);
 
 // The lens: 42 degrees top to bottom, opened up on a tall phone screen so its width still takes in
 // at least 36 degrees.
+// The GPU's name where the browser gives it (Chrome and Edge do; Firefox gives the family).
+function gpuName(r) {
+  const gl = r.getContext();
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  return String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? '');
+}
+
 function outdoorFov() {
   const aspect = window.innerWidth / window.innerHeight;
   const needed = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(18)) / aspect));
@@ -63,6 +79,36 @@ function warmUp(obj) {
   const ready = renderer.compileAsync(obj, camera, scene);
   renderer.setRenderTarget(was);
   return ready.catch(() => {});
+}
+
+// Draws one room by itself into the scene's own target, from the room's view, with the same lights
+// and sky as the world (so its shaders are the very ones the world will use), and puts it all back.
+function drawAlone(r) {
+  const hidden = [];
+  for (let o = r.room.group; o.parent; o = o.parent) {
+    for (const s of o.parent.children) {
+      if (s === o || !s.visible || s.isLight || s.getObjectByProperty('isLight', true)) continue;
+      s.visible = false;
+      hidden.push(s);
+    }
+  }
+  const was = { pos: camera.position.clone(), quat: camera.quaternion.clone(), visible: r.room.group.visible };
+  camera.position.copy(r.view.pos);
+  camera.lookAt(r.view.target);
+  camera.updateMatrixWorld();
+  r.room.group.visible = true;
+  // Not the sun's shadows: they would be drawn with the rest of the world hidden.
+  const shadows = renderer.shadowMap.needsUpdate;
+  renderer.shadowMap.needsUpdate = false;
+  renderer.setRenderTarget(post.composer.inputBuffer);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  renderer.shadowMap.needsUpdate = shadows;
+  r.room.group.visible = was.visible;
+  for (const s of hidden) s.visible = true;
+  camera.position.copy(was.pos);
+  camera.quaternion.copy(was.quat);
+  camera.updateMatrixWorld();
 }
 
 function fadeThrough(fn) {
@@ -131,6 +177,7 @@ let space = null;
 let entry = null;
 let intro = null;
 let arrival = null;
+let casino = null;
 let npcs = null;
 let debug = null;
 
@@ -175,7 +222,7 @@ async function init() {
   // The clouds are not needed for the first frame. Their pass joins the post chain now, held off;
   // they download once the world is showing, and fade in.
   clouds = createVolumetricClouds(renderer, camera);
-  clouds.setQuality(QUALITY === 'auto' ? 'high' : QUALITY);
+  clouds.setQuality(WEAK_GPU ? 'low' : QUALITY === 'auto' ? 'high' : QUALITY);
   post.addClouds(clouds.effects);
   clouds.hold(post.cloudPass);
   // Let the bar show the next step before the long build.
@@ -201,7 +248,11 @@ async function init() {
   load.set('shaders', 0);
   // The dry run goes first: it bakes the sky's light into the scene, so the rooms compile with it too.
   const warm = prewarm(renderer, frame, (f) => load.set('shaders', f));
-  for (const r of island.rooms) r.room.group.visible = true;
+  // Each room as it looks once you're in it (its lamps take the furniture's texture as their glow).
+  for (const r of island.rooms) {
+    r.room.group.visible = true;
+    r.room.update?.(sky.env, renderer);
+  }
   renderer.setRenderTarget(post.composer.inputBuffer);
   const rooms = renderer.compileAsync(scene, camera).catch(() => {});
   renderer.setRenderTarget(null);
@@ -210,6 +261,10 @@ async function init() {
   // The dry run took the sky's light bake with it: bake it again for real.
   sky.envHour = -99;
   load.set('frames', 0);
+  // Then each kind of room is drawn once, on its own, from its own view (every home shares one set of
+  // materials). Building a shader isn't enough everywhere: Intel's driver finishes one only the first
+  // time it draws with it, and on the HD 520 that made the first walk into a room crawl for seconds.
+  for (const id of ['lobby', 'bar', 'casino', 'home0']) drawAlone(island.rooms.find((r) => r.id === id));
   frame();
   frame();
   // Wait for the GPU to finish that first work (texture uploads) while the loader is still up, then
@@ -271,9 +326,13 @@ async function init() {
     intro: {
       state: (name, data) => intro.state(name, data),
       close: () => intro.close(),
-      flyHome: (room) => {
-        intro.close();
-        return arrival.fly(room);
+      flyHome: async (room) => {
+        // The welcome has its moment first; the world's controls stay away until the camera is there.
+        await intro.held();
+        intro.close({ keepHud: true });
+        const landed = await arrival.fly(room);
+        intro.revealHud();
+        return landed;
       },
       get open() {
         return !$('loading').classList.contains('done');
@@ -298,6 +357,8 @@ async function init() {
         }, 3800);
       }),
   });
+  // The casino's game (B8): its panel shows while you're inside.
+  casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active });
   // The Chogs about town, each once its model is in; ?npcs shows every slot, with stand-ins.
   buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs'), prewarm: warmUp }).then((n) => (npcs = n)).catch((err) => console.warn('Chogs about town:', err));
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
@@ -317,7 +378,7 @@ async function init() {
       });
     }
   }
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: a camera flight for the video (src/flight.js) with the interface hidden. It holds its
@@ -425,7 +486,7 @@ function buildPickables() {
   const hub = island.hub;
   const box = new THREE.Mesh(new THREE.BoxGeometry(hub.width, hub.height, hub.depth), proxyMat);
   box.position.set(DOWNTOWN.x, T + hub.height / 2, DOWNTOWN.z);
-  add(box, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(DOWNTOWN.x, T + 7, DOWNTOWN.z), radius: hub.width * 0.42, theta: 0.25, phi: 1.2, rooms: ['lobby', 'bar'] });
+  add(box, { id: 'hub', name: 'Chog Hub', center: new THREE.Vector3(DOWNTOWN.x, T + 7, DOWNTOWN.z), radius: hub.width * 0.42, theta: 0.25, phi: 1.2, rooms: ['lobby', 'bar', 'casino'] });
   island.terrain.tops.forEach((top, i) => {
     const isl = ISLANDS[i];
     const name = isl.id === 'downtown' ? 'Downtown' : `Neighbourhood ${Number(isl.id.slice(4)) + 1}`;
@@ -546,6 +607,7 @@ const timer = new THREE.Timer();
 timer.connect(document);
 let lastClock = '';
 let lastShadowHour = -1;
+let indoorK = 0;
 
 // While nothing is moving (camera still, clock not being scrubbed) a fast machine skips every
 // other frame: the world keeps swaying and drifting at 30 fps and the machine gets a rest.
@@ -600,7 +662,14 @@ function frame() {
   island.update(env, t, camera, dt);
   entry?.apply(env, renderer);
   session?.update(dt);
+  casino?.show(!entry?.active && rig.room === casino.room.pod);
+  casino?.update(dt, env);
   npcs?.update(dt, camera);
+  // On a lighter look, settled in a room, the clouds fade out: they show only through its windows and
+  // cost nearly half a frame. They come back as you leave, before the doors open.
+  const settled = LIGHT && rig.room instanceof RoomBox && !entry?.active && !arrival?.active;
+  indoorK = THREE.MathUtils.clamp(indoorK + (settled ? dt : -dt) / 0.8, 0, 1);
+  clouds?.setIndoor(indoorK);
   clouds?.update(env, sky, t);
 
   const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);

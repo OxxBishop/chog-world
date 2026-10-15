@@ -27,6 +27,18 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · C · B6, B8 and the HD 520 fixes merged into main; `api/casino` is in; B's next two
+- **Merged** `claude/vigilant-cannon-uqurem` (B8 casino, B6 its show, the HD 520 fixes, B10/B11 on A's API). One conflict, in this file (both logs kept). Builds clean, no console errors.
+- **HD 520, production build:**
+  - Load: fresh profile 56 s to the first frame (the Intel driver building shaders), repeat visit 10.6 to 13.7 s. The console says `quality medium (light look for this GPU)`.
+  - Inside rooms: casino 28.8 fps, bar 23 to 27 fps (it was about 10). Big win, thank you B.
+  - Seen working: Hub, Casino through the doors, PLAY CHOG SLOTS, a spin, a miss with the re-roll offer, Step back, Back out, then the bar.
+- **`api/casino` (C), as B asked:** `GET /api/casino?top=8` and `POST /api/casino` `{ id, chips, session }`. The sign-in must hold the Chog on testnet right now; the demo Chog is refused (403); the board keeps each Chog's best, capped at 10,000,000; names are `Chog #<id>` from the server (no free text on a public board); rate-limited. **Until Upstash Redis is set in Vercel it answers 503**, so B's client keeps showing this browser's board (one board per server instance would be worse). Tests: `node tools/brain/casino-test.mjs` (20 pass).
+- **B, two things found (B12, on the board):**
+  1. **The clouds' first real draw freezes the page**: 4.6 s on a repeat visit, 10 to 23 s on a first visit, about 4 s after "Explore as a guest", as the camera comes down from space. It is the same Intel behaviour you found for the rooms: `compileAsync` isn't enough, the driver builds the shader on the first draw, and the clouds' first draw happens after the loading screen because they are `away` in the space view. Draw the cloud pass once for real behind the loading screen (or while the connect screen is static), the way you did the rooms.
+  2. **The first casino entry still hitches on a first visit**: 14 frames over 120 ms in the 9 s walk-in, worst 1.3 s (fine on a repeat visit). Probably the same: something drawn for the first time.
+  - Also look at: the black band along the bottom of the casino's walls on the light look (screenshot: the right wall behind the machines).
+
 ### 2026-10-15 · C · The cast: 13 rigged Chogs for the world (A: please place them)
 Made in Tripo on the user's credits, then rigged and animated by C in Blender, checked frame by frame, and loaded in three.js (all play, all face +z). Files in `public/models/npcs/`. Every one is 2.2 m tall with feet on the origin (place at the same 1.7x as the singer outdoors), with one skinned mesh and 18 bones (`Head`, `Spine`, `HandR` as in `ATTACH`).
 
@@ -50,6 +62,50 @@ Made in Tripo on the user's credits, then rigged and animated by C in Blender, c
 - The token ids match their art, so a regular can be the real Chog of that id (its traits and brain persona line up).
 - **Weight:** 13 files, about 27 MB in total (2 to 3.7 MB each, 2K textures). Load them lazily: the bartender and regulars when the bar opens, the plaza cast when the camera is near the plaza, the rest when near their island. Never in the first frame.
 - Rig tools: `tools/models/rig_chog.py` (T-pose Chogs, with per-model fixes in `tools/models/rig_chog_overrides.txt`) and `tools/models/rig_simple.py` (sniffer and dino).
+
+### 2026-10-14 · B · B6 the casino's show (done)
+- **The spin** (`src/casino.js`): the lever pulls, the reels blur as they spin and sharpen as they slow, the camera leans in a little until they land, and the chips counter runs down and up rather than jumping.
+- **A win:** chips spill out of the tray onto the carpet and fountain out of the machine's top and down either side, clear of the winning line (more for a bigger win), the bulbs flash, and the win's name goes up in lights over the world ("THREE STARS!", "+80 chips"). A big win (20x and up) gives the camera a short shake.
+- **The jackpot, the casino's own cutscene** (three Chogs): JACKPOT in lights, then the camera pulls back from the machine and drifts across the room while every machine flashes and chips rain from the ceiling over the floor, your Chog waves if it came in with you, and the view comes back to the machine. About 5 s; a tap or Esc skips it. The panel steps aside while it plays.
+- **Walking in:** the machines' lights ripple on one after another as the camera comes through the door.
+- **No windows, so the casino is as bright at night as by day:** its lamps make up for the sky.
+- **Cost:** the chips are one instanced mesh, drawn at load with the room, so nothing compiles mid-game; the blur is a second texture of the same strip; the banner is HTML.
+- **Seen in the browser:** a spin (the blur and the counter), three stars (the chips clear of the line), the jackpot at night (the pull back, every machine flashing, the rain, JACKPOT in lights, back to the machine), and no shader built by any of it.
+- **See it:** `?view=casino`, PLAY CHOG SLOTS, SPIN. Dev hook for the cutscene: `chogWorld.casino._spin([9, 9, 9])` lands three Chogs.
+
+### 2026-10-14 · B · B8 the casino is open (done; C: one endpoint please, below)
+- **The casino's door opens** (`src/hub.js`): cut through the right wing's front like the bar's, framed in gold, two red lacquered leaves with gold rails, a stone step, and a hall with a red runner back to the casino's own door. The sign now says "free chips only". Picking Casino on the Hub plays the same walk-in as the lobby and the bar (your Chog walks in with you); it's on the Hub's room bar and compiled and drawn at load like the others.
+- **The room** (new `src/casino.js`): a deep wine room with gold pilasters, a plum and gold casino carpet, three slot machines along the back wall with stools and the TOP CHOGS board over them, a round green-felt card table with chips, and a velvet rope by the door. The lobby's tube used to reach into the right wing; it's cut away inside the room.
+- **The game, Chog Slots:** three reels of six symbols, all drawn in code (a coin, a die, a chip, a star, a heart), and **the jackpot symbol is your own Chog's face**. Three of a kind pays 6x to 150x, two Chogs 6x, one Chog or a pair on the first two reels gives the bet back. It returns about 94% of what is bet and something comes back on 4 spins in 10. Reels spin and land one after another with a little bounce, the lever pulls, the bulbs chase while it spins and flash on a win.
+- **Free chips only.** Chips are a number in this browser (`localStorage`, per Chog), topped up to the day's amount every day. No wallet call, no transaction, nothing on chain; $CHOG is never involved.
+- **Perks from your Chog's traits** (shown in the panel with the trait that gives them):
+  - Tier sets the day's chips: Common 500, Uncommon 600, Rare 800, Epic 1000, Legendary 1500.
+  - Re-rolls: 1 a day, +2 for laser eyes, +1 for a lucky charm (Coin, Heart, Green Candle or Fwog). After a losing spin you can spin one reel again.
+  - A small multiplier on wins: 1.2x for a Crown, a Kings Robe or a Cigar, 1.1x for a Tuxedo or a Gangster suit.
+  - Guests play as Common.
+- **How to play:** in the casino a panel shows your chips and perks; PLAY CHOG SLOTS walks you up to the middle machine, then SPIN (or Space), the bet from 5 to 100, Re-roll after a miss, and Step back.
+- **C, the leaderboard needs one endpoint**, `api/casino.js` (your folder, so I haven't written it). Until it's there the board shows this browser's Chogs.
+  - `GET /api/casino?top=8` returns `{ top: [{ id, name, chips }] }`, most chips first.
+  - `POST /api/casino` with `{ id, name, chips, session: { address, message, signature } }`: check the session with `whoIsTalking` as `api/chat` does (the Chog must be the keeper's), then keep the larger of the stored and sent `chips` for that id (a Redis sorted set). Cap `chips` at 10,000,000. The client sends at most every 20 s, and never for guests or the demo Chog.
+- **Shared and other files:** `src/main.js` (the casino on the Hub's room list, in the load's room draws, and its game: `casino.show()` and `casino.update(dt)` in `frame()`), `src/style.css` (my block: the casino panel), `src/interior.js` (small edit: `export class Room`, so the casino is built from the same parts), `src/island.js` (small edit: the casino's room sits in the right wing's shell).
+- **Seen in the browser:** the walk in (a guest, and the demo Chog walking in with you: no shader built), the room at noon and at night, PLAY, a jackpot, a miss with a re-roll, the panel on a phone, and the facade at dusk.
+- **A:** your Chog walks into the casino through your `walkIn` like any Hub room; its spot comes from the room's view, which the casino sets to its own framing (the machines and the board).
+- **See it:** the Hub, then Casino; or `?view=casino`. Dev hook: `chogWorld.casino` (`.state`, `.play()`).
+
+### 2026-10-14 · B · HD 520 fixes (rooms ready at load, lighter indoors, a light look for Intel HD, no stair-steps in the halls), and A's three notes
+- **A's notes, done:**
+  1. **No shader builds on a first room entry now**, the bar's included (measured: the lobby and the bar with the demo Chog walking in, 0 added; a guest's bar entry through the first screen, 0; the homes, 0). With `?nointro` or a `?view=` link one still builds in the bar: your template standee, warmed only while the first screen is up. The Lambert one was the room's own walls and floor: a room's lamps take its textures as their glow on its first update, which switched their shader. Now each room is set up that way before the world compiles.
+  2. `src/intro.js`: the getter is `intro.current` now; `intro.state(name, data)` is the method.
+  3. `'none'` shows TRY A DEMO CHOG when its data has `demo()`, and a new `'pick'` state `{ chogs: [{ id, name, image }], pick(id), guest() }` shows a card per Chog (their art in pixel frames) if you'd rather pick on the screen than on your panel.
+  - **My last push had switched intro.js and arrival.js to your earlier proposal while you built on the version in main. I've gone back to the one you integrated** (`connect`/`step`/`searching`/`found`/`none`/`error`, `startIntro`, `flyHome` resolving with the pod's door), so nothing changes on your side. Kept from that round: the demo button in your wallet list gets the quieter lilac style, the welcome stays up at least 1.8 s before the screen tears away, and the world's controls stay hidden through the flight and fade in once the camera is at the pod.
+  - **Room entries with your API:** `walkIn` is called the frame the room first shows, with `delay` set so your Chog steps through the door as the camera's sweep comes round to it; the camera follows `promise.chog` (your mark in the bar, so it ends on the pair) and turns back to the room's view elsewhere. A guest's view turns to `focusIn(room)` when there is one. Leaving: `walkOut` first, the camera watches your Chog go out of the door, then flies out after it. Times with a Chog: about 9 s in, 8 s out.
+- **Rooms are drawn during loading** (`src/main.js`, shared). Compiling isn't enough on Intel: its driver finishes a shader only the first time it draws with it, which is what made the first walk into a room crawl. Behind the loading screen each kind of room (the lobby, the bar, one home; the homes share their materials) is now drawn once, on its own, from its own view: three small draws of a room alone, not the world.
+- **Lighter indoors.** The rooms have no lights to cut (the world has the sun and the sky's light, nothing else). What a room cost was the clouds, about 40% of a frame indoors here, seen only through a window. On the light look (`?q=low`, `?q=medium`, or an Intel HD/UHD chip), once you're settled in a room the clouds fade out over 0.8 s and their pass stops; they fade back in as you leave, before the doors open. On the full look they stay.
+- **A light look for Intel HD and UHD** when the address has no `?q`: medium shadows (2048), the light clouds (Takram's low preset at half resolution: no detail noise, at most 200 steps a ray), one pixel per screen pixel. Every per-frame GPU job is several times smaller than on the full look, so no frame comes near Windows' 2 s limit. `?q=...` still wins; `?weakgpu` tries the light look on any machine; the console says which look it picked (`GPU: ...; quality ...`).
+- **Big one-off GPU jobs, checked:** the sky tables are files now (that was the job over 2 s; the resets stopped with it), the clouds' textures go up one a frame, the sky's light bake is a 256 px cube of the sky alone, the tree impostors are small tiles, and the sun's shadow map is redrawn only when the sun moves (2048 on the light look). None is large.
+- **No stair-steps in the halls** (`src/hub.js`, `src/dome.js`). In the afternoon the sun came in through the doorway and lit a patch inside the hall, and the shadow map's coarse steps showed along its edge on the open doors and the walls. The halls and the rooms' own doors are now never in the sun (lit by their lamps and the sky, as an indoor hall is), and a door's sunlight fades as it swings open into the hall's shade. Closed, the doors look as before. One shader more in all. Checked at 9:00, 16:00 and 17:30.
+- **C, on the HD 520, please check:** the first visit's load, a first bar entry (it should hold its frame rate now), fps inside a room, and that the console's `GPU:` line says `quality medium (light look for this GPU)`.
+
 ### 2026-10-14 · A · Integration with B7 to B11, end to end (A; then for B, via the user)
 - **Seen running end to end** (headless Chrome, desktop and phone, `?q=low`, a stand-in wallet and testnet RPC, mock brain and brain down):
   - First screen, connect, approve, sign, searching, "Welcome, <name>", B's flight, then the pod door opens and your Chog steps out and says hello.

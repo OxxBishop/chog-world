@@ -8,10 +8,12 @@
  *   'step'      { title, text }                                 a step that waits on the wallet
  *   'searching' { text }                                        the running Chog, until tokensOf answers
  *   'found'     { name, image }                                 "Welcome, <name>", with its own face
- *   'none'      { claim(), guest(), text }                      no Chog in this wallet
+ *   'pick'      { chogs: [{ id, name, image }], pick(id), guest() }  a card per Chog in the wallet
+ *   'none'      { claim(), demo(), guest(), text }              no Chog in this wallet
  *   'error'     { text, retry(), guest() }                      something failed
- * flyHome(room) (from src/arrival.js) tears the screen away and flies down to that home; close() just
- * tears it away (a guest, say).
+ * flyHome(room) (from src/arrival.js) tears the screen away and flies down to that home, once the
+ * welcome has been up long enough to read (held()); close() just tears it away (a guest, say).
+ * current says which state is up.
  *
  * The running Chog is the official art, pixelated here as it loads: no sprite is drawn by hand.
  */
@@ -202,6 +204,9 @@ export function createIntro(el) {
   runnerCanvas.className = 'runner';
   const runner = createRunner(runnerCanvas);
   let current = 'loading';
+  // When the glitch welcome went up: it gets its moment before the screen tears away.
+  let welcomeAt = 0;
+  const WELCOME_MIN = 1800;
 
   const burst = () => {
     el.classList.remove('burst');
@@ -231,7 +236,7 @@ export function createIntro(el) {
 
   const api = {
     el,
-    get state() {
+    get current() {
       return current;
     },
     // The load is done: the world shows through, dimmed.
@@ -247,8 +252,9 @@ export function createIntro(el) {
       if (name === 'connect') {
         setTitle('WELCOME TO', 'CHOG WORLD');
         const wallets = data.wallets ?? [];
+        // A wallet's button in the bright style; the demo Chog's beside them in the quieter one.
         const buttons = wallets.length
-          ? wallets.map((w) => `<button class="px wallet">${w.icon ? `<img src="${esc(w.icon)}" alt="">` : ''}${esc(w.name.toUpperCase())}</button>`).join('')
+          ? wallets.map((w) => `<button class="px wallet${/demo/i.test(w.name) ? ' alt' : ''}">${w.icon ? `<img src="${esc(w.icon)}" alt="">` : ''}${esc(w.name.toUpperCase())}</button>`).join('')
           : `<button class="px wallet">CONNECT WALLET</button>`;
         show(`
           <div class="prompt">CONNECT WALLET TO BEGIN<span class="cursor"></span></div>
@@ -264,7 +270,17 @@ export function createIntro(el) {
         setTitle('WELCOME TO', 'CHOG WORLD');
         runner.reset();
         show(`<div class="prompt">SEARCHING YOUR WALLET<span class="cursor"></span></div>${data.text ? `<p class="note">${esc(data.text)}</p>` : ''}`, { run: true });
+      } else if (name === 'pick') {
+        setTitle('WELCOME TO', 'CHOG WORLD');
+        const chogs = data.chogs ?? [];
+        show(`
+          <div class="prompt">PICK YOUR CHOG</div>
+          <div class="chogs">${chogs.map((c) => `<button class="chog"><img src="${esc(c.image)}" alt=""><span>${esc(String(c.name).toUpperCase())}</span></button>`).join('')}</div>
+          <button class="link guest">Explore as a guest</button>`);
+        on('.chog', (i) => data.pick?.(chogs[i].id));
+        on('.guest', () => data.guest?.());
       } else if (name === 'found') {
+        welcomeAt = performance.now();
         setTitle('WELCOME,', (data.name ?? 'CHOG').toUpperCase());
         show(`<div class="prompt">TAKING YOU HOME<span class="cursor"></span></div>`, { run: true });
         if (data.image) runner.yours(data.image);
@@ -273,9 +289,10 @@ export function createIntro(el) {
         show(`
           <div class="prompt">NO CHOGS IN THIS WALLET</div>
           ${data.text ? `<p class="note">${esc(data.text)}</p>` : ''}
-          <div class="buttons"><button class="px claim">CLAIM A FREE CHOG</button></div>
+          <div class="buttons">${data.claim ? '<button class="px claim">CLAIM A FREE CHOG</button>' : ''}${data.demo ? '<button class="px alt demo">TRY A DEMO CHOG</button>' : ''}</div>
           <button class="link guest">Explore as a guest</button>`);
         on('.claim', () => data.claim?.());
+        on('.demo', () => data.demo?.());
         on('.guest', () => data.guest?.());
       } else if (name === 'error') {
         setTitle('WELCOME TO', 'CHOG WORLD');
@@ -288,8 +305,14 @@ export function createIntro(el) {
         on('.guest', () => data.guest?.());
       }
     },
-    // Tears the screen away. Resolves once it is gone.
-    close() {
+    // Resolves once the welcome has been up long enough to read.
+    held() {
+      const left = welcomeAt + WELCOME_MIN - performance.now();
+      return new Promise((resolve) => setTimeout(resolve, Math.max(0, left)));
+    },
+    // Tears the screen away. Resolves once it is gone. keepHud leaves the world's controls hidden
+    // (through the arrival flight, until revealHud()).
+    close({ keepHud = false } = {}) {
       current = 'closed';
       runner.stop();
       el.classList.add('leaving');
@@ -297,10 +320,18 @@ export function createIntro(el) {
         setTimeout(() => {
           el.classList.add('done');
           el.classList.remove('leaving');
-          document.body.classList.remove('intro-open');
+          if (!keepHud) document.body.classList.remove('intro-open');
           resolve();
         }, 560),
       );
+    },
+    // The world's controls fade back in.
+    revealHud() {
+      const body = document.body;
+      if (current !== 'closed' || !body.classList.contains('intro-open')) return;
+      body.classList.add('intro-reveal');
+      body.classList.remove('intro-open');
+      setTimeout(() => body.classList.remove('intro-reveal'), 900);
     },
   };
   return api;

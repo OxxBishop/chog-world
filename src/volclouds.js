@@ -531,6 +531,8 @@ export function createVolumetricClouds(renderer, camera) {
   let lastT = 0;
   // How far the clouds have given way to something else (the world seen from space), 0 to 1.
   let away = 0;
+  // And how far they have faded for being indoors, where only a window shows them.
+  let indoor = 0;
 
   // Every texture the clouds draw from. The sky's light (transmittance, irradiance and scattering
   // through the air) was worked out once on the GPU at every load; it is the same every time, so it
@@ -566,7 +568,7 @@ export function createVolumetricClouds(renderer, camera) {
     hold(p) {
       pass = p;
       wanted = p.enabled;
-      Object.defineProperty(p, 'enabled', { get: () => warming || (ready && wanted && away < 1), set: (v) => (wanted = v), configurable: true });
+      Object.defineProperty(p, 'enabled', { get: () => warming || (ready && wanted && away < 1 && indoor < 1), set: (v) => (wanted = v), configurable: true });
     },
     /**
      * Brings the clouds in: loads their textures and puts them on the GPU, builds their shaders in the
@@ -578,6 +580,11 @@ export function createVolumetricClouds(renderer, camera) {
     // Fades the clouds out (k = 1, and their pass stops drawing) or back in (k = 0).
     setAway(k) {
       away = k;
+    },
+    // The same for being settled in a room (k = 1): the clouds are most of a frame's cost and a room
+    // shows them only through its windows, so they stop drawing there.
+    setIndoor(k) {
+      indoor = k;
     },
     async stream(draw) {
       let textures = [];
@@ -636,7 +643,7 @@ export function createVolumetricClouds(renderer, camera) {
     update(env, sky, t) {
       lastT = t;
       const shown = shownAt === null ? 0 : THREE.MathUtils.smoothstep(t, shownAt, shownAt + FADE_IN);
-      composite.uniforms.get('fade').value = shown * (1 - away);
+      composite.uniforms.get('fade').value = shown * (1 - away) * (1 - indoor);
       composite.setEnv(env, sky, t);
       setDrift(t);
       // By day the sun lights the clouds; at night a dim lilac moon takes its place, which is the
