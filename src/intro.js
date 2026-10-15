@@ -7,7 +7,7 @@
  *   'connect'   { wallets: [{ name, icon, pick() }], guest() }   the call to connect, a button per wallet
  *   'step'      { title, text }                                 a step that waits on the wallet
  *   'searching' { text }                                        the running Chog, until tokensOf answers
- *   'found'     { name, image }                                 "Welcome, <name>", with its own face
+ *   'found'     { name, image }                                 "Welcome to Chog World", your Chog waiting
  *   'pick'      { chogs: [{ id, name, image }], pick(id), guest() }  a card per Chog in the wallet
  *   'none'      { claim(), demo(), guest(), text }              no Chog in this wallet
  *   'error'     { text, retry(), guest() }                      something failed
@@ -294,9 +294,10 @@ export function createIntro(el) {
         on('.chog', (i) => data.pick?.(chogs[i].id));
         on('.guest', () => data.guest?.());
       } else if (name === 'found') {
+        // Welcome to Chog World, and then the warp down to it (src/space.js, src/arrival.js).
         welcomeAt = performance.now();
-        setTitle('WELCOME,', (data.name ?? 'CHOG').toUpperCase());
-        show(`<div class="prompt">TAKING YOU HOME<span class="cursor"></span></div>`, { run: true });
+        setTitle('WELCOME TO', 'CHOG WORLD');
+        show(`<div class="prompt">${esc((data.name ?? 'YOUR CHOG').toUpperCase())} IS WAITING FOR YOU<span class="cursor"></span></div>`, { run: true });
         if (data.image) runner.yours(data.image);
       } else if (name === 'none') {
         setTitle('WELCOME TO', 'CHOG WORLD');

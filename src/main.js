@@ -383,10 +383,10 @@ async function init() {
   VIEWS.home = VIEWS[`home${DOMES.indexOf(home)}`];
   buildPickables();
   // The world seen from space, ready before the shaders are built so it never stalls.
-  space = createSpace({ scene, camera, renderer, sky, clouds, rig, dip: fadeThrough });
+  space = createSpace({ scene, camera, renderer, sky, clouds, rig, dip: fadeThrough, quality: LIGHT ? 'low' : 'high' });
   // Walking into the Hub's rooms and out again, as one move (src/entry.js).
   // The flight down to your Chog's home after signing in (src/arrival.js).
-  arrival = createArrival({ camera, rig, space, domes: island.domes });
+  arrival = createArrival({ camera, rig, space, domes: island.domes, dom: renderer.domElement, quality: LIGHT ? 'low' : 'high' });
   entry = createEntry({ camera, rig, hub: island.hub, fovs: { outdoor: outdoorFov, indoor: () => (camera.aspect < 1 ? 64 : 52) }, dom: renderer.domElement, session: () => session });
   // The Chogs about town, each once its model is in; ?npcs shows every slot, with stand-ins. They load
   // with the rest, so the first one drawn (the singer) is drawn behind the loader: every rigged Chog
@@ -433,8 +433,9 @@ async function init() {
   cast.dispose();
   // A dome's glass and steel as you see them close up, as the arrival flies in.
   drawOnce(island.domes[0].group.children.find((o) => o.isLOD), litNow(), { all: true });
-  // And space, the void and its stars, which the connect screen opens on.
-  drawOnce(space.group);
+  // And space, the planet and the sky round it, which the connect screen opens on, and warp speed.
+  drawOnce(space.group, litNow(), { all: true });
+  drawOnce(space.warp.group, litNow(), { all: true });
   // Then the clouds go up onto the GPU and their pass is drawn for real in the frames below, still
   // behind the loader: out from space their first draw froze the page for seconds on Intel. A slow
   // download doesn't hold the world up for long; they come in when they can.
@@ -539,7 +540,12 @@ async function init() {
         // The welcome has its moment first; the world's controls stay away until the camera is there.
         await intro.held();
         intro.close({ keepHud: true });
-        const landed = await arrival.fly(room);
+        // From the planet (B25): the warp in, the screen goes blank, and you wake up in the dome.
+        let landed;
+        if (space.active) {
+          await space.dive();
+          landed = await arrival.wake(room);
+        } else landed = await arrival.fly(room);
         intro.revealHud();
         return landed;
       },
@@ -569,7 +575,7 @@ async function init() {
   // The casino's game (B8): its panel shows while you're inside.
   casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active, sky });
   // The session warms its Chogs' shaders as it starts: the loader waits for those too.
-  await Promise.race([Promise.all([session.warmed, ...warming]), new Promise((r) => setTimeout(r, 15000))]);
+  await Promise.race([Promise.all([session.warmed, space.ready, ...warming]), new Promise((r) => setTimeout(r, 15000))]);
   load.finish({ keep: withIntro });
   if (params.has('debug')) window.chogDebug = debug = createDebug({ renderer, post, sky });
   if (SHOTS[params.get('demo')]) {
@@ -863,9 +869,11 @@ function frame() {
   entry?.update(dt);
   arrival?.update(dt);
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
-  const fov = entry?.fov() ?? (rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov());
+  // Warp speed (B25) has the lens to itself.
+  const warpFov = space?.fov();
+  const fov = warpFov ?? entry?.fov() ?? (rig.room instanceof RoomBox ? (camera.aspect < 1 ? 64 : 52) : outdoorFov());
   if (Math.abs(camera.fov - fov) > 0.05) {
-    camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
+    camera.fov = warpFov ?? camera.fov + (fov - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
     setGlowFov(camera.fov);
   }

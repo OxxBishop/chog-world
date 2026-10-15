@@ -27,6 +27,47 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · B · B25 Chog World, the planet; warp speed; waking up in your dome (done)
+- **Space is a planet now, not the floating islands.** It's the user's pick, look A, "amethyst" (`src/planet.js`): Earth-shaped but purple, with violet and lilac land, violet seas, pink lagoons, white clouds, a violet sky round the rim, a magenta dusk, city lights on the night side, a faint ring and a lilac moon.
+  - Its surface is painted on the GPU at load, in tiles (B12), into two maps: 4096 wide, or 2048 on the light look and on phones.
+  - `?planet=bloom` and `?planet=dusk` show the two looks it was picked from.
+- **The space round it** (`src/cosmos.js`), all in the purple:
+  - a nebula sky painted once into a cube map (a violet band, a rose cloud, a teal wisp, dark dust lanes)
+  - thousands of stars, five dwarf stars with glints
+  - four constellations: the Crown, the Die, the Lucky Coin and the Ladle
+  - a belt of tumbling rocks and amethyst shards round the planet, with lilac dust
+- **Easter egg:** every minute or two, about fifty stars swim together into a smiling Chog. It has the spiky fur all round its head, happy closed eyes with lashes, blush, an open smile and the gold mark on its forehead. It traces itself in lines, holds, and drifts apart. `?chogstars` makes it come within seconds.
+- **The world isn't drawn out there:** the camera sees render layer 1 only, and only space is on it.
+- **Warp speed** (`src/warp.js`, `src/space.js`):
+  - **Out** (a sale, signing out, Sign in): the view tilts up and launches. Streaks, a flash, the violet tunnel, then a drop out of warp into orbit. From inside a room it dips out to beyond the dome first.
+  - **In** (a guest, `leaveSpace`): a lunge at the planet, streaks and a pink glow of entry, white, then the world.
+  - Under reduced motion both are fades. The lens is the warp's while it runs: `space.fov()`, one line in `src/main.js`.
+- **The arrival, as the user described it:**
+  1. The planet is behind the loading screen: a still (`public/art/planet.webp`, `planet-tall.webp`), then the live planet behind the connect screen.
+  2. Once you pick (a Chog in the wallet, or the demo Chog): "WELCOME TO CHOG WORLD, <NAME> IS WAITING FOR YOU".
+  3. The screen tears away and you dive into the planet. White, then blank.
+  4. You wake up dazed, lying on the grass in your Chog's dome (`arrival.wake(room)` in `src/arrival.js`). Your eyes open a slit on the glass overhead, blink, open; everything swims and blurs.
+  5. You sit up, woozy, to face your Chog's door.
+  6. A's `playArrival` then brings your Chog out to wave.
+- **For A:**
+  - `intro.flyHome(room)` still resolves with `{ door, rest }` and your `playArrival` runs unchanged; checked with the demo Chog ("There you are! Welcome home.").
+  - `enterSpace({ from, duration })` and `leaveSpace({ duration })` keep their meaning.
+  - New: `space.ready` (the load waits for the paint), `space.dive()`.
+- **B12:**
+  - The planet, the sky, the debris, the warp and the eyelids are all drawn in the load. The warp is drawn separately: `drawOnce(space.warp.group, ...)`.
+  - The stall check is clean through the connect screen, the demo arrival and the guest descent.
+  - If a slow machine is still painting when the load ends, the sky and the planet fade in once done, never half-painted.
+- **Skills (the user asked):** six project skills in `.claude/skills/`, written from what works in this codebase:
+  - webgl-webgpu-shader-authoring
+  - skybox-and-space-shot-generation
+  - js-timeline-and-easing-orchestrator
+  - js-canvas-performance-profiler
+  - ai-cinema-director
+  - volumetric-clouds-and-vfx
+
+  The other 18 on the user's list were for rigging, physics, modelling and video, which are A's and C's areas or not used here.
+- **Left:** B24 (the effects A wired hooks for) is next.
+
 ### 2026-10-15 · A · The cast's models redone (the user's notes): skin, colours, clips
 - **No more T-pose:** every Chog that stood "idle" was in a T-pose (Tripo's Idle clip was one, and a bug in `src/chog.js` meant no idle ever played anyway: the state started as 'idle', so the first `play('idle')` did nothing). Idle and Talk are now real animations, retargeted from the Quaternius Universal Animation Library (CC0) onto the Chog rig (`tools/models/retarget.js`, baked into each GLB). Walk, Run, Wave and Cheer are still Tripo's until the user picks a walk.
 - **Skin:** Tripo's weights tore at the shoulders when an arm came down (the shark's "things behind its arms", the King's sleeves). New weights round the shoulders and inside each arm's volume, Tripo's elsewhere, so an arm never drags a head, chest or robe (an all-new skin did, and folded King Pom's head).
@@ -35,7 +76,6 @@ are real but free.
 - **The procedural walk (`src/gait.js`) is off** (`USE_GAIT` in chog.js): the user turned it down. Kept for now in case its foot planting is wanted on top of clips.
 - **How to rebuild:** `tools/models/fix/README.md`. Checks: `tools/models/review.html`, `stretch.html`, `anim.html`.
 - **Next (A):** walk options from real animation libraries for the user to pick; the singer rebuilt on the plain Chog's clean body with a handheld mic (its Tripo model is the weakest in the cast: a broken raised hand where the old stand passed through its fist).
-
 
 ### 2026-10-15 · B · B23 the Starlite Lounge: slots, roulette, an edge for every trait (done)
 - **Starlite is the casino now** (the user's pick). The other looks stay a link away: `?casino=capsule`, `pier` or `classic`.

@@ -1,288 +1,199 @@
 import * as THREE from 'three';
-import { ISLANDS } from './layout.js';
+import { createPlanet, RADIUS } from './planet.js';
+import { createWarp } from './warp.js';
+import { createCosmos } from './cosmos.js';
 
 /*
- * The world seen from space: the whole archipelago as a little diorama floating in a starry void.
- * The sky, the sea of clouds and the sea below give way to deep space with a purple nebula across
- * it; the islands, their rocky undersides, the bridges and everything on them stay, lit softly
- * whatever the hour. The camera is carried out to a slow orbit round it.
+ * The world seen from space (B25): Chog World, the planet the islands are part of, turning slowly in
+ * a starry violet void, a little lilac moon going round it (src/planet.js). It's what the connect
+ * screen opens on, and where you are carried when you leave the world (a sale, signing out).
  *
- * Used when the user is carried out of the world (a sale, signing out) and behind the sign-in panel.
- * Nothing here changes a shader: the void and the stars are their own two objects, compiled at load
- * with the rest of the world, and the rest is lights, fog distance and visibility.
+ * The way there and back is warp speed (src/warp.js):
+ *   out    the view tilts up to the sky and launches, streaks rush past, a flash, the violet tunnel;
+ *          a beat later it drops out of warp into orbit, the planet filling the view
+ *   in     from orbit the view lunges at the planet, streaks and a pink glow of entry, the screen
+ *          white; then the world (leave()), or the white held for the caller to take over (dive(),
+ *          the arrival: src/arrival.js wakes you up in your Chog's dome)
+ * Under prefers-reduced-motion both are a plain fade.
+ *
+ * Out here the world is not drawn at all: the camera sees only render layer 1, which only the void,
+ * the stars, the planet and the warp are on (they're on layer 0 too, so the load draws them with the
+ * rest and their shaders are built before anything shows, B12).
  */
 
-// The middle of the archipelago, and how far it reaches (rims and lobes included).
-const CENTRE = new THREE.Vector3(0, 0, 0);
-const REACH = Math.max(...ISLANDS.map((i) => Math.hypot(i.x, i.z) + i.r * 1.3));
-// The orbit: looking down at it from this far above the horizon, turning slowly round.
-const ELEVATION = 0.42;
-const SPIN = 0.025;
-// How much of the screen the diorama fills across, at most, and how far its rocky undersides hang.
-const FILL = 0.88;
-const HANG = 110;
-const STARS = 3400;
+const SPACE = 1;
 
-const voidVert = /* glsl */ `
-varying vec3 vDir;
-void main() {
-  vDir = position;
-  vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  gl_Position = p.xyww;
-}`;
-
-const voidFrag = /* glsl */ `
-uniform float uOpacity;
-uniform float uTime;
-varying vec3 vDir;
-
-float hash(vec3 p) {
-  p = fract(p * 0.3183099 + 0.1);
-  p *= 17.0;
-  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
-}
-float noise(vec3 x) {
-  vec3 i = floor(x), f = fract(x);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
-    mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-}
-float fbm(vec3 p) {
-  float s = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++) { s += a * noise(p); p *= 2.03; a *= 0.5; }
-  return s;
-}
-
-void main() {
-  vec3 d = normalize(vDir);
-  // Deep violet, a touch lighter overhead.
-  vec3 col = mix(vec3(0.010, 0.006, 0.030), vec3(0.040, 0.020, 0.090), smoothstep(-0.7, 0.9, d.y));
-  // A band of nebula across the sky, in wisps, drifting very slowly.
-  float band = exp(-pow((d.y * 0.85 + d.x * 0.4 - 0.15) / 0.5, 2.0));
-  float n = fbm(d * 2.4 + vec3(0.0, 0.0, uTime * 0.004));
-  float w = smoothstep(0.42, 0.85, n) * band;
-  float core = smoothstep(0.6, 0.95, fbm(d * 5.1 + 3.7)) * w;
-  col += vec3(0.30, 0.10, 0.50) * w * 0.5 + vec3(0.75, 0.30, 0.70) * core * 0.35;
-  gl_FragColor = vec4(col, uOpacity);
-  #include <colorspace_fragment>
-}`;
-
-const starVert = /* glsl */ `
-attribute float aSize;
-attribute vec3 aColor;
-attribute float aPhase;
-uniform float uTime;
-uniform float uOpacity;
-uniform float uScale;
-varying vec3 vColor;
-varying float vAlpha;
-void main() {
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  // On the far plane, behind everything in the world.
-  gl_Position.z = gl_Position.w;
-  vAlpha = uOpacity * (0.7 + 0.3 * sin(uTime * (0.8 + aPhase) + aPhase * 40.0));
-  vColor = aColor;
-  gl_PointSize = aSize * uScale;
-}`;
-
-const starFrag = /* glsl */ `
-varying vec3 vColor;
-varying float vAlpha;
-void main() {
-  float r = length(gl_PointCoord - 0.5) * 2.0;
-  float a = 1.0 - smoothstep(0.0, 1.0, r);
-  gl_FragColor = vec4(vColor, a * a * vAlpha);
-  #include <colorspace_fragment>
-}`;
-
-function starField(radius) {
-  let seed = 7;
-  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const pos = [], size = [], color = [], phase = [];
-  const tints = [[1, 1, 1], [0.8, 0.88, 1], [1, 0.82, 0.95], [1, 0.93, 0.8], [0.86, 0.78, 1]];
-  const v = new THREE.Vector3();
-  for (let i = 0; i < STARS; i++) {
-    // Uniform over the sphere, with a third of them gathered along the nebula's band.
-    v.set(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1);
-    if (v.lengthSq() > 1 || v.lengthSq() < 1e-4) {
-      i--;
-      continue;
-    }
-    v.normalize();
-    if (i % 3 === 0) {
-      const off = (v.y * 0.85 + v.x * 0.4 - 0.15) * 0.75;
-      v.y -= off / 0.85;
-      v.normalize();
-    }
-    pos.push(v.x * radius, v.y * radius, v.z * radius);
-    // Mostly faint pinpricks, a few bright enough to glow.
-    const bright = rnd();
-    const k = bright > 0.985 ? 3.2 : bright > 0.9 ? 1.8 : 1.0 + rnd() * 0.5;
-    size.push(bright > 0.985 ? 4.6 : bright > 0.9 ? 3.0 : 1.8 + rnd());
-    const t = tints[Math.floor(rnd() * tints.length)];
-    color.push(t[0] * k, t[1] * k, t[2] * k);
-    phase.push(rnd());
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('aSize', new THREE.Float32BufferAttribute(size, 1));
-  g.setAttribute('aColor', new THREE.Float32BufferAttribute(color, 3));
-  g.setAttribute('aPhase', new THREE.Float32BufferAttribute(phase, 1));
-  return g;
-}
-
-const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
+const smooth = (x, a, b) => THREE.MathUtils.smoothstep(x, a, b);
+const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const easeOut = (x) => 1 - Math.pow(1 - clamp01(x), 3);
+// 0 to 1 over [a, b], then back to 0 over [b, c].
+const bump = (x, a, b, c) => (x < b ? smooth(x, a, b) : 1 - smooth(x, b, c));
+const still = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /**
- * rig: the camera rig, whose pose is kept so the view can fly back to it. dip(fn): a quick fade to
- * dark and back, running fn while it is dark.
+ * rig: the camera rig, whose pose is where the world comes back to. dip(fn): a quick fade to dark
+ * and back, running fn while it is dark. quality: 'low' paints the planet smaller and thins the warp.
  */
-export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip }) {
+export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip, quality = 'high' }) {
   const group = new THREE.Group();
   group.visible = false;
-  const voidMat = new THREE.ShaderMaterial({
-    uniforms: { uOpacity: { value: 0 }, uTime: { value: 0 } },
-    vertexShader: voidVert,
-    fragmentShader: voidFrag,
-    side: THREE.BackSide,
-    transparent: true,
-    depthWrite: false,
-  });
-  const backdrop = new THREE.Mesh(new THREE.SphereGeometry(500, 48, 24), voidMat);
-  // Before every other see-through thing, so the dome glass and the glows draw over it.
-  backdrop.renderOrder = -1;
-  backdrop.frustumCulled = false;
-  const starMat = new THREE.ShaderMaterial({
-    uniforms: { uOpacity: { value: 0 }, uTime: { value: 0 }, uScale: { value: 1 } },
-    vertexShader: starVert,
-    fragmentShader: starFrag,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-  const stars = new THREE.Points(starField(500), starMat);
-  stars.renderOrder = -1;
-  stars.frustumCulled = false;
-  group.add(backdrop, stars);
+  // The planet's look (src/planet.js), the user's pick; ?planet= shows the others.
+  const planet = createPlanet({ renderer, quality, style: new URLSearchParams(location.search).get('planet') ?? 'amethyst' });
+  // The space round it (src/cosmos.js): the nebulae, the stars, the debris belt (outside the rings,
+  // in their plane, where there are rings).
+  const ringed = planet.ring;
+  const cosmos = createCosmos({ renderer, quality, sun: planet.sun, radius: RADIUS, belt: ringed ? { inner: ringed.outer + 0.1, outer: ringed.outer + 0.5, normal: ringed.normal } : undefined });
+  // The sky round the camera, wherever it goes; the planet and its debris where they are.
+  const sphere = cosmos.sky;
+  planet.group.add(cosmos.debris);
+  const warp = createWarp({ quality });
+  group.add(sphere, planet.group);
   scene.add(group);
+  // The warp draws over everything, in the world too.
+  scene.add(warp.group);
+  for (const root of [group, warp.group]) root.traverse((o) => o.layers.enable(SPACE));
 
-  // The pose the rig gave the camera this frame, before space took over.
-  const rigPos = new THREE.Vector3();
-  const rigQuat = new THREE.Quaternion();
-  // A flight: from (position, look) to the orbit, or from the orbit back to the rig.
-  let flight = null;
-  // 'off', 'in' (flying out), 'there' (orbiting), 'back' (flying home)
+  // 'off', 'out' (warping out), 'there' (in orbit), 'in' (diving at the planet), 'held' (white, for the caller)
   let state = 'off';
-  let theta = 0;
-  let k = 0;
+  let run = null;
   let time = 0;
   let lastNow = performance.now();
-  const look = new THREE.Vector3();
-  const q = new THREE.Quaternion();
+  let fov = null;
+  // In space (1) or in the world (0): which the camera sees.
+  let k = 0;
+  const C = new THREE.Vector3();
+  const pos = new THREE.Vector3(), look = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
 
-  // How far out the orbit sits: the archipelago fills FILL of the screen's width, unless its height
-  // from this angle (the land foreshortened, the undersides below) would need more room than that.
-  function orbitDist() {
-    const halfV = THREE.MathUtils.degToRad(camera.fov / 2);
-    const halfH = Math.atan(Math.tan(halfV) * camera.aspect);
-    const across = REACH / Math.tan(halfH * FILL);
-    const tall = (REACH * Math.sin(ELEVATION) + HANG) / Math.tan(halfV * 0.82);
-    return Math.max(across, tall);
+  // The orbit: back far enough for the planet to fill the lower part of the view, its rim glowing,
+  // the stars above; swaying a little, never still. On a tall screen a little further out.
+  function orbit(t, outPos, outLook) {
+    const tall = camera.aspect < 1;
+    // With wide rings, further out, so they fit round it.
+    const D = RADIUS * (tall ? 2.75 : 2.3) * (planet.style === 'bloom' ? 1.25 : 1);
+    const a = 0.32 + Math.sin(t * 0.045) * 0.06;
+    const e = 0.1 + Math.sin(t * 0.031 + 1.0) * 0.02;
+    outPos.set(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e)).multiplyScalar(D).add(C);
+    outLook.copy(C).addScaledVector(up, RADIUS * (tall ? 0.62 : 0.78));
+    return outPos;
   }
-  function orbitPos(out) {
-    const d = orbitDist();
-    return out.set(Math.sin(theta) * Math.cos(ELEVATION), Math.sin(ELEVATION), Math.cos(theta) * Math.cos(ELEVATION)).multiplyScalar(d).add(CENTRE);
-  }
-  // The camera's far plane has to take in the far side of the diorama.
   function ensureFar() {
-    const need = orbitDist() + REACH + 200;
+    const need = RADIUS * 6;
     if (camera.far < need) {
       camera.far = need;
       camera.updateProjectionMatrix();
     }
   }
+  const into = (on) => {
+    k = on ? 1 : 0;
+    if (on) rig.room = null;
+  };
 
-  // Distance out from the centre eased in log space, so the pull back reads as one steady zoom, and
-  // its direction swung round from where it starts to where it ends.
-  const fromDir = new THREE.Vector3(), toDir = new THREE.Vector3(), axis = new THREE.Vector3();
-  function dolly(a, b, s, out) {
-    const da = a.distanceTo(CENTRE), db = b.distanceTo(CENTRE);
-    fromDir.subVectors(a, CENTRE).normalize();
-    toDir.subVectors(b, CENTRE).normalize();
-    const angle = fromDir.angleTo(toDir);
-    axis.crossVectors(fromDir, toDir);
-    if (axis.lengthSq() < 1e-8) axis.set(0, 1, 0);
-    out.copy(fromDir).applyAxisAngle(axis.normalize(), angle * s);
-    return out.multiplyScalar(Math.exp(THREE.MathUtils.lerp(Math.log(da), Math.log(db), s))).add(CENTRE);
-  }
-
+  // Resolves once the planet and the sky are painted (a frame or two of tiles each, in the load).
+  let painted;
+  const ready = new Promise((r) => (painted = r));
   const api = {
-    // The void and the stars, drawn once behind the loader so their shaders are built (B12).
+    // The planet and the sky round it, and the warp: drawn once behind the loader so their shaders
+    // are built (B12).
     group,
+    ready,
+    warp,
+    planet,
     get active() {
       return state !== 'off';
     },
+    /** The lens the warp wants (degrees), or null when it has no say. */
+    fov: () => fov,
 
     /**
-     * Carries the view out to the world seen from space. from: the room the view is in (its home),
-     * if any; from inside a room the view first dips out to just beyond its dome. duration: seconds
-     * from the start to the view settling (0 jumps straight there). Resolves once it has settled,
-     * and stays in space until leave().
+     * Warps out to the planet, from wherever the view is (from: the room it's in, if any). duration 0
+     * goes straight there. Resolves once in orbit, and stays until leave().
      */
     enter({ from = null, duration = 4 } = {}) {
       ensureFar();
-      group.visible = true;
-      const start = (pos, lookAt) => {
-        theta = Math.atan2(pos.x - CENTRE.x, pos.z - CENTRE.z);
-        const to = orbitPos(new THREE.Vector3());
-        if (duration <= 0) {
-          flight = null;
-          state = 'there';
-          k = 1;
-          return Promise.resolve();
-        }
-        state = 'in';
-        const fly = Math.max(0.5, duration * 0.85);
-        return new Promise((resolve) => {
-          flight = { t: 0, fly, hold: duration, pos: pos.clone(), look: lookAt.clone(), to, done: resolve };
-        });
-      };
-      if (from) {
-        // Out of the room to just beyond its dome, looking back at it, under a quick dip.
-        return new Promise((resolve) => {
+      // From inside a room: a quick dip out to just beyond its dome, looking back at it, and the launch
+      // from there (so it never lifts off through a ceiling).
+      if (from && duration > 0 && !still()) {
+        return new Promise((resolve) =>
           dip(() => {
-            // The rig lets go of the room too, so it stops keeping the view indoors.
             rig.room = null;
             const home = from.room.group.getWorldPosition(new THREE.Vector3());
-            const out = new THREE.Vector3().subVectors(home, CENTRE).setY(0).normalize();
-            const pos = home.clone().addScaledVector(out, 48).setY(home.y + 36);
-            camera.position.copy(pos);
+            const out = new THREE.Vector3(home.x, 0, home.z).normalize();
+            if (out.lengthSq() < 1e-6) out.set(0, 0, 1);
+            camera.position.copy(home).addScaledVector(out, 48).setY(home.y + 30);
             camera.lookAt(home.x, home.y + 4, home.z);
-            start(pos, home.clone().setY(home.y + 4)).then(resolve);
-          });
-        });
+            camera.updateMatrixWorld();
+            api.enter({ duration }).then(resolve);
+          }),
+        );
       }
-      return start(camera.position.clone(), rig.target.clone());
+      if (duration <= 0 || still()) {
+        const go = () => {
+          into(true);
+          state = 'there';
+          run = null;
+        };
+        if (duration <= 0) {
+          go();
+          return Promise.resolve();
+        }
+        return new Promise((resolve) => dip(() => (go(), resolve())));
+      }
+      state = 'out';
+      // Where the view starts: the camera this frame, looking where the rig looks.
+      const p0 = camera.position.clone();
+      const f0 = camera.getWorldDirection(new THREE.Vector3());
+      // Up toward the sky, still a little forward.
+      const f1 = f0.clone().setY(0).normalize().multiplyScalar(0.5).add(new THREE.Vector3(0, 1, 0)).normalize();
+      return new Promise((resolve) => {
+        run = { kind: 'out', t: 0, p0, f0, f1, fov0: camera.fov, done: resolve, swapped: false, from: new THREE.Vector3(), lookFrom: new THREE.Vector3() };
+      });
     },
 
     /**
-     * Back to the world: at once (under a fade the caller is running), or flying back to where the
-     * rig has the view over duration seconds. Resolves once the world is back.
+     * Back to the world: at once (under a fade the caller runs, duration 0), or diving at the planet
+     * and coming out of the white into the world where the rig has the view. Resolves once it's back.
      */
     leave({ duration = 0 } = {}) {
       if (state === 'off') return Promise.resolve();
-      flight?.done?.();
-      if (duration <= 0) {
-        flight = null;
+      if (duration <= 0 || state === 'held') {
+        run?.done?.();
+        run = null;
         state = 'off';
-        k = 0;
+        into(false);
+        fov = null;
+        warp.set({});
         api.apply();
         return Promise.resolve();
       }
-      state = 'back';
+      if (still()) return new Promise((resolve) => dip(() => (api.leave(), resolve())));
+      return api.dive().then(
+        () =>
+          new Promise((resolve) => {
+            // Out of the white into the world.
+            state = 'off';
+            into(false);
+            run = { kind: 'reveal', t: 0, done: resolve };
+          }),
+      );
+    },
+
+    /**
+     * From orbit, a dive at the planet that ends with the screen white and held (resolves then): the
+     * caller takes it from there (puts the view where it wants it, under its own cover) and calls
+     * leave() to let go of space.
+     */
+    dive() {
+      if (state === 'off') return Promise.resolve();
+      if (still()) {
+        state = 'held';
+        warp.set({ flash: 1 });
+        return Promise.resolve();
+      }
+      state = 'in';
       return new Promise((resolve) => {
-        flight = { t: 0, fly: duration, pos: camera.position.clone(), look: CENTRE.clone(), done: resolve };
+        run = { kind: 'in', t: 0, p0: camera.position.clone(), l0: look.clone(), l: new THREE.Vector3(), fov0: camera.fov, done: resolve };
       });
     },
 
@@ -290,48 +201,100 @@ export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip }) 
     // cutscenes that wait on it, so a duration is the same seconds on any machine.
     update() {
       const now = performance.now();
-      const dt = Math.min(0.25, (now - lastNow) / 1000);
+      const dt = Math.min(0.1, (now - lastNow) / 1000);
       lastNow = now;
-      rigPos.copy(camera.position);
-      rigQuat.copy(camera.quaternion);
-      if (state === 'off') return;
+      // The planet's maps are painted in the first frames, a few tiles at a time.
+      if (!planet.baked) planet.bake(4);
+      else if (!cosmos.baked) cosmos.bake(3);
+      else painted();
+      // A slow machine may still be painting after the load: the planet shows once it's done.
+      planet.group.visible = planet.baked;
       time += dt;
-      theta += SPIN * dt;
-      const f = flight;
-      if (state === 'in') {
-        f.t += dt;
-        const s = ease(clamp01(f.t / f.fly));
-        // Follow the orbit as it turns, so the arrival is seamless.
-        orbitPos(f.to);
-        dolly(f.pos, f.to, s, camera.position);
-        look.lerpVectors(f.look, CENTRE, ease(clamp01((f.t / f.fly) * 1.35)));
-        camera.lookAt(look);
-        k = THREE.MathUtils.smoothstep(f.t / f.fly, 0.05, 0.7);
-        if (f.t >= f.hold) {
-          state = 'there';
-          flight = null;
-          f.done();
+      planet.update(dt);
+      cosmos.update(dt, camera);
+      const r = run;
+      if (r?.kind === 'reveal') {
+        // The white clears off the world.
+        r.t += dt;
+        const x = r.t / 0.9;
+        warp.set({ flash: 1 - easeOut(x), speed: 0 }, dt);
+        fov = null;
+        if (x >= 1) {
+          run = null;
+          warp.set({});
+          r.done();
         }
-      } else if (state === 'there') {
-        orbitPos(camera.position);
-        camera.lookAt(CENTRE);
-        k = 1;
-      } else if (state === 'back') {
-        f.t += dt;
-        const s = ease(clamp01(f.t / f.fly));
-        dolly(f.pos, rigPos, s, camera.position);
-        // Ease the gaze onto the rig's own, which takes over at the end.
-        camera.lookAt(look.lerpVectors(f.look, rig.target, s));
-        q.copy(camera.quaternion).slerp(rigQuat, THREE.MathUtils.smoothstep(s, 0.6, 1));
-        camera.quaternion.copy(q);
-        k = 1 - THREE.MathUtils.smoothstep(s, 0.3, 0.95);
-        if (f.t >= f.fly) {
-          state = 'off';
-          flight = null;
-          k = 0;
-          camera.position.copy(rigPos);
-          camera.quaternion.copy(rigQuat);
-          f.done();
+        return;
+      }
+      if (state === 'off') return;
+      if (state === 'there' || state === 'held') {
+        orbit(time, pos, look);
+        camera.position.copy(pos);
+        camera.lookAt(look);
+        camera.updateMatrixWorld();
+        if (state === 'there') warp.set({}, dt);
+        return;
+      }
+      r.t += dt;
+      const t = r.t;
+      if (r.kind === 'out') {
+        // 0 to 0.7 s: the view tilts up to the sky. 0.7 to 1.3: it launches, the streaks and the
+        // tunnel come up, a flash, and (behind it) space. 1.3 to 2.6: the tunnel. 2.6 to 3.0: out of
+        // warp, into orbit. Then a slow settle, done at 4.2.
+        const SWAP = 1.3, DROP = 2.6, END = 4.2;
+        if (t < SWAP) {
+          const tilt = easeInOut(clamp01(t / 0.8));
+          const dir = tmp.copy(r.f0).lerp(r.f1, tilt).normalize();
+          const go = Math.max(0, t - 0.6);
+          camera.position.copy(r.p0).addScaledVector(dir, 12 * go * go + 260 * Math.pow(go, 4)).addScaledVector(r.f0, -1.5 * smooth(t, 0, 0.6));
+          camera.lookAt(tmp2.copy(camera.position).add(dir));
+          fov = r.fov0 - 4 * bump(t, 0, 0.55, 0.8) + 34 * smooth(t, 0.7, SWAP);
+          warp.set({ speed: 30 + 420 * smooth(t, 0.55, SWAP), tunnel: smooth(t, 0.95, SWAP), flash: smooth(t, 1.12, SWAP) }, dt);
+        } else {
+          if (!r.swapped) {
+            r.swapped = true;
+            into(true);
+            orbit(time, pos, look);
+            // Far out along the way in, rushing at the orbit.
+            r.from.copy(pos).sub(C).normalize().multiplyScalar(RADIUS * 4.5).add(pos);
+          }
+          orbit(time, pos, look);
+          const e = t < DROP ? 0.75 * clamp01((t - SWAP) / (DROP - SWAP)) : 0.75 + 0.25 * easeOut((t - DROP) / (END - DROP));
+          camera.position.lerpVectors(r.from, pos, e);
+          camera.lookAt(look);
+          const spring = t < DROP ? 0 : Math.exp(-(t - DROP) * 6) * Math.sin((t - DROP) * 16);
+          fov = t < DROP ? r.fov0 + 30 : THREE.MathUtils.lerp(r.fov0 + 30, r.fov0, easeOut((t - DROP) / 0.45)) - spring * 6;
+          warp.set({ speed: t < DROP ? 450 : 450 * (1 - easeOut((t - DROP) / 0.35)), tunnel: 1 - smooth(t, DROP, DROP + 0.25), flash: Math.max(1 - smooth(t, SWAP, SWAP + 0.35), 0.38 * bump(t, DROP - 0.04, DROP + 0.04, DROP + 0.4)), tint: '#8a4dff' }, dt);
+          if (t >= END) {
+            fov = null;
+            state = 'there';
+            run = null;
+            warp.set({}, dt);
+            r.done();
+          }
+        }
+      } else if (r.kind === 'in') {
+        // 0 to 0.7 s: a breath, the view easing back and turning onto the planet. 0.7 to 2.2: the
+        // lunge, the streaks, the glow of entry. 2.2 to 2.6: white.
+        const END = 2.6;
+        // Down at a spot on the planet's sunlit face, between the view and the light: the camera never
+        // goes through the ground, it comes to just above it as the white comes up.
+        const n = tmp.copy(r.p0).sub(C).normalize().addScaledVector(planet.sun, 0.7).normalize();
+        const spot = tmp2.copy(C).addScaledVector(n, RADIUS);
+        const ease = easeInOut(clamp01(t / 0.9));
+        const l = r.l.lerpVectors(r.l0, spot, ease);
+        const go = Math.max(0, t - 0.6);
+        const reach = Math.min(0.965, 0.05 * go + 0.92 * Math.pow(clamp01(go / 2.0), 2.4)) - 0.025 * bump(t, 0, 0.5, 0.9);
+        camera.position.lerpVectors(r.p0, spot, reach);
+        camera.lookAt(l);
+        fov = r.fov0 - 3 * bump(t, 0, 0.5, 0.8) + 26 * smooth(t, 0.7, 2.2);
+        warp.set({ speed: 20 + 380 * smooth(t, 0.7, 2.0), tunnel: 0.85 * smooth(t, 1.35, 2.2), flash: smooth(t, 2.15, END), tint: '#ff4fb0' }, dt);
+        if (t >= END) {
+          state = 'held';
+          fov = r.fov0;
+          run = null;
+          warp.set({ flash: 1 }, dt);
+          r.done();
         }
       }
       camera.updateMatrixWorld();
@@ -342,20 +305,12 @@ export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip }) 
       group.visible = k > 0;
       sky.mesh.visible = k < 1;
       clouds?.setAway(k);
+      // Out here the camera sees only what's in space.
+      camera.layers.set(k > 0 ? SPACE : 0);
       if (k <= 0) return;
-      group.position.copy(camera.position);
-      voidMat.uniforms.uOpacity.value = k;
-      voidMat.uniforms.uTime.value = time;
-      starMat.uniforms.uOpacity.value = k;
-      starMat.uniforms.uTime.value = time;
-      starMat.uniforms.uScale.value = renderer.getPixelRatio();
-      // No haze out here.
-      sky.fog.near += k * 1e5;
-      sky.fog.far += k * 1e5;
-      // Soft light on the diorama whatever the hour: never darker than an afternoon.
-      sky.hemi.intensity = THREE.MathUtils.lerp(sky.hemi.intensity, Math.max(sky.hemi.intensity, 1.0), k);
-      sky.light.intensity = THREE.MathUtils.lerp(sky.light.intensity, Math.max(sky.light.intensity, 2.2), k);
-      scene.environmentIntensity = THREE.MathUtils.lerp(scene.environmentIntensity, Math.max(scene.environmentIntensity, 0.8), k);
+      sphere.position.copy(camera.position);
+      sky.fog.near += 1e5;
+      sky.fog.far += 1e5;
     },
   };
   return api;

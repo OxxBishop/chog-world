@@ -371,6 +371,9 @@ button:disabled { opacity: 0.45; cursor: default; }
   .chog-chip button { padding: 6px 8px; font-size: 12px; white-space: nowrap; }
 }
 .fade.slow { transition-duration: 1.4s; }
+/* Waking up (B25, src/arrival.js): the blank, then the eyelids opening on the world. */
+.eyelids { position: fixed; inset: 0; z-index: 7; background: #000; pointer-events: none; }
+.eyelids[hidden] { display: none; }
 
 /* ---------- Chogs chatting at the bar (A9) ---------- */
 .chog-bubble.bar-bubble { max-width: 280px; }
@@ -476,8 +479,11 @@ body.demo .hud, body.demo .places-toggle, body.demo .nav-hint, body.demo .signin
   background: radial-gradient(circle at 50% 42%, #2b145e 0%, #12082c 58%, #07030f 100%);
   transition: opacity 0.5s, background-color 0.8s;
 }
-/* Once the world is loaded it shows through, dimmed, behind the screen. */
-#loading.intro.ready { background: radial-gradient(circle at 50% 42%, rgba(43, 20, 94, 0.72) 0%, rgba(18, 8, 44, 0.82) 60%, rgba(7, 3, 15, 0.9) 100%); }
+/* The planet behind the loading screen (B25): a still of it while the world loads, the planet itself
+   once it has, turning behind the screen with only a soft shade over it so the type stays clear. */
+#loading.intro { background: radial-gradient(ellipse 70% 55% at 50% 40%, rgba(12, 6, 30, 0.55), rgba(12, 6, 30, 0) 70%), url(/art/planet.webp) center 58% / cover no-repeat, #07030f; }
+#loading.intro.ready { background: radial-gradient(ellipse 70% 55% at 50% 40%, rgba(12, 6, 30, 0.5), rgba(12, 6, 30, 0) 70%), linear-gradient(180deg, rgba(7, 3, 15, 0.25), rgba(7, 3, 15, 0) 40%); }
+@media (orientation: portrait) { #loading.intro:not(.ready) { background-image: radial-gradient(ellipse 70% 55% at 50% 40%, rgba(12, 6, 30, 0.55), rgba(12, 6, 30, 0) 70%), url(/art/planet-tall.webp); } }
 #loading.intro::before,
 #loading.intro::after { content: ''; position: absolute; inset: 0; pointer-events: none; }
 /* Scanlines, and a slow bright band rolling down like an old screen. */
