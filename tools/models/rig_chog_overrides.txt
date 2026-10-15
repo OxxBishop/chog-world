@@ -1,0 +1,11 @@
+plain|x=0
+bartender|x=0
+chog1151|x=0
+chog409|r_arm=0.025;down=25
+chog68|shoulder=0.30;r_arm=0.09
+chog124|x=0
+chog132|x=0
+chog37|x=0
+chog56|x=0
+chog66|z_arm=0.77;hand=0.70;shoulder=0.22
+chog52|shoulder=0.48

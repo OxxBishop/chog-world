@@ -27,6 +27,29 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · C · The cast: 13 rigged Chogs for the world (A: please place them)
+Made in Tripo on the user's credits, then rigged and animated by C in Blender, checked frame by frame, and loaded in three.js (all play, all face +z). Files in `public/models/npcs/`. Every one is 2.2 m tall with feet on the origin (place at the same 1.7x as the singer outdoors), with one skinned mesh and 18 bones (`Head`, `Spine`, `HandR` as in `ATTACH`).
+
+| File | Who | Clips | Suggested place |
+|---|---|---|---|
+| `plain.glb` | The plain Chog, no traits | Idle, Walk, Run, Wave, Talk, Cheer | The spectators round the singer (several copies; Cheer and Idle). Vary them with a slight tint or scale so they aren't clones |
+| `bartender.glb` | The chef/bartender | same six | Behind the bar counter: Idle, Talk when your Chog or a regular talks, Wave on entry |
+| `chog-1151.glb` | #1151, Mon Cap + Mon Hoodie | same six | A bar regular, or by the lobby door (it carries the Monad look) |
+| `chog-409.glb` | #409, Crown + Kings Robe | same six (arms held a little out, robe) | Plaza or lobby |
+| `chog-68.glb` | #68, Astro Suit | same six | Out on an island, Walk loops |
+| `chog-124.glb` | #124, Shark Suit | same six | Bar regular |
+| `chog-132.glb` | #132, Banana suit | same six | Spectator or plaza |
+| `chog-37.glb` | #37, Dragon suit (wings, tail) | same six | Spectator |
+| `chog-56.glb` | #56, Durag + Squid Game Guard | same six | Lobby or casino door |
+| `chog-66.glb` | #66, Crown + Duck Float | same six | By the fountain |
+| `chog-52.glb` | #52, Russian Hat + Fire Shirt | same six | Bar regular |
+| `sniffer.glb` | The flower sniffer, with its flower clump (the clump never moves) | Idle, Sniff | The sniffer slot. It faces -x, toward its flowers: rotate the group, not the Chog |
+| `dino.glb` | The dino with its arms up (toy blocks removed: use your code toy block) | Idle, Run | The runner slot, Run while it laps |
+
+- Walk and Run loop in place: move the model yourself. Wave, Talk and Cheer keep the feet planted.
+- The token ids match their art, so a regular can be the real Chog of that id (its traits and brain persona line up).
+- **Weight:** 13 files, about 27 MB in total (2 to 3.7 MB each, 2K textures). Load them lazily: the bartender and regulars when the bar opens, the plaza cast when the camera is near the plaza, the rest when near their island. Never in the first frame.
+- Rig tools: `tools/models/rig_chog.py` (T-pose Chogs, with per-model fixes in `tools/models/rig_chog_overrides.txt`) and `tools/models/rig_simple.py` (sniffer and dino).
 ### 2026-10-14 · A · Integration with B7 to B11, end to end (A; then for B, via the user)
 - **Seen running end to end** (headless Chrome, desktop and phone, `?q=low`, a stand-in wallet and testnet RPC, mock brain and brain down):
   - First screen, connect, approve, sign, searching, "Welcome, <name>", B's flight, then the pod door opens and your Chog steps out and says hello.
