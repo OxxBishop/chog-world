@@ -20,7 +20,7 @@ const gltfs = new Map();
 // keep < 1: a lighter copy with that share of the triangles, for Chogs seen from a distance.
 const loadGltf = (url, keep = 1) => {
   const key = `${url}|${keep}`;
-  if (!gltfs.has(key)) gltfs.set(key, loader.loadAsync(BASE + url).then(slim).then((g) => (keep < 1 ? lighten(g, keep) : g)));
+  if (!gltfs.has(key)) gltfs.set(key, loader.loadAsync(BASE + url).then((g) => slim(g, keep < 1)).then((g) => (keep < 1 ? lighten(g, keep) : g)));
   return gltfs.get(key);
 };
 
@@ -42,44 +42,86 @@ async function lighten(gltf, keep) {
 }
 
 /*
- * Fit a model for the laptop: its colour texture down to 1024 px, and no normal or roughness maps (they
- * barely show at the distance a Chog is seen from, and cost a lot of memory and fill). Done once per
- * file; every copy of it shares the result.
+ * Fit a model for the laptop: its textures down to 1024 px. The light look (a Chog seen from a way off)
+ * also drops the normal and roughness maps, which barely show at that distance and cost memory and fill;
+ * the full look (your own Chog, the bar's) keeps them, for the metal of a crown or a pair of glasses.
+ * Done once per file and look; every copy shares the result.
  */
 const SLIM_PX = 1024;
-function slim(gltf) {
+function shrink(tex) {
+  const img = tex?.image;
+  if (!img || Math.max(img.width, img.height) <= SLIM_PX) return tex;
+  const c = document.createElement('canvas');
+  const k = SLIM_PX / Math.max(img.width, img.height);
+  c.width = Math.round(img.width * k);
+  c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  const t = new THREE.CanvasTexture(c);
+  for (const key of ['flipY', 'colorSpace', 'wrapS', 'wrapT', 'channel']) t[key] = tex[key];
+  t.anisotropy = 4;
+  tex.dispose();
+  return t;
+}
+function slim(gltf, light) {
   const done = new Set();
+  const shrunk = new Map();
+  const once = (t) => {
+    if (!t) return t;
+    if (!shrunk.has(t)) shrunk.set(t, shrink(t));
+    return shrunk.get(t);
+  };
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     for (const m of [].concat(o.material)) {
       if (done.has(m)) continue;
       done.add(m);
-      const img = m.map?.image;
-      if (img && Math.max(img.width, img.height) > SLIM_PX) {
-        const c = document.createElement('canvas');
-        const k = SLIM_PX / Math.max(img.width, img.height);
-        c.width = Math.round(img.width * k);
-        c.height = Math.round(img.height * k);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        const t = new THREE.CanvasTexture(c);
-        for (const key of ['flipY', 'colorSpace', 'wrapS', 'wrapT', 'channel']) t[key] = m.map[key];
-        t.anisotropy = 4;
-        m.map.dispose();
-        m.map = t;
-      }
-      for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) {
-        m[key]?.dispose();
-        m[key] = null;
-      }
-      if (m.isMeshStandardMaterial) {
-        m.roughness = 0.75;
-        m.metalness = 0;
-      }
+      m.map = once(m.map);
+      if (light) {
+        for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) m[key] = null;
+        if (m.isMeshStandardMaterial) {
+          m.roughness = 0.75;
+          m.metalness = 0;
+        }
+      } else for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) m[key] = once(m[key]);
       m.needsUpdate = true;
     }
   });
   return gltf;
 }
+
+/*
+ * What every Chog model's shader adds: the sold-and-gone grey that drains up its body from the feet
+ * (uGrey, 0 to 1, by height through its bind pose), and a dither dissolve for walking in and off (uFade,
+ * 1 solid to 0 gone), the same as the standee's. Built in from the start, so neither ever rebuilds a
+ * shader when it plays.
+ */
+function chogShader(material, geometry, fx) {
+  geometry.computeBoundingBox();
+  const range = { value: new THREE.Vector2(geometry.boundingBox.min.y, geometry.boundingBox.max.y) };
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uGrey = fx.uGrey;
+    shader.uniforms.uFade = fx.uFade;
+    shader.uniforms.uYRange = range;
+    shader.vertexShader = 'varying float vChogY;\n' + shader.vertexShader.replace('#include <skinning_vertex>', '#include <skinning_vertex>\n  vChogY = transformed.y;');
+    shader.fragmentShader =
+      'uniform float uGrey;\nuniform float uFade;\nuniform vec2 uYRange;\nvarying float vChogY;\n' +
+      shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+  {
+    float h = (vChogY - uYRange.x) / max(uYRange.y - uYRange.x, 1e-4);
+    float drained = max(smoothstep(uGrey * 1.1 - 0.05, uGrey * 1.1 - 0.12, h), step(0.999, uGrey));
+    float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lum * 0.7 + 0.1), drained);
+    if (uFade < 0.999 && fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) > uFade) discard;
+  }`,
+      );
+  };
+  material.customProgramCacheKey = () => 'chog-model-1';
+}
+
+// A model has fewer moves than a standee: these borrow the nearest it has.
+const STAND_IN = { sniff: 'talk', sing: 'cheer', wake: 'wave', sleepy: 'idle', sad: 'idle' };
 const textures = new THREE.TextureLoader().setCrossOrigin('anonymous');
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
@@ -279,6 +321,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   let model = null;
   const actions = {};
   const tintables = [];
+  // A model's grey and dissolve (see chogShader), shared by all its pieces.
+  const fx = { uGrey: { value: 0 }, uFade: { value: 1 } };
 
   if (base) {
     try {
@@ -292,6 +336,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         if (modelUrl) {
           if (tint) o.material.color.multiply(tint);
         } else if (o.name === 'Skin' || o.material.name === 'Skin') o.material.color.set(look.skin);
+        chogShader(o.material, o.geometry, fx);
       });
       // Separate pieces hang from their bones (a Chog's own model has them built in).
       for (const [slot, url] of modelUrl ? [] : [['head', look.head], ['body', look.body], ['accessory', look.accessory]]) {
@@ -301,6 +346,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
           if (!o.isMesh) return;
           o.material = o.material.clone();
           tintables.push(o);
+          chogShader(o.material, o.geometry, fx);
         });
         (model.getObjectByName(ATTACH[slot]) ?? model).add(piece);
       }
@@ -333,11 +379,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   let moodLeft = 0;
   let resumeAct = 'idle';
 
-  // Grey-out for a model's own materials: each mesh drains from the feet up by its height.
-  const original = tintables.map((o) => o.material.color.clone());
-  const box = model ? new THREE.Box3().setFromObject(model) : null;
   const centre = new THREE.Vector3();
-  const tmp = new THREE.Color();
 
   let state = 'idle';
   let stateT = 0;
@@ -351,6 +393,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     traits,
     look,
     personality,
+    // Its own rigged model (true), or the standee of its art if the model couldn't be had.
+    isModel: !!model,
     // Resolves true once it can be shown as itself: its model, or its standee's art.
     ready: stand ? stand.ready : Promise.resolve(true),
     get state() {
@@ -360,7 +404,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       if (name === state) return;
       state = name;
       stateT = 0;
-      const next = actions[name] ?? (name === 'sleep' ? null : actions.idle);
+      const next = actions[name] ?? actions[STAND_IN[name]] ?? (name === 'sleep' ? null : actions.idle);
       if (next && next !== current) {
         next.reset().fadeIn(0.3).play();
         current?.fadeOut(0.3);
@@ -394,20 +438,15 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     // grow and shrink instead (fading its materials would rebuild their shaders).
     setFade(k) {
       if (stand) stand.mat.uniforms.uFade.value = k;
-      if (model) model.scale.setScalar(0.7 + 0.3 * THREE.MathUtils.smoothstep(k, 0, 1));
-      root.traverse((o) => (o.isMesh || o.isSprite) && o !== stand?.card && o !== badge && (o.visible = k > 0.02));
+      fx.uFade.value = k;
+      if (aura) aura.material.uniforms.uStrength.value = look.glow * k * (1 - fx.uGrey.value);
+      root.traverse((o) => (o.isMesh || o.isSprite) && o !== stand?.card && o !== badge && !tintables.includes(o) && (o.visible = k > 0.02));
+      if (model) model.visible = k > 0.02;
       if (k <= 0.02) badge.visible = false;
     },
     setGrey(k) {
       if (stand) stand.mat.uniforms.uGrey.value = k;
-      tintables.forEach((o, i) => {
-        o.getWorldPosition(centre);
-        const h = box ? (centre.y - root.position.y - box.min.y) / Math.max(box.max.y - box.min.y, 0.01) : 0;
-        const kk = THREE.MathUtils.clamp((k * 1.2 - h) * 4, 0, 1);
-        const c = original[i];
-        const l = c.r * 0.299 + c.g * 0.587 + c.b * 0.114;
-        o.material.color.copy(c).lerp(tmp.setScalar(l * 0.7 + 0.1), kk);
-      });
+      fx.uGrey.value = k;
       if (aura) aura.material.uniforms.uStrength.value = look.glow * (1 - k);
     },
     update(dt, camera) {
@@ -449,6 +488,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     },
   };
   chog.play('idle');
+  mixer?.update(0);
   return chog;
 }
 

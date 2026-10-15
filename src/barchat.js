@@ -21,8 +21,8 @@ import { placeBubble } from './chat.js';
 const REGULARS = [124, 52, 56];
 const GUEST_PAIRS = [[124, 52], [56, 124], [52, 56]];
 const regularModel = (id) => `models/npcs/chog-${id}.glb`;
-// Behind the counter, facing the room (room space, metres).
-const BARTENDER = { glb: 'models/npcs/bartender.glb', at: new THREE.Vector3(1.3, 0, -5.95) };
+// Behind the counter, facing the room, on a step so its face shows over the counter (room space, metres).
+const BARTENDER = { glb: 'models/npcs/bartender.glb', at: new THREE.Vector3(1.3, 0.55, -5.95) };
 // The bar's cast starts loading once the camera is this close to the bar.
 const PRELOAD_NEAR = 260;
 const PLACE = 'the bar in the Chog Hub';

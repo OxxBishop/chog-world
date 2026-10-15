@@ -122,6 +122,11 @@ export function createChat({ camera, getSession, placeName }) {
     close,
     reset,
     send,
+    // Its words over its head go, for a scene of its own (the sale, the goodbye).
+    hush() {
+      bubble.hidden = true;
+      bubbleLeft = 0;
+    },
     // Your Chog speaks first (its hello when you arrive): over its head, and in the chat.
     greet(text, mood) {
       const s = getSession();

@@ -110,15 +110,50 @@ export function prepareWake(chog) {
   chog.sparkle = makeSparkle(chog.root, chog.look.aura ?? '#d0b4ff');
 }
 
-// Where a Chog sleeps and stands in its home room (room space, metres).
+// Where a Chog sleeps and stands in its home room, and where its model sits, on the chair at its desk
+// (room space, metres).
 export const BED = new THREE.Vector3(-2.7, 0.5, 0.2);
 export const SPOT = new THREE.Vector3(0.3, 0, -0.8);
+export const CHAIR = new THREE.Vector3(1.7, 0.38, -2.5);
 
 /**
  * Wake: the Chog is asleep on its bed when the view fades in, sits up, hops down and waves.
  * Resolves when it's standing and idle.
  */
 export async function playWake({ chog, name }) {
+  if (chog.isModel) {
+    // A model has no lying-down move: it dozes in the chair at its desk, then turns round, hops down
+    // and comes over to you.
+    chog.root.position.copy(CHAIR);
+    chog.root.rotation.y = Math.PI;
+    chog.play('idle');
+    caption(`${name} is waking up`);
+    await wait(1600);
+    const r0 = Math.PI;
+    let turn = Math.atan2(SPOT.x - CHAIR.x, SPOT.z - CHAIR.z) - r0;
+    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+    await tween(600, (k) => (chog.root.rotation.y = r0 + turn * THREE.MathUtils.smoothstep(k, 0, 1)));
+    chog.play('walk');
+    await tween(walkMs(CHAIR, SPOT), (k) => {
+      chog.root.position.lerpVectors(CHAIR, SPOT, THREE.MathUtils.smoothstep(k, 0, 1));
+      // Down off the seat with a little hop.
+      const d = Math.min(1, k / 0.35);
+      chog.root.position.y = CHAIR.y * (1 - THREE.MathUtils.smoothstep(d, 0, 1)) + Math.sin(d * Math.PI) * 0.18;
+    });
+    chog.play('idle');
+    const r1 = r0 + turn;
+    let face = 0.5 - r1;
+    face = Math.atan2(Math.sin(face), Math.cos(face));
+    await tween(400, (k) => (chog.root.rotation.y = r1 + face * k));
+    (chog.sparkle ?? makeSparkle(chog.root, chog.look.aura ?? '#d0b4ff')).play();
+    chog.sparkle = null;
+    chog.play('wave');
+    caption(`${name} is home`, 'Your Chog lives here now. It stays as long as it stays in your wallet.');
+    await wait(2200);
+    chog.play('idle');
+    hideCaption();
+    return;
+  }
   chog.root.position.copy(BED);
   chog.root.rotation.y = Math.PI / 2;
   chog.play('sleep');

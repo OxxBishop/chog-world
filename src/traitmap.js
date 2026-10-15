@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 /*
  * How a Chog's traits become its 3D look and its personality.
  *
@@ -67,6 +69,16 @@ export const ATTACH = { head: 'Head', body: 'Spine', accessory: 'HandR' };
 
 // Animation clip names in the rigged models, by what the world asks for.
 export const CLIPS = { idle: 'Idle', walk: 'Walk', run: 'Run', wake: 'WakeUp', wave: 'Wave', talk: 'Talk', sing: 'Sing', sniff: 'Sniff', cheer: 'Cheer', sad: 'Sad' };
+
+// Chogs with a rigged model of their own (C's cast, public/models/npcs/chog-<id>.glb). Any other Chog
+// wears the plain body (plain.glb), shaded by its Skin trait so they don't all look alike.
+export const OWN_MODELS = new Set([1151, 409, 68, 124, 132, 37, 56, 66, 52]);
+const PLAIN = 'models/npcs/plain.glb';
+export function modelFor(id, traits = {}) {
+  if (OWN_MODELS.has(Number(id))) return { model: `models/npcs/chog-${id}.glb`, tint: null };
+  const skin = SKIN[traits.Skin];
+  return { model: PLAIN, tint: skin ? new THREE.Color('#ffffff').lerp(new THREE.Color(skin), 0.45) : null };
+}
 
 // Skin colours, for the "Skin" material and the stand-in.
 export const SKIN = {

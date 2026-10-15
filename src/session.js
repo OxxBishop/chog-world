@@ -1,5 +1,6 @@
 import { chogInfo, loadChogs, DEMO_CHOG, homeFor, artFallbacks, workingArt } from './chogdata.js';
 import { makeChog } from './chog.js';
+import { modelFor } from './traitmap.js';
 import { prepareWake, playWake, playGreyOut, playLogoff, playWalkIn, playWalkOut, playArrival, SPOT } from './cutscenes.js';
 import { talk } from './brain.js';
 import { createChat } from './chat.js';
@@ -202,7 +203,9 @@ export function initSession(world) {
   // Make the Chog and put it in its home, ready to be shown (it stays out of sight until then).
   async function settle(info) {
     const s = session;
-    const chog = await makeChog(info);
+    // Your Chog in the world is its rigged model at full detail (its own, or the plain body in its skin's
+    // shade); the art stays in the panel and the chip.
+    const chog = await makeChog({ ...info, ...modelFor(info.id, info.traits) });
     // Its art first if it comes quickly; otherwise it shows its name and the art follows.
     await Promise.race([chog.ready, new Promise((r) => setTimeout(r, 8000))]);
     const room = world.homes[homeFor(info.id, world.homes.length)];
@@ -351,12 +354,15 @@ export function initSession(world) {
     if (!s?.chog || s.leaving) return;
     s.leaving = true;
     chat.close();
+    chat.hush();
     s.stopWatch?.();
     clearInterval(s.ownerCheck);
     if (world.currentRoom() !== s.room) {
       world.enterRoom(s.room);
       await new Promise((r) => setTimeout(r, 700));
     }
+    // Out somewhere with you (in front of its pod, in a room): it's home for this.
+    sendHome(s);
     $('chog-chip').hidden = true;
     await playGreyOut({ chog: s.chog, name: s.info.name, room: s.room, world });
     signOut(null, { toOverview: !screen, inSpace: !!screen });
@@ -460,11 +466,13 @@ export function initSession(world) {
     if (!s?.chog || s.leaving) return signOut();
     s.leaving = true;
     chat.close();
+    chat.hush();
     $('chog-chip').hidden = true;
     if (world.currentRoom() !== s.room) {
       world.enterRoom(s.room);
       await new Promise((r) => setTimeout(r, 700));
     }
+    sendHome(s);
     await playLogoff({ chog: s.chog, name: s.info.name, room: s.room, world });
     signOut(null, { toOverview: !screen, inSpace: !!screen });
     if (screen) startIntro();
@@ -503,12 +511,13 @@ export function initSession(world) {
     start();
   });
 
-  // Chog standees' shaders, built for each kind of place one can stand (outside, the bar, the lobby, the
-  // casino, a home) while the first screen is up, so walking in anywhere never stalls on them: the lights inside
-  // each kind of room are part of its shaders.
+  // Your Chog's shaders, built for each kind of place it can stand (outside, the bar, the lobby, the
+  // casino, a home) while the first screen is up, so walking in anywhere never stalls on them: the lights
+  // inside each kind of room are part of its shaders. The plain body stands in for every Chog's (they all
+  // share these shaders), with the sparkle, aura ring and mood badge.
   async function warmStandees() {
     if (!world.prewarm || !world.rooms) return;
-    const t = await makeChog({ traits: { Aura: 'Purple' }, name: 'Chog' });
+    const t = await makeChog({ traits: { Aura: 'Purple' }, name: 'Chog', ...modelFor(0) });
     prepareWake(t);
     t.setMood('happy');
     const kinds = [null, world.bar, ...['lobby', 'casino'].map((id) => world.rooms.find((r) => r.id === id)), world.homes[0]];
