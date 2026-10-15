@@ -447,7 +447,9 @@ export class CameraRig {
     for (const s of this.solids) {
       // Only a step from outside to inside counts; a view framing the dome from outside may aim at its middle.
       if (s.facing === null || s === this.room || !s.inside(t) || s.inside(this._lastTarget)) continue;
-      if (s.atDoor(this._lastTarget)) this.room = s;
+      // A dome can be walked into through its door; a room only through its button (zooming at a door
+      // used to drop the view into the casino and keep it there).
+      if (s.atDoor(this._lastTarget) && !(s instanceof RoomBox)) this.room = s;
       else {
         // Back out onto the ground just outside the glass.
         const a = Math.atan2(t.z - s.z, t.x - s.x);
@@ -534,7 +536,8 @@ export class CameraRig {
     this.clearFocus();
     if (back) {
       this.flyTo(back);
-      this.room = back.room ?? null;
+      // Never back into a room: leaving a visit always ends outside.
+      this.room = back.room instanceof RoomBox ? null : back.room ?? null;
       this.view = back.view ?? null;
     }
   }

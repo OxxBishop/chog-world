@@ -497,6 +497,8 @@ function buildPickables() {
 rig.onTap = (x, y) => {
   if (!island) return;
   if (session?.tapChog(x, y)) return;
+  // Inside a room a tap belongs to the room (the casino's machines), never to the places outside.
+  if (rig.room instanceof RoomBox) return;
   ray.setFromCamera(new THREE.Vector2((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1), camera);
   const hits = ray.intersectObjects(pickables, false);
   // Prefer a dome or the Hub over the island it sits on.
