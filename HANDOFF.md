@@ -27,6 +27,28 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · B · B12 no shader builds after the loader, and B13 the demo video's shots
+- **B12, the HD 520's long frames:** Intel's driver finishes a shader only the first time it draws with it, so now everything the world can draw is drawn once behind the loading screen (`src/main.js`, the load):
+  - **Clouds:** their textures download with the rest and their pass is drawn in the load (new step "Gathering the clouds"). This was the 4.6 to 23 s freeze coming down from space.
+  - **The cast** (A, C): the light, full, dino and sniffer Chogs come from `makeChog` in the load (about 2.2 MB), are drawn in every light setup, and stay cached for the cast. Stand-ins cover the singer's material (on C's meshopt vertex layout), the mood badge, and the plain materials props use (standard, lambert, basic, physical, with and without a texture).
+  - **Also drawn in the load:** a dome's close-up glass and steel, the world from space, and in every warm-up (`world.prewarm`) an object's hidden parts (the wake's sparkle, each level of detail) and the parts out of view (a home's door behind its camera).
+  - **The loader waits** for the session's warm-ups (`session.warmed`, a one-line surgical edit in `src/session.js`).
+  - **Measured** with `firstdraws.mjs` (it records every new shader and vertex layout pair drawn after the loader): **zero** in every phase, for a guest (down from space, the Hub, the casino with a jackpot, the bar, the lobby) and for the demo Chog (its arrival, then the same). Before this: 5 on the descent, 4 on the first casino entry, 6 on the demo arrival.
+  - **The cost:** the load in the cloud box (SwiftShader) went from about 14 s to about 24 s, mostly the clouds' first draw. On the laptop that is the 4.6 to 23 s freeze after the connect screen, now spent behind the bar on its "Gathering the clouds" step. C: please time a first and a repeat visit on the HD 520.
+  - **Casino walls on the light look:** the band along the bottom is crimson now, not black.
+- **B13, the demo shots** (`src/shots.js`, `src/democlock.js`, list and how-to in `video/shots.md`): `?demo=overview|arrival|entry|bar|jackpot|sale|space` plays one live; add `&capture` and `chogDemo.at(s)` sets the whole world to second `s` and draws it. That covers the camera, sun, clouds, the cast, cutscenes, and the page's CSS animations and timers. Frames step exactly, at any frame rate, and takes repeat (seeded). All seven were captured here, stepped and checked at several moments each (the arrival and the sale again with A's model Chog). `?demo=opening` still works.
+- **Found on the way, fixed:**
+  - The Hub's tubes from the Lobby to the wings ran about 5 m too far, into the bar and casino rooms. It showed as a dark curve behind the bar's pair once A turned the bar camera to them. Each tube now runs wall to wall (`src/hub.js`).
+  - A sale right after the arrival played out of view. A fixed the same thing at the same time; kept A's version.
+- **For A:**
+  - `buildNpcs` takes `standees: true` on demo shots, so every set loads up front, and has a new `loading` getter (one surgical line in `src/npcs.js`), which the shots wait on.
+  - New props: no need to warm them yourself; their plain material is already drawn.
+  - A new kind of Chog shader (a new `customProgramCacheKey`, or a model `makeChog` treats differently): add it to `CAST_KINDS` in `src/main.js`.
+- **For C:**
+  - C7: the capture recipe and shot lengths are in `video/shots.md`. The cloud box draws 1 to 2 s a frame (SwiftShader), so capture on the laptop.
+  - `sniffer.glb` is the one model whose texture coordinates stayed floats (the rest are packed into shorts), so the load fetches it whole just to draw its vertex layout once. If `slim_cast.mjs` can pack its UVs like the others, take it out of `CAST_KINDS` in `src/main.js`.
+- **Left:** the user's call on the casino's chips being testnet $CHOG (asked in chat).
+
 ### 2026-10-15 · A · Your Chog is a rigged 3D model (the user's top priority)
 - **Everywhere your Chog appears in the world it's a model**, not a card: the arrival at the pod, walking into rooms, the bar pair, the goodbye, the sale. `modelFor(id, traits)` in `src/traitmap.js` picks its own file for 1151, 409, 68, 124, 132, 37, 56, 66 and 52, otherwise `plain.glb` shaded 45% toward its Skin colour. It's full detail: no 30% copy, and normal and roughness maps kept; only the light look outdoors drops them.
 - **Grey-out and dissolve on models:** `chogShader` in `src/chog.js` adds both to every Chog model's shader from the start: a grey that drains up the body by height through its bind pose (`setGrey`), and the standee's dither dissolve (`setFade`). Neither rebuilds a shader when it plays. The shader warm-up now uses the plain model, for outside, the bar, the lobby, the casino and a home.

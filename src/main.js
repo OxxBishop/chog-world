@@ -18,6 +18,7 @@ import { LANDMARK_KIT } from './landmarks.js';
 import { FURNITURE_KIT } from './interior.js';
 import { initSession } from './session.js';
 import { buildNpcs } from './npcs.js';
+import { makeChog } from './chog.js';
 import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createDemo } from './shots.js';
@@ -175,21 +176,35 @@ function drawAlone(r) {
 }
 
 /*
- * C's rigged cast loads as the camera comes near, after the loader. Its shaders come in three kinds, all
- * on one vertex layout: a Chog as makeChog fits it for the laptop, the dino's two-sided physical one, and
- * the singer's with its normal and roughness maps. A stand-in of each is drawn in the load, shadows too,
- * and the Chog's in each kind of room, with a mood badge (a sprite: its shader holds the room's lights
- * too), so the cast's first draws never stall a frame on Intel (B12). So do the plain materials props
- * are made of (standard, lambert, basic, physical, each with and without a texture): a prop that loads
- * later then finds its shader built and drawn for the lights it stands in.
+ * C's rigged cast loads as the camera comes near, after the loader, and each kind of shader it brings
+ * is drawn once in the load first (B12), in every light setup, so its first draws never stall a frame
+ * on Intel. The Chogs themselves come from makeChog (their shader has the grey-out and the dissolve
+ * built in): the light copy seen about town, the full one your own Chog and the bar's regulars are, the
+ * dino's two-sided one and the sniffer's, loaded with the rest of the downloads. The rest are stand-ins on the cast's
+ * vertex layout (meshopt-packed: normals in bytes, texture coordinates in shorts): the singer's material
+ * with its normal and roughness maps, the mood badge (a sprite), and the plain materials props are made
+ * of (standard, lambert, basic, physical, each with and without a texture), so a prop that loads later
+ * finds its shader built and drawn too.
  */
+const CAST_KINDS = [
+  { model: 'models/npcs/plain.glb', keep: 0.3 },
+  { model: 'models/npcs/plain.glb' },
+  { model: 'models/npcs/dino.glb', keep: 0.3 },
+  // Its texture coordinates are floats (the rest are packed into shorts): a vertex layout of its own.
+  { model: 'models/npcs/sniffer.glb', keep: 0.3 },
+];
 function castStandIns() {
-  const geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-  const n = geo.attributes.position.count;
-  const weights = new Float32Array(n * 4);
-  for (let i = 0; i < n; i++) weights[i * 4] = 1;
+  const box = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+  const n = box.attributes.position.count;
+  const geo = new THREE.BufferGeometry();
+  geo.setIndex(box.index);
+  geo.setAttribute('position', box.attributes.position);
+  geo.setAttribute('normal', new THREE.BufferAttribute(Int8Array.from(box.attributes.normal.array, (v) => Math.round(v * 127)), 3, true));
+  geo.setAttribute('uv', new THREE.BufferAttribute(Uint16Array.from(box.attributes.uv.array, (v) => Math.round(v * 65535)), 2, true));
   geo.setAttribute('skinIndex', new THREE.BufferAttribute(new Uint8Array(n * 4), 4));
-  geo.setAttribute('skinWeight', new THREE.BufferAttribute(weights, 4));
+  const weights = new Uint8Array(n * 4);
+  for (let i = 0; i < n; i++) weights[i * 4] = 255;
+  geo.setAttribute('skinWeight', new THREE.BufferAttribute(weights, 4, true));
   const pixel = (space) => {
     const t = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
     t.colorSpace = space;
@@ -197,13 +212,9 @@ function castStandIns() {
     return t;
   };
   const colour = pixel(THREE.SRGBColorSpace), data = pixel(THREE.NoColorSpace);
-  const mats = [
-    new THREE.MeshStandardMaterial({ map: colour, roughness: 0.75, metalness: 0 }),
-    new THREE.MeshPhysicalMaterial({ map: colour, roughness: 0.75, metalness: 0, side: THREE.DoubleSide }),
-    new THREE.MeshStandardMaterial({ map: colour, normalMap: data, roughnessMap: data, metalnessMap: data, side: THREE.DoubleSide }),
-  ];
-  const make = (mat) => {
-    const mesh = new THREE.SkinnedMesh(geo, mat);
+  const singerMat = new THREE.MeshStandardMaterial({ map: colour, normalMap: data, roughnessMap: data, metalnessMap: data, side: THREE.DoubleSide });
+  const singer = () => {
+    const mesh = new THREE.SkinnedMesh(geo, singerMat);
     const bone = new THREE.Bone();
     mesh.add(bone);
     mesh.bind(new THREE.Skeleton([bone]));
@@ -211,11 +222,10 @@ function castStandIns() {
     mesh.frustumCulled = false;
     return mesh;
   };
-  const plainGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
   const plainMats = [THREE.MeshStandardMaterial, THREE.MeshLambertMaterial, THREE.MeshBasicMaterial, THREE.MeshPhysicalMaterial].flatMap((M) => [new M(), new M({ map: colour })]);
   const plain = () =>
     plainMats.map((m) => {
-      const mesh = new THREE.Mesh(plainGeo, m);
+      const mesh = new THREE.Mesh(box, m);
       mesh.castShadow = mesh.receiveShadow = true;
       mesh.frustumCulled = false;
       return mesh;
@@ -227,12 +237,12 @@ function castStandIns() {
     return s;
   };
   return {
-    chog: () => [make(mats[0]), badge(), ...plain()],
-    all: () => [...mats.map(make), badge(), ...plain()],
+    inside: () => [badge(), ...plain()],
+    outside: () => [singer(), badge(), ...plain()],
     // The materials stay: disposing them would free their shaders, which the cast is to find built.
     dispose: () => {
       geo.dispose();
-      plainGeo.dispose();
+      box.dispose();
     },
   };
 }
@@ -347,6 +357,8 @@ async function init() {
     got[k] = f;
     load.set('download', Object.keys(got).reduce((sum, x) => sum + got[x] * weight[x], 0));
   };
+  // The cast's kinds of Chog, for the load to draw once (B12); they stay cached for the cast.
+  const castIn = Promise.race([Promise.all(CAST_KINDS.map((k) => makeChog(k))), new Promise((r) => setTimeout(() => r([]), 20000))]).catch(() => []);
   await Promise.all([
     loadAll(part('models')),
     loadKit([...new Set([...HUB_KIT, ...LANDMARK_KIT])], 'kaykit', part('kit')),
@@ -399,17 +411,19 @@ async function init() {
   // materials). Building a shader isn't enough everywhere: Intel's driver finishes one only the first
   // time it draws with it, and on the HD 520 that made the first walk into a room crawl for seconds.
   const cast = castStandIns();
+  const chogs = (await castIn).map((c) => c.root);
   for (const id of ['lobby', 'bar', 'casino', 'home0']) {
     const r = island.rooms.find((x) => x.id === id);
-    const stand = cast.chog();
+    const stand = [...chogs, ...cast.inside()];
     r.room.group.add(...stand);
     drawAlone(r);
     stand.forEach((o) => o.removeFromParent());
   }
   // The cast outside, in the sun's shadows too (the next frame draws the shadow map afresh).
   const outside = new THREE.Group();
-  outside.add(...cast.all());
-  drawOnce(outside, litNow(), { shadows: true });
+  outside.add(...chogs, ...cast.outside());
+  drawOnce(outside, litNow(), { shadows: true, all: true });
+  outside.clear();
   cast.dispose();
   // A dome's glass and steel as you see them close up, as the arrival flies in.
   drawOnce(island.domes[0].group.children.find((o) => o.isLOD), litNow(), { all: true });
