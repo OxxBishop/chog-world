@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><pre id="o"></pre>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'meshoptimizer';
+const q = new URLSearchParams(location.search);
+const g = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(`/models/npcs/${q.get('m') || 'plain'}.glb`);
+const out = g.animations.map((a) => ({ name: a.name, dur: a.duration, tracks: a.tracks.length, ua: (a.tracks.find((t) => t.name.startsWith('UpperArmL.quaternion')) || {}).values?.slice(0, 8) && Array.from(a.tracks.find((t) => t.name.startsWith('UpperArmL.quaternion')).values.slice(0, 8)).map((v) => +v.toFixed(3)), names: a.tracks.slice(0, 4).map((t) => t.name) }));
+window.__json = JSON.stringify(out); window.__done = btoa('ok');
+</script>

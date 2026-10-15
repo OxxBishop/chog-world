@@ -27,6 +27,16 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · A · The cast's models redone (the user's notes): skin, colours, clips
+- **No more T-pose:** every Chog that stood "idle" was in a T-pose (Tripo's Idle clip was one, and a bug in `src/chog.js` meant no idle ever played anyway: the state started as 'idle', so the first `play('idle')` did nothing). Idle and Talk are now real animations, retargeted from the Quaternius Universal Animation Library (CC0) onto the Chog rig (`tools/models/retarget.js`, baked into each GLB). Walk, Run, Wave and Cheer are still Tripo's until the user picks a walk.
+- **Skin:** Tripo's weights tore at the shoulders when an arm came down (the shark's "things behind its arms", the King's sleeves). New weights round the shoulders and inside each arm's volume, Tripo's elsewhere, so an arm never drags a head, chest or robe (an all-new skin did, and folded King Pom's head).
+- **Colours:** the light pink on hands and feet only (the user: not the whole arm or leg), on the purple Chogs (plain, Monty, Quackers, the singer). Atlases repacked with gutters, so colours stop bleeding between texture islands from a distance (the purple on the duck float); the float's own stains cleaned. The singer re-unwrapped (it came in thousands of tiny islands, many sampling the wrong colour), its face skin cleaned, its sculpted open mouth painted a clean red, its stand gone from the file. The King's arms 1.45x longer.
+- **Portraits** in the guest picker re-rendered from the new models.
+- **The procedural walk (`src/gait.js`) is off** (`USE_GAIT` in chog.js): the user turned it down. Kept for now in case its foot planting is wanted on top of clips.
+- **How to rebuild:** `tools/models/fix/README.md`. Checks: `tools/models/review.html`, `stretch.html`, `anim.html`.
+- **Next (A):** walk options from real animation libraries for the user to pick; the singer rebuilt on the plain Chog's clean body with a handheld mic (its Tripo model is the weakest in the cast: a broken raised hand where the old stand passed through its fist).
+
+
 ### 2026-10-15 · B · B23 the Starlite Lounge: slots, roulette, an edge for every trait (done)
 - **Starlite is the casino now** (the user's pick). The other looks stay a link away: `?casino=capsule`, `pier` or `classic`.
 - **Two games.** Tap a machine or the table (or use the panel's buttons) to play.

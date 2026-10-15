@@ -1,0 +1,37 @@
+<!doctype html><meta charset="utf-8"><title>Clip bake</title>
+<pre id="log">baking</pre>
+<script type="module">
+// Retarget library clips onto cast models for tools/models/fix/addclips.mjs (A). Run under `npx vite`:
+// /tools/models/bake.html?m=plain,chog-1151&spec=Idle:ual:Idle_Loop,Talk:ual:Idle_Talking_Loop
+// window.__json: { model: { clipName: AnimationClip.toJSON() } }.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { MeshoptDecoder } from 'meshoptimizer';
+import { retarget, MAPS } from '/tools/models/retarget.js';
+const q = new URLSearchParams(location.search);
+const models = q.get('m').split(',');
+const spec = q.get('spec').split(',').map((s) => s.split(':'));
+const SRC = {
+  ual: { file: '/models/_wip/src/ual.glb', rest: 'A_TPose', toe: 'DEF-toe.L' },
+  ual2: { file: '/models/_wip/src/ual2.glb', rest: 'A_TPose', toe: 'DEF-toe.L' },
+};
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+const srcs = {};
+for (const [, s] of spec) srcs[s] ??= await loader.loadAsync(SRC[s].file);
+const out = {};
+for (const m of models) {
+  const dg = await loader.loadAsync(`/models/${q.get('dir') || 'npcs'}/${m}.glb`);
+  out[m] = {};
+  for (const [name, s, clip, arms, head] of spec) {
+    const sg = srcs[s];
+    const srcClip = sg.animations.find((a) => a.name === clip);
+    const rest = sg.animations.find((a) => a.name === SRC[s].rest) ?? null;
+    const c = retarget({ src: cloneSkinned(sg.scene), srcClip, srcRest: rest, map: MAPS.ual, dst: cloneSkinned(dg.scene), name, srcToe: SRC[s].toe, armsOut: arms ? +arms : 0.12, headK: head ? +head : 0.5 });
+    out[m][name] = THREE.AnimationClip.toJSON(c);
+  }
+}
+document.getElementById('log').textContent = 'done ' + Object.keys(out).join(' ');
+window.__json = JSON.stringify(out);
+window.__done = btoa('ok');
+</script>

@@ -1,0 +1,79 @@
+<!doctype html><meta charset="utf-8"><title>Skin stretch</title>
+<style>body{margin:0;background:#222;color:#eee;font:12px sans-serif}</style>
+<canvas id="c"></canvas><pre id="log"></pre>
+<script type="module">
+// Where a model's skin tears when its arms come down to its sides: each triangle's longest edge posed
+// against the same edge at rest. ?m=<names>&down=65 (degrees). Red: stretched over 1.8x. window.__json:
+// per model, the stretched triangles' vertices.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'meshoptimizer';
+const q = new URLSearchParams(location.search);
+const names = (q.get('m') || 'chog-124').split(',');
+const down = THREE.MathUtils.degToRad(+(q.get('down') || 65));
+const dir = q.get('dir') || 'npcs';
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+const S = 300;
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, preserveDrawingBuffer: true });
+r.setSize(S * 2, S * 1.3 * names.length);
+r.setScissorTest(true);
+const out = {};
+const log = [];
+for (let n = 0; n < names.length; n++) {
+  const g = await loader.loadAsync(`/models/${dir}/${names[n]}.glb`);
+  let mesh;
+  g.scene.traverse((o) => o.isSkinnedMesh && (mesh = o));
+  g.scene.updateMatrixWorld(true);
+  // Arms down: each upper arm turned about the model's front axis toward its side.
+  for (const [b, s] of [['UpperArmL', -1], ['UpperArmR', 1]]) {
+    const bone = g.scene.getObjectByName(b);
+    const wq = bone.getWorldQuaternion(new THREE.Quaternion());
+    const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), s * down);
+    const pq = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+    bone.quaternion.copy(pq.invert().multiply(turn.multiply(wq)));
+  }
+  g.scene.updateMatrixWorld(true);
+  mesh.skeleton.update();
+  const pos = mesh.geometry.attributes.position, idx = mesh.geometry.index.array;
+  const rest = [], posed = [];
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    rest.push(new THREE.Vector3().fromBufferAttribute(pos, i));
+    mesh.getVertexPosition(i, v);
+    posed.push(v.clone());
+  }
+  const colors = new Float32Array(pos.count * 3).fill(0.7);
+  const bad = new Set();
+  let worst = 0;
+  for (let t = 0; t < idx.length; t += 3) {
+    let k = 0;
+    for (const [a, b] of [[0, 1], [1, 2], [2, 0]]) {
+      const i = idx[t + a], j = idx[t + b];
+      const l0 = rest[i].distanceTo(rest[j]), l1 = posed[i].distanceTo(posed[j]);
+      if (l0 > 1e-5) k = Math.max(k, l1 / l0);
+    }
+    worst = Math.max(worst, k);
+    if (k > 1.8) for (let c = 0; c < 3; c++) bad.add(idx[t + c]);
+  }
+  for (const i of bad) colors.set([1, 0.1, 0.1], i * 3);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(posed.flatMap((p) => p.toArray()), 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setIndex(Array.from(idx));
+  geo.computeVertexNormals();
+  const scene = new THREE.Scene(); scene.background = new THREE.Color('#9aa');
+  scene.add(new THREE.HemisphereLight('#fff', '#444', 2));
+  scene.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true })));
+  const cam = new THREE.PerspectiveCamera(30, S / (S * 1.3), 0.1, 50);
+  [[0, 1.2, 5], [0, 1.6, -5]].forEach((p, k) => {
+    cam.position.set(...p); cam.lookAt(0, 0.95, 0);
+    const y = (names.length - 1 - n) * S * 1.3;
+    r.setViewport(k * S, y, S, S * 1.3); r.setScissor(k * S, y, S, S * 1.3); r.render(scene, cam);
+  });
+  out[names[n]] = [...bad];
+  log.push(`${names[n]} worst ${worst.toFixed(2)} torn verts ${bad.size}`);
+}
+document.getElementById('log').textContent = log.join('\n');
+window.__json = JSON.stringify({ out, log });
+requestAnimationFrame(() => (window.__done = r.domElement.toDataURL('image/jpeg', 0.85).split(',')[1]));
+</script>

@@ -4,6 +4,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { lookFor, personalityFor, CLIPS, ATTACH, MOODS } from './traitmap.js';
+import { createGait, canGait, CAST_STYLE } from './gait.js';
 
 /*
  * A Chog in the world. Its rigged model (with its head item, outfit and accessory, per traitmap.js)
@@ -287,6 +288,18 @@ const LOOK_RANGE = 18;
 const LOOK_MAX = THREE.MathUtils.degToRad(55);
 // Up close a Chog is its full model; past this it's the lighter copy (for Chogs loaded with keep < 1).
 const LOD_NEAR = 24;
+// Bodies move by src/gait.js (walks, rest, gestures) for every Chog in the standard rig but the singer,
+// whose file is posed round its mic and keeps its own clips. Past GAIT_FAR they move a third as often.
+const GAIT_SKIP = /singer/;
+const GAIT_FAR = 45;
+// Moves the gait does itself (the rest play their clip, or the nearest it has).
+const GAIT_MOVES = { idle: 'idle', walk: 'walk', run: 'walk', wave: 'wave', talk: 'talk', cheer: 'cheer', sing: 'cheer', sad: 'sad', sleepy: 'sleepy', sleep: 'sleepy', wake: 'wave', sniff: 'talk' };
+// The procedural body (src/gait.js) is off: the user turned down its walk. The cast's clips are retargeted
+// from the Quaternius animation libraries (CC0) instead (tools/models/retarget.js, bake.html, addclips.mjs).
+const USE_GAIT = false;
+const GAIT_WALKS = false;
+// Switching between the gait and a clip, the old pose melts into the new over this long.
+const BLEND = 0.25;
 const _hp = new THREE.Vector3();
 const _to = new THREE.Vector3();
 const _bf = new THREE.Vector3();
@@ -515,6 +528,14 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   let gaze = null;
   let handFix = [];
   let gltfRef = null;
+  let gait = null;
+  let gaitAcc = 0;
+  let gaitTick = 0;
+  let driver = null;
+  let blendLeft = 0;
+  const bones = [];
+  const snapQ = [];
+  const snapP = [];
 
   if (base) {
     try {
@@ -558,6 +579,10 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         (model.getObjectByName(ATTACH[slot]) ?? model).add(piece);
       }
       mixer = new THREE.AnimationMixer(model);
+      if (USE_GAIT && canGait(model) && !GAIT_SKIP.test(base)) {
+        gait = createGait(model, CAST_STYLE[base.match(/([\w-]+)\.glb$/)?.[1]] ?? 'neutral');
+        model.traverse((o) => o.isBone && (bones.push(o), snapQ.push(new THREE.Quaternion()), snapP.push(new THREE.Vector3())));
+      }
       for (const [name, clipName] of Object.entries(CLIPS)) {
         const clip = THREE.AnimationClip.findByName(gltf.animations, clipName);
         if (clip) actions[name] = mixer.clipAction(clip);
@@ -609,7 +634,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
 
   const centre = new THREE.Vector3();
 
-  let state = 'idle';
+  // Empty until the first play('idle') below, which would otherwise see 'idle' already and play nothing.
+  let state = '';
   let stateT = 0;
   let current = null;
   // The face: a held expression, blinks, and the mouth while talking.
@@ -743,7 +769,29 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         // Undo last frame's head turn and wrist fix first: a bone no clip moves would keep them otherwise.
         if (gaze?.applied) gaze.head.quaternion.copy(gaze.base), (gaze.applied = false);
         for (const h of handFix) h.applied && (h.bone.quaternion.copy(h.base), (h.applied = false));
-        mixer.update(dt);
+        const useGait = gait && (GAIT_WALKS || (state !== 'walk' && state !== 'run'));
+        const now = useGait ? 'gait' : 'mixer';
+        if (gait && driver && now !== driver) {
+          // Hold the last pose and melt it into the new driver's.
+          bones.forEach((b, i) => (snapQ[i].copy(b.quaternion), snapP[i].copy(b.position)));
+          blendLeft = BLEND;
+          if (now === 'mixer') current?.reset().play();
+        }
+        driver = now;
+        if (useGait) {
+          // Far off, the body moves a third as often (the steps stay where they are meanwhile).
+          gaitAcc += dt;
+          const far = camera && root.getWorldPosition(centre).distanceTo(camera.position) > GAIT_FAR;
+          if (!far || ++gaitTick % 3 === 0) {
+            gait.update(gaitAcc, GAIT_MOVES[state] ?? 'idle');
+            gaitAcc = 0;
+          }
+        } else mixer.update(dt);
+        if (blendLeft > 0) {
+          blendLeft = Math.max(0, blendLeft - dt);
+          const k = THREE.MathUtils.smoothstep(1 - blendLeft / BLEND, 0, 1);
+          bones.forEach((b, i) => (b.quaternion.slerpQuaternions(snapQ[i], b.quaternion.clone(), k), b.position.lerpVectors(snapP[i], b.position.clone(), k)));
+        }
         for (const h of handFix) h.base.copy(h.bone.quaternion), h.bone.quaternion.multiply(h.fix), (h.applied = true);
         faceUpdate(dt);
         if (camera) {
@@ -841,6 +889,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
 
   chog.play('idle');
   mixer?.update(0);
+  gait?.update(0, 'idle');
   return chog;
 }
 
