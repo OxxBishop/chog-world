@@ -209,8 +209,10 @@ export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip, qu
       else painted();
       // A slow machine may still be painting after the load: the planet shows once it's done.
       planet.group.visible = planet.baked;
-      time += dt;
-      planet.update(dt);
+      // The planet's clock starts as it comes into view, so it opens as the loading screen's still of it.
+      const shown = state !== 'off';
+      if (shown) time += dt;
+      planet.update(shown ? dt : 0);
       cosmos.update(dt, camera);
       const r = run;
       if (r?.kind === 'reveal') {

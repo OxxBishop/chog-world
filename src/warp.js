@@ -50,7 +50,8 @@ varying vec3 vTint;
 varying float vFade;
 void main() {
   // A soft line: bright core across, tapering to both ends along.
-  float across = exp(-pow((vUv.x - 0.5) * 4.2, 2.0));
+  float ax = (vUv.x - 0.5) * 4.2;
+  float across = exp(-ax * ax);
   float along = smoothstep(0.0, 0.35, vUv.y) * smoothstep(1.0, 0.7, vUv.y);
   float a = across * along * vFade * uOpacity;
   gl_FragColor = vec4(vTint * a * 3.6, a);

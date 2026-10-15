@@ -304,7 +304,7 @@ void main() {
   // The sun on the sea: a tight glint and a soft sheen.
   vec3 H = normalize(L + V);
   float nh = max(dot(N, H), 0.0);
-  float fres = pow(1.0 - max(dot(N, V), 0.0), 5.0);
+  float fres = pow(clamp(1.0 - dot(N, V), 0.0, 1.0), 5.0);
   float glint = pow(nh, 700.0) * 0.18 + pow(nh, 48.0) * 0.02;
   col += sunCol * water * glint * (0.8 + fres) * smoothstep(0.0, 0.2, nl) * (1.0 - shadow * 0.8) * (1.0 - rings);
   // Night: the cities, where the sun has gone.
@@ -317,7 +317,7 @@ void main() {
   // A whisper of light on the night side, so it never reads as a hole.
   col += albedo * vec3(0.06, 0.04, 0.14) * dark * 0.4;
   // The air: a haze toward the rim, on the lit side.
-  float rim = pow(1.0 - max(dot(N, V), 0.0), 2.6);
+  float rim = pow(clamp(1.0 - dot(N, V), 0.0, 1.0), 2.6);
   col = mix(col, uHaze * (0.35 + 0.65 * lit), rim * 0.5 * smoothstep(-0.3, 0.4, nl));
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
@@ -379,7 +379,8 @@ void main() {
   float x = clamp((closest - uR) / (uR * 0.055), -1.0, 1.0);
   // Brightest just above the surface, gone at the shell's edge; over the planet's disc, a thin veil.
   float glow = x > 0.0 ? pow(1.0 - x, 2.6) : smoothstep(-0.25, 0.0, x) * 0.9;
-  vec3 P = normalize(cameraPosition + V * -b - uCentre);
+  vec3 P = cameraPosition + V * -b - uCentre;
+  P *= inversesqrt(max(dot(P, P), 1e-12));
   float sd = dot(P, normalize(uSun));
   vec3 col = mix(uDuskSky, uDay, smoothstep(-0.05, 0.55, sd));
   col = mix(uNight * 0.35, col, smoothstep(-0.45, -0.05, sd));
@@ -599,8 +600,9 @@ export function createPlanet({ renderer, quality = 'high', style = 'amethyst' })
     // Each frame while it shows: the planet turns, its clouds a little faster, the moons go round.
     update(dt) {
       t += dt;
-      shared.uSpin.value = t * 0.006;
-      shared.uCloudSpin.value = t * 0.0095;
+      // A turn about every three minutes, so it's plainly turning; the weather drifts over the land.
+      shared.uSpin.value = t * 0.035;
+      shared.uCloudSpin.value = t * 0.05;
       ground.material.uniforms.uTime.value = t;
       sky.material.uniforms.uTime.value = t;
       shared.uCentre.value.copy(group.position);

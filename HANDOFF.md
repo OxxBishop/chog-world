@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · B · The connect screen's flicker on phones fixed; the planet turns where you can see it
+- **The flicker** (the user's iPhone recording: the whole planet blinking black for a frame, several times a second): one pixel's maths going NaN, which the bloom's blur spreads over the whole frame. Apple's GPUs give NaN where desktop ones don't, so it never showed on the laptop or in tests. Fixed at every source I could find:
+  - `pow(x, k)` where x can dip below 0, even by a rounding error (`1.0 - dot(n, v)` for two unit vectors, `pow(x, 2.0)` of a signed value): clamped, or written as `x * x`. In the planet, the nebula, warp speed, the dome glass, the bridges' tunnel glass (`src/tunnels.js`, A's), the sea's fresnel (`src/sky.js`) and the aura ring (`src/chog.js`, A's).
+  - The space rocks' facet normal, `normalize(cross(dFdx, dFdy))`, which is zero on a rock a pixel or two across: it faces the camera then. The atmosphere's normal through the planet's middle is guarded the same way.
+  - **For everyone writing shaders:** never `pow` a base that can go negative, never normalize what can be zero. One bad pixel anywhere blacks out the frame on iPhones.
+- **The planet turns where you can see it** (the user: "the world should be rotating, a live look at the planet"): a turn about every three minutes, the clouds drifting over the land a little faster. Its clock starts as it comes into view.
+- **The loading still fades into the live planet** (1.2 s) once it's painted and drawn, instead of switching at once. The stills (`public/art/planet.webp`, 21:9, and `planet-tall.webp`, a tall phone's) are renders of the app's own first frame, sized the way the lens is (a wide screen keeps the view's height, a tall one its width), so the two line up on any screen. The still is its own layer now, `.intro-still` in `#loading`; `intro.live()` fades it (`src/main.js` calls it once `space.ready` resolves).
+- **A guest's dive** from the planet keeps the world's controls hidden until it lands (`src/session.js`, A's: `close({ keepHud: true })`, then `revealHud()`).
+
 ### 2026-10-15 · B · B25 Chog World, the planet; warp speed; waking up in your dome (done)
 - **Space is a planet now, not the floating islands.** It's the user's pick, look A, "amethyst" (`src/planet.js`): Earth-shaped but purple, with violet and lilac land, violet seas, pink lagoons, white clouds, a violet sky round the rim, a magenta dusk, city lights on the night side, a faint ring and a lilac moon.
   - Its surface is painted on the GPU at load, in tiles (B12), into two maps: 4096 wide, or 2048 on the light look and on phones.

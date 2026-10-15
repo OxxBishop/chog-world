@@ -240,7 +240,7 @@ if (vLocal.z > 0.0 && abs(ax) < uDoorHalf && (vLocal.y < postTop || length(vec2(
         .replace(
           '#include <opaque_fragment>',
           `// Clear face-on, reflective at grazing angles.
-float fres = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 3.0);
+float fres = pow(clamp(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 3.0);
 diffuseColor.a = mix(0.07, 0.8, fres);
 #include <opaque_fragment>`,
         );

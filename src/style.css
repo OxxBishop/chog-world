@@ -479,11 +479,17 @@ body.demo .hud, body.demo .places-toggle, body.demo .nav-hint, body.demo .signin
   background: radial-gradient(circle at 50% 42%, #2b145e 0%, #12082c 58%, #07030f 100%);
   transition: opacity 0.5s, background-color 0.8s;
 }
-/* The planet behind the loading screen (B25): a still of it while the world loads, the planet itself
-   once it has, turning behind the screen with only a soft shade over it so the type stays clear. */
-#loading.intro { background: radial-gradient(ellipse 70% 55% at 50% 40%, rgba(12, 6, 30, 0.55), rgba(12, 6, 30, 0) 70%), url(/art/planet.webp) center 58% / cover no-repeat, #07030f; }
+/* The planet behind the loading screen (B25): a still of it while the world loads, then the planet
+   itself, turning behind the screen with only a soft shade over it so the type stays clear. The still
+   fades into it once it's drawn (.live). */
+#loading.intro { background: #07030f; }
 #loading.intro.ready { background: radial-gradient(ellipse 70% 55% at 50% 40%, rgba(12, 6, 30, 0.5), rgba(12, 6, 30, 0) 70%), linear-gradient(180deg, rgba(7, 3, 15, 0.25), rgba(7, 3, 15, 0) 40%); }
-@media (orientation: portrait) { #loading.intro:not(.ready) { background-image: radial-gradient(ellipse 70% 55% at 50% 40%, rgba(12, 6, 30, 0.55), rgba(12, 6, 30, 0) 70%), url(/art/planet-tall.webp); } }
+.intro-still { display: none; }
+/* Sized the way the lens is: a wide screen keeps the view's height (the still is 21:9, cropped at the
+   sides), a tall one its width (the still is a tall phone's, cropped top and bottom). */
+#loading.intro .intro-still { display: block; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse 70% 55% at 50% 40%, rgba(12, 6, 30, 0.55), rgba(12, 6, 30, 0) 70%), url(/art/planet.webp) center / auto 100% no-repeat, #07030f; transition: opacity 1.2s ease; }
+@media (orientation: portrait) { #loading.intro .intro-still { background-image: radial-gradient(ellipse 70% 55% at 50% 40%, rgba(12, 6, 30, 0.55), rgba(12, 6, 30, 0) 70%), url(/art/planet-tall.webp); background-size: auto, 100% auto; } }
+#loading.intro.live .intro-still { opacity: 0; }
 #loading.intro::before,
 #loading.intro::after { content: ''; position: absolute; inset: 0; pointer-events: none; }
 /* Scanlines, and a slow bright band rolling down like an old screen. */

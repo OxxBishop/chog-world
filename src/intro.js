@@ -190,6 +190,7 @@ export function createIntro(el) {
   el.classList.add('intro');
   // index.html carries the same markup, so the screen is there from the first paint.
   if (!el.querySelector('.glitch')) el.innerHTML = `
+    <div class="intro-still" aria-hidden="true"></div>
     <div class="kicker">WELCOME TO</div>
     <div class="glitch" data-text="CHOG WORLD">CHOG WORLD</div>
     <div class="load-bar" aria-hidden="true"><i></i></div>
@@ -244,11 +245,15 @@ export function createIntro(el) {
       el.classList.add('ready');
       document.body.classList.add('intro-open');
     },
+    // The planet itself is drawn behind the screen now: the still of it fades away.
+    live() {
+      el.classList.add('live');
+    },
     // The loading screen again, its bar at f (0 to 1) under label, the world hidden: for the demo's
     // arrival shot (B13), which opens on it.
     loading(f, label) {
       current = 'loading';
-      el.classList.remove('done', 'leaving', 'ready');
+      el.classList.remove('done', 'leaving', 'ready', 'live');
       document.body.classList.add('intro-open');
       runner.stop();
       stage.hidden = true;

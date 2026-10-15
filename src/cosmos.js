@@ -72,12 +72,13 @@ void main() {
   vec3 col = mix(vec3(0.006, 0.004, 0.02), vec3(0.022, 0.012, 0.055), smoothstep(-0.7, 0.9, d.y));
   // The band: the galaxy's plane, a wide violet sweep, wisps along it.
   float bandX = d.y * 0.85 + d.x * 0.4 - 0.15;
-  float band = exp(-pow(bandX / 0.42, 2.0));
+  float bx = bandX / 0.42;
+  float band = exp(-bx * bx);
   vec3 w = vec3(fbm(d * 1.8 + 3.0, 4), fbm(d * 1.8 + 11.0, 4), fbm(d * 1.8 + 23.0, 4));
   float n = fbm(d * 2.2 + w * 1.4, 6);
   float wisps = smoothstep(0.48, 0.88, n) * band;
   // Filaments: thin bright threads through it.
-  float fil = pow(1.0 - abs(fbm(d * 4.5 + w * 2.0, 5) * 2.0 - 1.0), 7.0) * band;
+  float fil = pow(max(1.0 - abs(fbm(d * 4.5 + w * 2.0, 5) * 2.0 - 1.0), 0.0), 7.0) * band;
   // The far stars' glow along the band, mottled.
   float milk = band * (0.4 + 0.6 * fbm(d * 9.0, 4));
   col += vec3(0.16, 0.08, 0.34) * milk * 0.12;
@@ -289,13 +290,17 @@ uniform float uGlow;
 varying vec3 vWorld;
 varying vec3 vTint;
 void main() {
-  // Faceted: the face's own normal, from the slopes of the position.
-  vec3 N = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+  // Faceted: the face's own normal, from the slopes of the position. A speck of a rock a pixel or two
+  // across has no slope to go by: it faces the camera. (Normalising nothing is NaN on Apple's GPUs,
+  // and one NaN pixel, spread by the bloom, blacks out the whole frame.)
   vec3 V = normalize(cameraPosition - vWorld);
+  vec3 c = cross(dFdx(vWorld), dFdy(vWorld));
+  float c2 = dot(c, c);
+  vec3 N = c2 > 1e-20 ? c * inversesqrt(c2) : V;
   if (dot(N, V) < 0.0) N = -N;
   vec3 L = normalize(uSun);
   float lit = max(dot(N, L), 0.0);
-  float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+  float rim = pow(clamp(1.0 - dot(N, V), 0.0, 1.0), 3.0);
   vec3 col = vTint * (0.06 + 1.25 * lit) + vec3(0.55, 0.38, 1.0) * rim * 0.35 + vec3(0.03, 0.02, 0.08);
   // The shards glow from inside.
   col += vTint * uGlow * (0.5 + 0.5 * rim);

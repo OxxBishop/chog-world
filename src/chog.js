@@ -488,7 +488,8 @@ uniform vec3 uColor; uniform float uTime, uStrength;
 varying vec2 vUv;
 void main() {
   float r = length(vUv - 0.5) * 2.0;
-  float ring = exp(-pow((r - 0.62) * 5.0, 2.0)) + exp(-r * 3.0) * 0.35;
+  float rx = (r - 0.62) * 5.0;
+  float ring = exp(-rx * rx) + exp(-r * 3.0) * 0.35;
   float pulse = 0.8 + 0.2 * sin(uTime * 2.4);
   gl_FragColor = vec4(uColor * ring * pulse * uStrength, 1.0);
 }`,

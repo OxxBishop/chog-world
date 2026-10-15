@@ -140,7 +140,7 @@ void main() {
     vec3 n = normalize(vec3(slope.x, 1.0, slope.y));
     vec3 r = reflect(d, n);
     vec3 sky = mix(uHorizon, uTop, pow(smoothstep(0.0, 0.65, max(r.y, 0.0)), 0.8));
-    float fres = 0.02 + 0.98 * pow(1.0 - max(dot(-d, n), 0.0), 5.0);
+    float fres = 0.02 + 0.98 * pow(clamp(1.0 - dot(-d, n), 0.0, 1.0), 5.0);
     vec3 deep = mix(vec3(0.012, 0.06, 0.2), vec3(0.003, 0.006, 0.025), uNight);
     vec3 sea = mix(deep, sky, fres);
     // Glints twinkle as the waves turn.

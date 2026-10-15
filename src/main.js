@@ -587,6 +587,8 @@ async function init() {
   if (withIntro) {
     space.enter({ duration: 0 });
     intro.ready();
+    // The still behind the screen gives way to the planet once it's painted and drawn.
+    space.ready.then(() => requestAnimationFrame(() => requestAnimationFrame(() => intro.live())));
     // A11 drives the screen through sign-in (session.startIntro); until then, Connect opens the
     // sign-in panel and a guest is flown back down to the world.
     if (session.startIntro) session.startIntro(intro);
