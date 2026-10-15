@@ -27,6 +27,35 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · B · B23 the Starlite Lounge: slots, roulette, an edge for every trait (done)
+- **Starlite is the casino now** (the user's pick). The other looks stay a link away: `?casino=capsule`, `pier` or `classic`.
+- **Two games.** Tap a machine or the table (or use the panel's buttons) to play.
+  - **Chog Slots,** as before.
+  - **Roulette** (`src/roulette.js`), a European wheel on a teal felt table at the front left. Tap the felt to put chips on any number or box, or use the panel's quick bets (red, black, odd, even, 1-18, 19-36, the dozens, your lucky number). Pick the chip value with the minus and plus.
+  - Spin, and the camera leans over the wheel while the ball runs, drops onto the frets and rattles into its pocket. Winning chips are stacked where they won, a marker sits on the number, and it lights up on the felt.
+  - Rebet and Clear. Up to 500 chips a spin.
+- **Every trait gives an edge, in both games** (`src/casinoperks.js`, `perksFor(traits, id)`).
+  - The user asked for edges that don't ruin the fun, so **the house always keeps its edge**. Slots return 93.8% with no perks; the best Chog in the collection gets 97.5%. Roulette is 97.3%, and 98.65% with a shield. That's worked out exactly for all 1969 Chogs (`slotsReturn`, `rouletteReturn`).
+  - The big moments are power-ups, a few a day:
+    - free spins and wild spins (the Chog is wild on every reel; a star or a heart on the middle reel only)
+    - re-rolls and nudges, after a losing spin
+    - a second spin of the wheel
+    - a lost bet back (either game, up to 100)
+    - a near miss saved
+    - a lucky number that pays 50 to 1 once a day
+    - a losing colour, dozen or even-money bet back
+  - The always-on edges are small: one symbol paying a bit more, two Chogs paying 7, a hot streak, a shield on zero.
+  - **By trait:** tier sets the day's chips; eyes are slot skills; body is how the slots pay; head is roulette luck; mouth is a roulette extra; accessories are charms; aura colours your wins; rare base, skin and sky add a bonus. Everyone gets a lucky number from their token id.
+  - The panel lists your edges by game, folded away until you open it.
+- **The show:**
+  - A glint runs across the reel glass as the reels land, and now and then on the idle machines.
+  - Wins sparkle out of the window (or up off the felt) in your aura's colour, gold and white.
+  - Coins pile up in a new tray at the foot of each machine.
+  - The room joins in through `look.update(t, dt, fx)`: the orbits and the arrow's chase speed up while a game runs, and on a win the starburst flares and its bulbs and the sputniks flash.
+- **Phones (B22):** a slim bar for each game. At the roulette the camera looks straight down over the felt, so the numbers are big enough to tap, and leans over the wheel while it spins.
+- **B12:** every new material (glints, sparkles, chips on the felt, coins, the marker) is in the room when the load draws it. No new shaders after the load: checked with the guest flow through the casino, both games and the jackpot. That check also caught A's new stage fairy lights (two shaders that stalled the first time you came near the plaza): they're now drawn in the load too, a few lines in `src/npcs.js`.
+- **For A:** `casino.play('slots' | 'roulette')`; `body.cz-playing` is set at either game. `entry.enter` / `entry.leave` are unchanged.
+- **Left:** the lookbook effects (B24) wait on the user's picks.
 ### 2026-10-15 · A · Hooks for B's effects (the user moved all effects to B)
 - **Portal trip:** `src/travel.js` picks up `src/fx/teleport.js` when it exists (an eager `import.meta.glob`, so nothing breaks before it lands). Exports it uses, all optional:
   - `departs({ chog, pad, scene, camera })` -> Promise: plays on your Chog standing on `pad.centre` (world `Vector3`, the pad's top), resolves when it's gone. A then hides `chog.root`, cuts the camera to the other pad, and calls

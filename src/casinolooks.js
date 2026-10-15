@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { buildRoulette } from './roulette.js';
 
 /*
  * Three directions for the casino (B23), for the user to pick from: ?casino=capsule | starlite | pier.
@@ -15,7 +16,8 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
  *             mural, ice-cream-cart cabinets under striped awnings, skee-ball and bunting.
  *
  * A look gets the kit (Room, slotMachine, the strip, board and chip burst builders) and returns the
- * room with room.casino filled in; look.update(t, dt) runs its own motion each frame.
+ * room with room.casino filled in; look.update(t, dt, fx) runs its own motion each frame, fx telling
+ * it how the games are going ({ spin, win, jackpot }, each 0 to 1) so the room can join in.
  */
 
 const C = (hex, k = 1) => new THREE.Color(hex).multiplyScalar(k);
@@ -698,24 +700,68 @@ function starliteLook(kit) {
   const W = room.w / 2 - 0.08, D = room.d / 2 - 0.08;
   tube(g, [[-W, 6.4, D], [-W, 6.4, -D], [W, 6.4, -D], [W, 6.4, D]], STAR.cyan, 0.03, 1.8);
 
+  // The roulette, on the floor's left under the sputnik, a neon sign hung over it.
+  const roulette = buildRoulette(room, -2.2, 1.0, 0.3, { felt: '#17766c', wood: '#8a5232', rail: mats.dark, base: STAR.coral, chrome: mats.mustard, dolly: STAR.mint });
+  const wheelSign = sign(2.2, 0.55, 1024, (c, w, h) => {
+    c.clearRect(0, 0, w, h);
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.font = `600 ${Math.round(h * 0.66)}px Fredoka, sans-serif`;
+    c.lineJoin = 'round';
+    c.shadowColor = STAR.mint;
+    c.shadowBlur = 24;
+    c.strokeStyle = STAR.mint;
+    c.lineWidth = 9;
+    c.strokeText('Roulette', w / 2, h / 2);
+    c.shadowBlur = 0;
+    c.fillStyle = '#f4fff9';
+    c.fillText('Roulette', w / 2, h / 2);
+  }, 1.6, ['600 60px Fredoka']);
+  // Behind the table's far side, so it shows over the table from where you play, and stays out of
+  // the way of the view straight down over the felt.
+  wheelSign.position.set(-0.3, 3.5, -1.0);
+  roulette.group.add(wheelSign);
+  for (const sx of [-1, 1]) roulette.group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 2.7, 4).translate(-0.3 + sx * 0.9, 5.1, -1.0), chrome));
+  pool(g, -2.2, 1.0, 2.6, 1.8, '#ffd08a', 0.22);
+
   const board = kit.makeBoard(room.onWall('right'), { x: -0.6, y: 3.9, w: 3.4, h: 2.3, frame: chrome, theme: 'starlite' });
   const burst = kit.makeBurst(room);
   room.finish();
   const warm = chase(['#ffe2a8']);
+  const inner = sbInner.material.color.clone();
+  const lampWarm = new THREE.Color('#ffe2a8'), lampTmp = new THREE.Color();
+  let orbitAt = 0, arrowAt = 0;
   room.casino = {
-    machines, strip, mats, burst, board,
+    machines, strip, mats, burst, board, roulette,
     look: {
       name: 'starlite',
+      // The room's framing: from the front right, the machines along the back and the roulette in
+      // front of them on the left; on a tall screen from the front left, the wheel in the foreground.
+      view: { wide: { pos: [4.0, 3.5, 4.8], target: [-0.6, 1.6, -2.6] }, tall: { pos: [-2.6, 3.0, 6.0], target: [-2.3, 1.82, -2.4] } },
       lit: 0.16,
       glow: 0.55,
       light: { sky: '#ffe9cf', ground: '#3d6a78', intensity: 1.6 },
       bulbs: warm,
-      update(t) {
-        orbits.forEach((o, i) => (o.rotation.y = t * (0.8 + i * 0.15)));
-        for (let i = 0; i < arrowSpots.length; i++) arrowBulbs.setColorAt(i, (Math.floor(t * 9) - i) % 4 === 0 ? warm.hot : (i + Math.floor(t * 9)) % 4 < 2 ? warm.on[0] : warm.off[0]);
+      // The room joins in: the orbits and the arrow's chase speed up while a game runs, and on a
+      // win the starburst flares and its bulbs and the sputniks flash.
+      update(t, dt, fx = {}) {
+        const spin = fx.spin ?? 0, win = fx.win ?? 0, jp = fx.jackpot ?? 0;
+        orbitAt += dt * (0.8 + spin * 2.4 + win * 4 + jp * 6);
+        orbits.forEach((o, i) => (o.rotation.y = orbitAt * (1 + i * 0.18)));
+        arrowAt += dt * (9 + spin * 14 + win * 10);
+        const a = Math.floor(arrowAt);
+        for (let i = 0; i < arrowSpots.length; i++) arrowBulbs.setColorAt(i, (a - i) % 4 === 0 ? warm.hot : (i + a) % 4 < 2 ? warm.on[0] : warm.off[0]);
         arrowBulbs.instanceColor.needsUpdate = true;
-        for (let i = 0; i < tips.length; i++) tipBulbs.setColorAt(i, (i + Math.floor(t * 4)) % 3 ? warm.on[0] : warm.hot);
+        const flare = Math.max(win, jp);
+        const blink = flare > 0 && Math.floor(t * 10) % 2 === 0;
+        for (let i = 0; i < tips.length; i++) tipBulbs.setColorAt(i, flare > 0 ? (blink === (i % 2 === 0) ? warm.hot : warm.on[0]) : (i + Math.floor(t * 4)) % 3 ? warm.on[0] : warm.hot);
         tipBulbs.instanceColor.needsUpdate = true;
+        sbInner.material.color.copy(inner).multiplyScalar(1 + flare * (1.2 + Math.sin(t * 18) * 0.5));
+        if (flare > 0 || fx.wasFlare) {
+          for (let i = 0; i < lampSpots.length; i++) lampBulbs.setColorAt(i, lampTmp.copy(lampWarm).multiplyScalar(2.2 + (flare > 0 && (i + Math.floor(t * 12)) % 3 === 0 ? 2.5 * flare : 0)));
+          lampBulbs.instanceColor.needsUpdate = true;
+        }
+        fx.wasFlare = flare > 0;
       },
     },
   };

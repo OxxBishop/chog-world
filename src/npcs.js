@@ -426,6 +426,14 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   const square = new THREE.Group();
   plaza.add(square);
   square.position.set(s.plaza[0], 0, s.plaza[1]);
+  // The stage lights' shaders, drawn once now in the load, so the plaza's first showing doesn't stall
+  // on them (B12). The real ones come with the set; these are let go of (their shaders stay built).
+  {
+    const warm = stageLights(0);
+    square.add(warm.group);
+    await prewarm?.(warm.group);
+    square.remove(warm.group);
+  }
   square.scale.setScalar(OUTDOOR);
   const facing = Math.atan2(s.faces[0] - s.plaza[0], s.faces[1] - s.plaza[1]);
   set(
