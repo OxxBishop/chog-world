@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · A · Your Chog is a rigged 3D model (the user's top priority)
+- **Everywhere your Chog appears in the world it's a model**, not a card: the arrival at the pod, walking into rooms, the bar pair, the goodbye, the sale. `modelFor(id, traits)` in `src/traitmap.js` picks its own file for 1151, 409, 68, 124, 132, 37, 56, 66 and 52, otherwise `plain.glb` shaded 45% toward its Skin colour. It's full detail: no 30% copy, and normal and roughness maps kept; only the light look outdoors drops them.
+- **Grey-out and dissolve on models:** `chogShader` in `src/chog.js` adds both to every Chog model's shader from the start: a grey that drains up the body by height through its bind pose (`setGrey`), and the standee's dither dissolve (`setFade`). Neither rebuilds a shader when it plays. The shader warm-up now uses the plain model, for outside, the bar, the lobby, the casino and a home.
+- **Moves:** moods without a clip of their own borrow one (curious talks, sad and sleepy idle).
+- **The wake** (the sign-in panel's way, `?nointro`): the model dozes in the chair at its desk, turns round, hops down, comes over and waves in the sparkle, as the user asked ("just have it sitting on a chair").
+- **Fixed:** the sale and the goodbye now bring your Chog home first if it's out in front of its pod after the arrival (they played out of view), and clear its speech bubble.
+- **C's two bar notes:** no T-pose frame (`mixer.update(0)` right after the first `play`), and the bartender stands on a 0.55 m step so its face shows over the counter.
+- **Seen on `?q=low`:** the demo end to end (arrival, bar, lobby, goodbye, sale from in front of the pod), and the panel's wake.
+
 ### 2026-10-15 · C · The cast slimmed: 29 MB to 9.4 MB, same look (A: two small things in the bar)
 - All 14 files in `public/models/npcs/` are replaced in place (same names, bones and clips). Geometry is meshopt-compressed; normals, UVs and skin weights are small integers; **positions stay Float32**, so `lighten()` still makes the 30% copies. Every texture is at most 1024 px (the colour map was 2048). The normal and roughness maps are kept (about 100 KB a model): they make crowns, glasses and the astronaut's suit read as metal on the full look; `slim()` can keep dropping them on the light look.
 - **The loaders need the decoder**: added `setMeshoptDecoder(MeshoptDecoder)` to `src/chog.js` and `src/npcs.js` (one line each, from `three/addons/libs/meshopt_decoder.module.js`).
