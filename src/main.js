@@ -192,6 +192,8 @@ const CAST_KINDS = [
   { model: 'models/npcs/dino.glb', keep: 0.3 },
   // Its texture coordinates are floats (the rest are packed into shorts): a vertex layout of its own.
   { model: 'models/npcs/sniffer.glb', keep: 0.3 },
+  // The singer is a Chog now (A): its own two-sided material with normal and roughness maps.
+  { model: 'models/npcs/singer.glb' },
 ];
 function castStandIns() {
   const box = new THREE.BoxGeometry(0.5, 0.5, 0.5);

@@ -92,6 +92,7 @@ export function createChat({ camera, getSession, placeName }) {
       if (out.newKeeper) add('note', esc(`${s.info.name} is getting to know you.`));
       if (out.learned?.length) add('note', esc(`${s.info.name} will remember that.`));
       s.chog.setMood(out.mood);
+      s.chog.talk?.(Math.min(6, 1.2 + out.reply.length / 15));
       say(out.reply);
     } catch (err) {
       typing.remove();

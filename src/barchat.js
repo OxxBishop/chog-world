@@ -271,6 +271,8 @@ export function createBarChat({ world, getMine, sendHome: home }) {
       other.chog.play('idle');
       who.chog.play('talk');
       who.chog.setMood(line.mood, 2.2);
+      who.chog.lookAt?.(other.chog.root);
+      other.chog.lookAt?.(who.chog.root);
       say(who, line.text);
       if (!(await wait(Math.min(9000, 2600 + line.text.length * 50), token))) return;
       who.chog.play('idle');

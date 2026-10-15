@@ -250,6 +250,8 @@ function floorUnder(group, p, skip) {
  */
 export async function playGreyOut({ chog, name, room, world }) {
   chog.play('idle');
+  // Sad from the moment it knows, all the way out of the door.
+  chog.express?.('sad', 14);
   caption(`${name} left your wallet`);
   // It turns to face you.
   await faceCamera(chog, room.room.group, world.camera, 700);

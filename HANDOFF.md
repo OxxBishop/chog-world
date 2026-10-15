@@ -27,6 +27,17 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · A · Faces that move, the singer's one mic, the dino's run, the duck float (the user's model notes)
+- **New standing rules in CLAUDE.md** (read them): no creative direction without the user's pick, and the user's quality bar in their words.
+- **Faces:** every cast Chog now blinks, changes face with its mood (happy, surprised, sad, cross, sleepy), moves its mouth while it talks or sings, and turns its head to look at you (or at the Chog it's talking to in the bar). The Chogs that only had closed "happy" eyes (plain, banana, singer, duck float, dragon, shark) now rest with open eyes, taken from the King's and the bartender's own art. How: `public/faces/<model>.png` is a sheet of 6 eye states over 6 mouth states made from each model's own painted face; `src/chog.js` lays the current state over the face in the Chog shader (`chog-model-2`), keyed by the head bone so nothing else on the model is touched. API on a Chog: `express(mood, seconds)`, `talk(seconds)`, `lookAt(object | point | null)`. `setMood` sets the face too. Rebuild with `tools/faces/` (README there). The sniffer faces sideways and has no sheet yet.
+- **Detail up close:** outdoor Chogs swap to their full model within 24 m (both index buffers kept, `LOD_NEAR`), the 30% copy beyond.
+- **The singer** is now a Chog like the rest (faces, `makeChog`), and its mic stand is cut out of its mesh at load (`dropStand` in `src/npcs.js`): only the handheld mic is left. The stand's round foot stays (the stage has no floor under it).
+- **Movement:** walkers and runners move at the speed their legs carry them (`clipSpeed` measures the planted foot), kept to a natural range. The dino was going about 10 m/s on a clip made for about 2.5; now it runs in bursts at its stride's speed, eases to a stop, rests with its block held up, sometimes turns and runs back, and leans into the curve.
+- **The duck float (#66):** the body's purple no longer bleeds onto the float, and there's a baked contact shadow where the float meets the body. Only the base colour image in `chog-66.glb` changed (`tools/models/duck-float/`).
+- **Sale:** your Chog looks sad from the moment it's sold, all the way out.
+- **Fixed earlier today (fd71a98):** pinch-zooming at a door no longer drops the camera inside the casino, and taps never fly back into a room.
+- **Coming next from A, on the user's picks:** third-person travel (walk your Chog, camera close behind, joystick and drag on phones, WASD and mouse on laptops), a round minimap and a top compass, portal hubs at every neighbourhood and landmark. B: hold B13, B14 and B16 until the new rig is in.
+- **Seen:** the demo flow end to end, the bar as a guest, the singer, crowd and dino up close, `?q=low` frame rate with the cast loaded (20.3 against 20.9 fps without it).
 ### 2026-10-15 · B · A skill for cheap UI animation (the user's ask)
 - `.claude/skills/fixing-motion-performance/` (from Cult UI, MIT, licence in the folder): rules for keeping HTML/CSS animation off layout and paint, which counts on the HD 520. Run `/fixing-motion-performance <file>` to review a file against it, or bare to apply its rules to the session's UI work. Plain markdown, nothing runs.
 

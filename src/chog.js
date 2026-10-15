@@ -26,7 +26,8 @@ const loadGltf = (url, keep = 1) => {
 
 /*
  * Fewer triangles for a model seen from afar: meshoptimizer collapses edges where it changes the shape
- * least, writing a new index buffer over the same vertices, so the skinning still holds.
+ * least, writing a second index buffer over the same vertices, so the skinning still holds. Each Chog
+ * swaps between the two by its distance from the camera (see LOD_NEAR).
  */
 async function lighten(gltf, keep) {
   await MeshoptSimplifier.ready;
@@ -36,7 +37,7 @@ async function lighten(gltf, keep) {
     const src = g.index.array instanceof Uint32Array ? g.index.array : new Uint32Array(g.index.array);
     const target = Math.floor((src.length * keep) / 3) * 3;
     const [dst] = MeshoptSimplifier.simplify(src, g.attributes.position.array, 3, target, 0.02, []);
-    g.setIndex(new THREE.BufferAttribute(dst, 1));
+    g.userData.lightIndex = new THREE.BufferAttribute(dst, 1);
   });
   return gltf;
 }
@@ -95,19 +96,42 @@ function slim(gltf, light) {
  * 1 solid to 0 gone), the same as the standee's. Built in from the start, so neither ever rebuilds a
  * shader when it plays.
  */
-function chogShader(material, geometry, fx) {
+function chogShader(material, geometry, fx, face, faceOn) {
   geometry.computeBoundingBox();
   const range = { value: new THREE.Vector2(geometry.boundingBox.min.y, geometry.boundingBox.max.y) };
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uGrey = fx.uGrey;
     shader.uniforms.uFade = fx.uFade;
     shader.uniforms.uYRange = range;
-    shader.vertexShader = 'varying float vChogY;\n' + shader.vertexShader.replace('#include <skinning_vertex>', '#include <skinning_vertex>\n  vChogY = transformed.y;');
+    Object.assign(shader.uniforms, face, { uFaceOn: faceOn });
+    shader.vertexShader =
+      'varying float vChogY;\nvarying vec3 vFaceP;\nvarying float vFaceW;\nuniform mat4 uFaceM;\nuniform vec3 uFaceDir;\nuniform float uFaceHead;\n' +
+      shader.vertexShader.replace(
+        '#include <skinning_vertex>',
+        `#include <skinning_vertex>
+  vChogY = transformed.y;
+  vFaceP = vec3((uFaceM * vec4(position, 1.0)).xy, dot(normal, uFaceDir));
+  #ifdef USE_SKINNING
+    vFaceW = dot(skinWeight, vec4(equal(skinIndex, vec4(uFaceHead))));
+  #else
+    vFaceW = 0.0;
+  #endif`,
+      );
     shader.fragmentShader =
-      'uniform float uGrey;\nuniform float uFade;\nuniform vec2 uYRange;\nvarying float vChogY;\n' +
+      'uniform float uGrey;\nuniform float uFade;\nuniform vec2 uYRange;\nvarying float vChogY;\nuniform sampler2D uFace;\nuniform float uFaceOn;\nuniform float uEye;\nuniform float uMouth;\nvarying vec3 vFaceP;\nvarying float vFaceW;\n' +
       shader.fragmentShader.replace(
         '#include <map_fragment>',
         `#include <map_fragment>
+  {
+    // The face: this Chog's eye and mouth states laid over its painted face (see FACES).
+    vec2 fp = vFaceP.xy;
+    vec4 fe = texture2D(uFace, vec2((uEye + clamp(fp.x, 0.0, 1.0)) / 6.0, 0.5 + clamp(fp.y, 0.0, 1.0) * 0.5));
+    vec4 fm = texture2D(uFace, vec2((uMouth + clamp(fp.x, 0.0, 1.0)) / 6.0, clamp(fp.y, 0.0, 1.0) * 0.5));
+    float inside = step(0.0, fp.x) * step(fp.x, 1.0) * step(0.0, fp.y) * step(fp.y, 1.0);
+    float k = uFaceOn * inside * smoothstep(0.35, 0.6, vFaceW) * smoothstep(0.08, 0.3, vFaceP.z);
+    diffuseColor.rgb = mix(diffuseColor.rgb, fe.rgb * diffuse, fe.a * k);
+    diffuseColor.rgb = mix(diffuseColor.rgb, fm.rgb * diffuse, fm.a * k);
+  }
   {
     float h = (vChogY - uYRange.x) / max(uYRange.y - uYRange.x, 1e-4);
     float drained = max(smoothstep(uGrey * 1.1 - 0.05, uGrey * 1.1 - 0.12, h), step(0.999, uGrey));
@@ -117,8 +141,150 @@ function chogShader(material, geometry, fx) {
   }`,
       );
   };
-  material.customProgramCacheKey = () => 'chog-model-1';
+  material.customProgramCacheKey = () => 'chog-model-2';
 }
+
+/*
+ * Faces (public/faces/, built by tools/faces/ from a front capture of each model): an expression sheet of
+ * six eye states over six mouth states, and how the model's own vertices map onto it. Eyes blink on their
+ * own, moods change the face, and the mouth moves while a Chog talks or sings.
+ */
+const EYES = { rest: 0, blink: 1, happy: 2, surprised: 3, sad: 4, cross: 5 };
+const MOUTHS = { rest: 0, smile: 1, o: 2, frown: 3, talk1: 4, talk2: 5 };
+// Each mood (from chats and the world) as [eyes, mouth].
+const EXPRESSIONS = {
+  calm: ['rest', 'rest'],
+  happy: ['happy', 'smile'],
+  excited: ['surprised', 'smile'],
+  surprised: ['surprised', 'o'],
+  curious: ['rest', 'o'],
+  sad: ['sad', 'frown'],
+  cross: ['cross', 'frown'],
+  sleepy: ['blink', 'rest'],
+};
+// What a move does to the face while it plays.
+const MOVE_FACE = { cheer: 'happy', wave: 'happy', sad: 'sad', sleepy: 'sleepy', sleep: 'sleepy', wake: 'sleepy' };
+let faceManifest = null;
+const faceSheets = new Map();
+const noFace = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+noFace.needsUpdate = true;
+function faceFor(url) {
+  const key = url?.match(/npcs\/([\w-]+)\.glb$/)?.[1];
+  if (!key) return Promise.resolve(null);
+  faceManifest ??= fetch(`${BASE}faces/faces.json`).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  return faceManifest
+    .then((all) => {
+      const f = all[key];
+      if (!f) return null;
+      if (!faceSheets.has(key)) {
+        faceSheets.set(key, textures.loadAsync(`${BASE}faces/${key}.png`).then((t) => {
+          t.colorSpace = THREE.SRGBColorSpace;
+          t.anisotropy = 4;
+          return t;
+        }));
+      }
+      return faceSheets.get(key).then((tex) => ({ ...f, tex }));
+    })
+    .catch(() => null);
+}
+
+/*
+ * Some models came out of auto-rigging with a hand bent back at the wrist (the bartender's left). For each
+ * hand: how far it bends away from the line of its forearm in the bind pose, and the turn of its bone
+ * that straightens it. handBends(gltf) -> [{ bone, degrees, fix }].
+ */
+const HAND_FIX_ABOVE = Infinity;
+export function handBends(gltf) {
+  let mesh = null;
+  gltf.scene.traverse((o) => o.isSkinnedMesh && (!mesh || o.geometry.attributes.position.count > mesh.geometry.attributes.position.count) && (mesh = o));
+  if (!mesh) return [];
+  gltf.scene.updateMatrixWorld(true);
+  const out = [];
+  const pos = mesh.geometry.attributes.position, si = mesh.geometry.attributes.skinIndex, sw = mesh.geometry.attributes.skinWeight;
+  const v = new THREE.Vector3();
+  for (const [hand, arm] of [['HandL', 'ForeArmL'], ['HandR', 'ForeArmR']]) {
+    const hb = mesh.skeleton.bones.find((b) => b.name === hand), ab = mesh.skeleton.bones.find((b) => b.name === arm);
+    if (!hb || !ab) continue;
+    const hi = mesh.skeleton.bones.indexOf(hb);
+    const c = new THREE.Vector3();
+    let n = 0;
+    for (let i = 0; i < pos.count; i++) {
+      let w = 0;
+      for (let j = 0; j < 4; j++) if (si.getComponent(i, j) === hi) w += sw.getComponent(i, j);
+      if (w < 0.7) continue;
+      c.add(v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld));
+      n++;
+    }
+    if (n < 10) continue;
+    c.divideScalar(n);
+    const hp = hb.getWorldPosition(new THREE.Vector3()), ap = ab.getWorldPosition(new THREE.Vector3());
+    const dHand = c.sub(hp).normalize(), dArm = hp.clone().sub(ap).normalize();
+    const degrees = THREE.MathUtils.radToDeg(dHand.angleTo(dArm));
+    const world = new THREE.Quaternion().setFromUnitVectors(dHand, dArm);
+    world.slerp(new THREE.Quaternion(), 0.15);
+    const bq = hb.getWorldQuaternion(new THREE.Quaternion());
+    const fix = bq.clone().invert().multiply(world).multiply(bq);
+    out.push({ bone: hand, degrees, fix });
+  }
+  return out;
+}
+
+/*
+ * How fast a walk or run clip carries a Chog, in metres a second at scale 1: how fast a foot slides back
+ * under the body while it's planted. Moving a Chog at this speed (times its scale) keeps its feet
+ * from sliding. Measured once per file and clip.
+ */
+export function clipSpeed(gltf, clipName) {
+  gltf.userData.speeds ??= {};
+  if (clipName in gltf.userData.speeds) return gltf.userData.speeds[clipName];
+  const clip = THREE.AnimationClip.findByName(gltf.animations, clipName);
+  let speed = 0;
+  if (clip) {
+    const rig = cloneSkinned(gltf.scene);
+    const mixer = new THREE.AnimationMixer(rig);
+    mixer.clipAction(clip).play();
+    const feet = ['FootL', 'FootR'].map((n) => rig.getObjectByName(n)).filter(Boolean);
+    const p = new THREE.Vector3();
+    const N = 60;
+    let best = 0;
+    for (const foot of feet) {
+      const zs = [], ys = [];
+      for (let i = 0; i <= N; i++) {
+        mixer.setTime((i / N) * clip.duration);
+        rig.updateMatrixWorld(true);
+        foot.getWorldPosition(p);
+        zs.push(p.z);
+        ys.push(p.y);
+      }
+      // While a foot is planted it slides back under the body at the body's own speed: its speed in
+      // the lowest third of its swing is the walking speed.
+      const y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const low = y0 + (y1 - y0) * 0.33;
+      let dist = 0, n = 0;
+      for (let i = 1; i <= N; i++) if (ys[i] <= low && ys[i - 1] <= low) (dist += Math.abs(zs[i] - zs[i - 1])), n++;
+      if (n >= 3) best = Math.max(best, dist / ((n / N) * clip.duration));
+    }
+    speed = best;
+  }
+  gltf.userData.speeds[clipName] = speed;
+  return speed;
+}
+
+// Heads turn toward the camera (or whatever a Chog is told to look at) when it's near and in front.
+const LOOK_RANGE = 18;
+const LOOK_MAX = THREE.MathUtils.degToRad(55);
+// Up close a Chog is its full model; past this it's the lighter copy (for Chogs loaded with keep < 1).
+const LOD_NEAR = 24;
+const _hp = new THREE.Vector3();
+const _to = new THREE.Vector3();
+const _bf = new THREE.Vector3();
+const _cur = new THREE.Vector3();
+const _lim = new THREE.Vector3();
+const _rq = new THREE.Quaternion();
+const _hq = new THREE.Quaternion();
+const _pq = new THREE.Quaternion();
+const _dq = new THREE.Quaternion();
+const _iq = new THREE.Quaternion();
 
 // A model has fewer moves than a standee: these borrow the nearest it has.
 const STAND_IN = { sniff: 'talk', sing: 'cheer', wake: 'wave', sleepy: 'idle', sad: 'idle' };
@@ -323,10 +489,25 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   const tintables = [];
   // A model's grey and dissolve (see chogShader), shared by all its pieces.
   const fx = { uGrey: { value: 0 }, uFade: { value: 1 } };
+  // Its face (see FACES): the sheet, how its vertices map onto it, and the current eye and mouth state.
+  const face = {
+    uFace: { value: noFace },
+    uFaceM: { value: new THREE.Matrix4().makeScale(0, 0, 0) },
+    uFaceDir: { value: new THREE.Vector3(0, 0, 1) },
+    uFaceHead: { value: -1 },
+    uEye: { value: 0 },
+    uMouth: { value: 0 },
+  };
+  const faceOn = new Map();
+  const lods = [];
+  let gaze = null;
+  let handFix = [];
+  let gltfRef = null;
 
   if (base) {
     try {
       const gltf = await loadGltf(base, keep);
+      gltfRef = gltf;
       model = cloneSkinned(gltf.scene);
       model.traverse((o) => {
         if (!o.isMesh) return;
@@ -336,7 +517,21 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         if (modelUrl) {
           if (tint) o.material.color.multiply(tint);
         } else if (o.name === 'Skin' || o.material.name === 'Skin') o.material.color.set(look.skin);
-        chogShader(o.material, o.geometry, fx);
+        const on = { value: 0 };
+        faceOn.set(o, on);
+        chogShader(o.material, o.geometry, fx, face, on);
+        // A lighter copy to show from afar: the same vertices, fewer triangles.
+        const lightIndex = o.geometry.userData.lightIndex;
+        if (lightIndex) {
+          const lite = new THREE.BufferGeometry();
+          for (const [k, a] of Object.entries(o.geometry.attributes)) lite.setAttribute(k, a);
+          lite.setIndex(lightIndex);
+          lite.boundingBox = o.geometry.boundingBox;
+          o.geometry.computeBoundingSphere();
+          lite.boundingSphere = o.geometry.boundingSphere;
+          lods.push({ mesh: o, full: o.geometry, lite });
+          o.geometry = lite;
+        }
       });
       // Separate pieces hang from their bones (a Chog's own model has them built in).
       for (const [slot, url] of modelUrl ? [] : [['head', look.head], ['body', look.body], ['accessory', look.accessory]]) {
@@ -346,7 +541,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
           if (!o.isMesh) return;
           o.material = o.material.clone();
           tintables.push(o);
-          chogShader(o.material, o.geometry, fx);
+          chogShader(o.material, o.geometry, fx, face, { value: 0 });
         });
         (model.getObjectByName(ATTACH[slot]) ?? model).add(piece);
       }
@@ -356,6 +551,27 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         if (clip) actions[name] = mixer.clipAction(clip);
       }
       root.add(model);
+      // The head, and which way is its face in the head bone's own frame (the model faces +z).
+      const head = model.getObjectByName('Head');
+      if (head) {
+        model.updateMatrixWorld(true);
+        const rel = model.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(head.getWorldQuaternion(new THREE.Quaternion()));
+        gaze = { head, fwd: new THREE.Vector3(0, 0, 1).applyQuaternion(rel.invert()), dir: new THREE.Vector3(0, 0, 1), w: 0, target: null, base: new THREE.Quaternion(), applied: false };
+      }
+      // Straighten a hand that came out bent back at the wrist.
+      gltf.userData.handBends ??= handBends(gltf);
+      handFix = gltf.userData.handBends.filter((h) => h.degrees > HAND_FIX_ABOVE).map((h) => ({ bone: model.getObjectByName(h.bone), fix: h.fix, base: new THREE.Quaternion(), applied: false })).filter((h) => h.bone);
+      // Its face, once the sheet is in.
+      if (modelUrl) {
+        faceFor(modelUrl).then((f) => {
+          if (!f) return;
+          face.uFace.value = f.tex;
+          face.uFaceM.value.fromArray(f.matrix);
+          face.uFaceDir.value.fromArray(f.dir);
+          face.uFaceHead.value = f.head;
+          for (const [o, on] of faceOn) if (o.name === f.mesh) on.value = 1;
+        });
+      }
     } catch (err) {
       console.warn('Chog model unavailable, using its standee:', err?.message ?? err);
       model = null;
@@ -384,6 +600,14 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   let state = 'idle';
   let stateT = 0;
   let current = null;
+  // The face: a held expression, blinks, and the mouth while talking.
+  let expr = 'calm';
+  let exprLeft = 0;
+  let blinkIn = 1 + Math.random() * 3;
+  let blinking = 0;
+  let talkLeft = 0;
+  let flapIn = 0;
+  let mouthNow = 'rest';
   let t = Math.random() * 10;
   const speed = personality.idleSpeed;
   const toCam = new THREE.Vector3();
@@ -425,6 +649,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       moodT = 0;
       moodLeft = seconds;
       chog.play(m.act);
+      chog.express(mood, seconds);
       if (model) {
         model.traverse((o) => {
           if (!o.morphTargetDictionary) return;
@@ -433,6 +658,38 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
           if (i !== undefined) o.morphTargetInfluences[i] = 1;
         });
       }
+    },
+    /**
+     * Metres a second its walk or run carries it at scale 1 (0 for a standee or a clip it lacks), kept to
+     * a natural pace: a robe that hides the legs, or a shuffling clip, measures too slow. pace() is how
+     * much faster to play the clip to match.
+     */
+    speedOf(move) {
+      const v = gltfRef ? clipSpeed(gltfRef, CLIPS[move] ?? move) : 0;
+      const [lo, hi] = move === 'run' ? [1.4, 3] : [0.5, 1.2];
+      return v ? THREE.MathUtils.clamp(v, lo, hi) : 0;
+    },
+    paceFor(move) {
+      const v = gltfRef ? clipSpeed(gltfRef, CLIPS[move] ?? move) : 0;
+      return v ? THREE.MathUtils.clamp(Math.sqrt(chog.speedOf(move) / v), 0.85, 1.35) : 1;
+    },
+    /** Play its current move faster or slower (to match how fast it is actually going). */
+    setPace(k) {
+      if (current) current.timeScale = k;
+    },
+    /** Hold a face for a while: calm, happy, excited, surprised, curious, sad, cross or sleepy. */
+    express(name, seconds = 3) {
+      if (!EXPRESSIONS[name]) return;
+      expr = name;
+      exprLeft = seconds;
+    },
+    /** Move the mouth as if talking, for this many seconds. */
+    talk(seconds = 2) {
+      talkLeft = Math.max(talkLeft, seconds);
+    },
+    /** Look at something (a point or an object, whose head height is looked at), or null for the camera. */
+    lookAt(target) {
+      if (gaze) gaze.target = target;
     },
     // Fade the Chog out (1 is solid, 0 gone), for walking off. A model pops in and out with a little
     // grow and shrink instead (fading its materials would rebuild their shaders).
@@ -466,7 +723,22 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
           chog.play(resumeAct);
         }
       }
-      if (mixer) return mixer.update(dt);
+      if (mixer) {
+        // Undo last frame's head turn and wrist fix first: a bone no clip moves would keep them otherwise.
+        if (gaze?.applied) gaze.head.quaternion.copy(gaze.base), (gaze.applied = false);
+        for (const h of handFix) h.applied && (h.bone.quaternion.copy(h.base), (h.applied = false));
+        mixer.update(dt);
+        for (const h of handFix) h.base.copy(h.bone.quaternion), h.bone.quaternion.multiply(h.fix), (h.applied = true);
+        faceUpdate(dt);
+        if (camera) {
+          lookUpdate(dt, camera);
+          if (lods.length) {
+            const near = root.getWorldPosition(centre).distanceTo(camera.position) < LOD_NEAR;
+            for (const l of lods) l.mesh.geometry = near ? l.full : l.lite;
+          }
+        }
+        return;
+      }
       act(stand, state, t * speed, stateT);
       // The card turns to face the camera (about its upright axis), whatever way the Chog is facing.
       if (camera && state !== 'sleep') {
@@ -487,6 +759,70 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       });
     },
   };
+  // The face for this frame: the held expression, else what the move shows, with blinks and talking.
+  function faceUpdate(dt) {
+    if (exprLeft > 0 && (exprLeft -= dt) <= 0) expr = 'calm';
+    const shown = exprLeft > 0 ? expr : MOVE_FACE[state] ?? 'calm';
+    let [eye, mouth] = EXPRESSIONS[shown];
+    if ((blinkIn -= dt) <= 0) {
+      blinking = 0.14;
+      blinkIn = 2.2 + Math.random() * 4 + (Math.random() < 0.15 ? -1.8 : 0);
+    }
+    if (blinking > 0) {
+      blinking -= dt;
+      if (eye !== 'happy') eye = 'blink';
+    }
+    if (talkLeft > 0) talkLeft -= dt;
+    if (talkLeft > 0 || state === 'talk' || state === 'sing') {
+      if ((flapIn -= dt) <= 0) {
+        flapIn = 0.07 + Math.random() * 0.1;
+        const opts = mouthNow === 'rest' ? ['talk1', 'talk2'] : ['rest', 'talk1', 'talk2', mouthNow === 'talk1' ? 'talk2' : 'talk1'];
+        mouthNow = opts[Math.floor(Math.random() * opts.length)];
+      }
+      mouth = mouthNow === 'rest' ? mouth : mouthNow;
+    } else mouthNow = 'rest';
+    face.uEye.value = EYES[eye];
+    face.uMouth.value = MOUTHS[mouth];
+  }
+
+  // Turn the head toward what it looks at, within a natural reach, easing in and out.
+  function lookUpdate(dt, camera) {
+    const L = gaze;
+    if (!L || !model.visible) return;
+    const tgt = L.target ?? camera.position;
+    let want = 0;
+    if (state !== 'sleep' && state !== 'sleepy') {
+      if (tgt.isObject3D) {
+        tgt.getWorldPosition(_to);
+        _to.y += CHOG_HEIGHT * 0.75 * tgt.getWorldScale(_lim).y;
+      } else _to.copy(tgt);
+      L.head.getWorldPosition(_hp);
+      _to.sub(_hp);
+      const dist = _to.length();
+      root.getWorldQuaternion(_rq);
+      _bf.set(0, 0, 1).applyQuaternion(_rq).normalize();
+      _to.normalize();
+      if (dist < LOOK_RANGE * root.getWorldScale(_lim).y && _to.dot(_bf) > -0.2) want = state === 'walk' || state === 'run' ? 0.35 : 1;
+      // Within reach: no more than LOOK_MAX from straight ahead, and not far up or down.
+      const ang = _to.angleTo(_bf);
+      if (ang > LOOK_MAX) _to.lerpVectors(_bf, _to, LOOK_MAX / ang).normalize();
+      _to.y = THREE.MathUtils.clamp(_to.y, -0.4, 0.45);
+      _to.normalize();
+      L.dir.lerp(_to, 1 - Math.exp(-dt * 6)).normalize();
+    }
+    L.w += (want - L.w) * (1 - Math.exp(-dt * 3));
+    if (L.w < 0.01) return;
+    L.base.copy(L.head.quaternion);
+    L.applied = true;
+    L.head.getWorldQuaternion(_hq);
+    _cur.copy(L.fwd).applyQuaternion(_hq);
+    _dq.setFromUnitVectors(_cur, L.dir);
+    _iq.identity().slerp(_dq, L.w * 0.85);
+    _hq.premultiply(_iq);
+    L.head.parent.getWorldQuaternion(_pq);
+    L.head.quaternion.copy(_pq.invert().multiply(_hq));
+  }
+
   chog.play('idle');
   mixer?.update(0);
   return chog;
