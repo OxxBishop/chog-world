@@ -567,7 +567,7 @@ async function init() {
       }),
   });
   // The casino's game (B8): its panel shows while you're inside.
-  casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active });
+  casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active, sky });
   // The session warms its Chogs' shaders as it starts: the loader waits for those too.
   await Promise.race([Promise.all([session.warmed, ...warming]), new Promise((r) => setTimeout(r, 15000))]);
   load.finish({ keep: withIntro });
@@ -902,7 +902,8 @@ function frame() {
     $('clock-phase').textContent = phase;
   }
 
-  post.setNight(env.night);
+  // A room's neon (the casino's) asks the bloom for more than the night alone would give.
+  post.setNight(Math.max(env.night, casino?.glow ?? 0));
   // A demo shot's long seek moves the world on without drawing every step.
   const drawn = !demo || demo.draws;
   if (drawn && debug && !debug.state.post) {

@@ -712,11 +712,112 @@ body.intro-open .casino-panel { opacity: 0; pointer-events: none; }
 .cz-perks b { color: #ffe6a8; font-weight: 600; margin-right: 4px; }
 .cz-leave { margin-top: 12px; padding: 0; background: none; color: #ffb3c8 !important; text-decoration: underline; font-size: 13px; }
 .casino-panel button:focus-visible { outline: 2px solid #ffe08a; outline-offset: 2px; }
+/* On a phone the panel is one slim bar along the bottom (B22): chips, the bet and SPIN in a row, the
+   last result over them, "step back" a small round x. It never covers the machine. */
 @media (max-width: 640px) {
-  .casino-panel { top: auto; transform: none; left: 12px; right: 12px; width: auto; bottom: 132px; padding: 12px 14px; font-size: 13px; }
-  .cz-chips { font-size: 22px; }
-  .cz-perks { display: none; }
-  .cz-note { display: none; }
+  .casino-panel {
+    top: auto; transform: none; left: 10px; right: 10px; width: auto;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+    padding: 8px 10px; font-size: 13px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  }
+  .cz-top { flex: 0 0 auto; }
+  .cz-who { display: none; }
+  .cz-chips { font-size: 20px; }
+  .cz-perks, .cz-note { display: none; }
+  .cz-msg { order: -1; width: 100%; margin: 0; min-height: 0; font-size: 14px; text-align: center; }
+  .cz-msg.none { display: none; }
+  .cz-row { flex: 1; margin: 0; gap: 6px; }
+  .cz-bet { width: 30px; height: 30px; }
+  .cz-betv { min-width: 52px; }
+  .cz-spin, .cz-play { padding: 10px 12px; font-size: 16px; }
+  .cz-play { flex: 1; width: auto; margin: 0; }
+  .cz-re { order: 5; width: 100%; flex: 1 1 100%; }
+  .casino-panel .cz-leave {
+    position: absolute; top: -12px; right: -6px; width: 28px; height: 28px; margin: 0; padding: 0;
+    border-radius: 50%; background: rgba(20, 8, 16, 0.9); text-decoration: none; font-size: 0; line-height: 0;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+  }
+  .casino-panel .cz-leave::after { content: '\00d7'; font-size: 18px; line-height: 28px; color: #fff; }
+}
+
+/* The three looks the user is choosing between (B23): the panel and the win's lights in each. */
+.casino-panel.look-capsule {
+  background: rgba(18, 10, 42, 0.9); border: 2px solid #3ef2ff; border-radius: 8px;
+  box-shadow: 0 0 0 2px #120a26, 0 0 26px rgba(62, 242, 255, 0.35), inset 0 0 18px rgba(255, 61, 139, 0.12);
+}
+.look-capsule .cz-chips { font-family: 'Press Start 2P', monospace; font-size: 20px; color: #ffe27a; text-shadow: 0 0 10px rgba(255, 226, 122, 0.6); }
+.look-capsule .cz-chips i { border-radius: 4px; background: #ff3d8b; box-shadow: 0 0 0 3px #ffd0e6 inset, 0 0 10px #ff3d8b; }
+.look-capsule .cz-who { color: #3ef2ff; font-family: 'Pixelify Sans', monospace; }
+.look-capsule .cz-msg { font-family: 'Pixelify Sans', monospace; color: #ffd0e6; }
+.look-capsule .cz-note, .look-capsule .cz-perks { color: #cfc6ff; }
+.look-capsule .cz-perks b { color: #ffe27a; }
+.look-capsule .cz-bet { border-radius: 6px; background: rgba(62, 242, 255, 0.12); box-shadow: 0 0 0 1px rgba(62, 242, 255, 0.6) inset; }
+.look-capsule .cz-spin, .look-capsule .cz-play {
+  border-radius: 6px; background: #ff3d8b; color: #fff !important;
+  font-family: 'Press Start 2P', monospace !important; font-size: 14px; letter-spacing: 0.06em;
+  box-shadow: 0 4px 0 #9e1d57, 0 0 20px rgba(255, 61, 139, 0.55);
+}
+.look-capsule .cz-spin:active:not(:disabled), .look-capsule .cz-play:active { box-shadow: 0 1px 0 #9e1d57; }
+.look-capsule .cz-leave { color: #3ef2ff !important; }
+
+.casino-panel.look-starlite {
+  background: #fff1d6; color: #12263a; border: 3px solid #12263a; border-radius: 22px;
+  box-shadow: 0 6px 0 rgba(18, 38, 58, 0.35), 0 12px 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+.look-starlite .cz-chips { color: #fff1d6; background: #12263a; padding: 2px 12px 2px 6px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.look-starlite .cz-chips i { background: radial-gradient(circle, #ff6f61 0 38%, #fff1d6 39% 47%, #ff6f61 48%); }
+.look-starlite .cz-who { color: #ff6f61; }
+.look-starlite .cz-msg { color: #12263a; }
+.look-starlite .cz-note, .look-starlite .cz-perks { color: #35505f; }
+.look-starlite .cz-perks b { color: #ff6f61; }
+.look-starlite .cz-bet { background: #7ff0c9; color: #12263a !important; box-shadow: 0 0 0 2px #12263a inset; }
+.look-starlite .cz-spin, .look-starlite .cz-play {
+  background: #ffc94a; color: #12263a !important; border: 3px solid #12263a !important;
+  border-radius: 999px 999px 999px 999px / 70% 70% 30% 30%; box-shadow: 0 4px 0 #12263a;
+}
+.look-starlite .cz-spin:active:not(:disabled), .look-starlite .cz-play:active { box-shadow: 0 1px 0 #12263a; }
+.look-starlite .cz-leave { color: #ff6f61 !important; }
+
+.casino-panel.look-pier {
+  background: #ffffff; color: #5a3a2a; border: 0; border-radius: 14px; padding-top: 22px;
+  box-shadow: 0 10px 30px rgba(90, 40, 60, 0.25); -webkit-backdrop-filter: none; backdrop-filter: none;
+  -webkit-mask: radial-gradient(circle 9px at 0 60%, #0000 98%, #000) left / 51% 100% no-repeat, radial-gradient(circle 9px at 100% 60%, #0000 98%, #000) right / 51% 100% no-repeat;
+  mask: radial-gradient(circle 9px at 0 60%, #0000 98%, #000) left / 51% 100% no-repeat, radial-gradient(circle 9px at 100% 60%, #0000 98%, #000) right / 51% 100% no-repeat;
+}
+.casino-panel.look-pier::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 12px; border-radius: 14px 14px 0 0;
+  background: repeating-linear-gradient(90deg, #ff8fb8 0 14px, #fff4e6 14px 28px);
+}
+.look-pier .cz-chips { color: #ff3d8b; }
+.look-pier .cz-chips i { background: radial-gradient(circle, #9ff0d8 0 38%, #ffffff 39% 47%, #9ff0d8 48%); box-shadow: 0 0 0 2px #ff8fb8 inset; }
+.look-pier .cz-who { color: #4fb2d4; }
+.look-pier .cz-msg { color: #5a3a2a; }
+.look-pier .cz-note, .look-pier .cz-perks { color: #7a5a4a; }
+.look-pier .cz-perks b { color: #ff3d8b; }
+.look-pier .cz-bet { background: #fff4e6; color: #5a3a2a !important; box-shadow: 0 0 0 2px #ff8fb8 inset; }
+.look-pier .cz-spin, .look-pier .cz-play { background: #ff3d8b; color: #fff !important; box-shadow: 0 4px 0 #c22a6a; }
+.look-pier .cz-spin:active:not(:disabled), .look-pier .cz-play:active { box-shadow: 0 1px 0 #c22a6a; }
+.look-pier .cz-leave { color: #ff3d8b !important; }
+@media (max-width: 640px) {
+  .casino-panel.look-pier { padding-top: 18px; }
+  .casino-panel.look-pier .cz-leave { top: 16px; right: 6px; background: #ff3d8b; }
+  .look-capsule .cz-chips { font-size: 15px; }
+  .look-capsule .cz-spin, .look-capsule .cz-play { font-size: 12px; }
+  .look-capsule .cz-leave, .look-starlite .cz-leave, .look-pier .cz-leave { color: #fff !important; }
+}
+.cz-banner.look-capsule .czb-title {
+  font-family: 'Pixelify Sans', monospace; font-weight: 700; color: #ffd0e6; background: none; -webkit-background-clip: border-box; background-clip: border-box;
+  text-shadow: 0 0 6px #ff3d8b, 0 0 22px #ff3d8b, 0 0 44px rgba(255, 61, 139, 0.7); filter: none;
+}
+.cz-banner.look-capsule .czb-sub { font-family: 'Press Start 2P', monospace; font-size: clamp(11px, 2.2vw, 16px); color: #3ef2ff; text-shadow: 0 0 10px #3ef2ff; }
+.cz-banner.look-starlite .czb-title {
+  color: #ff6f61; background: none; -webkit-background-clip: border-box; background-clip: border-box;
+  -webkit-text-stroke: 3px #fff1d6; text-shadow: 0 0 18px #3ef2ff, 0 4px 0 #12263a; filter: none;
+}
+.cz-banner.look-pier .czb-title {
+  color: #ff3d8b; background: none; -webkit-background-clip: border-box; background-clip: border-box;
+  -webkit-text-stroke: 4px #ffffff; paint-order: stroke fill; text-shadow: 0 5px 0 rgba(255, 143, 184, 0.6); filter: none;
 }
 .casino-panel { transition: opacity 0.3s ease; }
 .casino-panel.away { opacity: 0; pointer-events: none; }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { Room } from './interior.js';
 import { createFlight } from './flight.js';
+import { LOOKS } from './casinolooks.js';
 
 /*
  * The casino (B8), in the Hub's right wing: one game, Chog Slots, for free chips only. Nothing here
@@ -343,29 +344,36 @@ function signTex(title, sub) {
   });
 }
 
-// The leaderboard's face: the top Chogs by chips, or how to get on it.
-function drawBoard(canvas, rows, shared) {
+// The leaderboard's face: the top Chogs by chips, or how to get on it, in the look's colours.
+const BOARD_THEMES = {
+  classic: { bg: '#1a0812', edge: 'rgba(232, 184, 74, 0.5)', title: '#ffe6a8', glow: '#ff9a3c', sub: '#ffb3c8', row: '#fff6e8', first: '#ffd23f', head: '600 64px Fredoka, sans-serif', font: 'Fredoka, sans-serif' },
+  capsule: { bg: '#120a2a', edge: 'rgba(62, 242, 255, 0.7)', title: '#ff3d8b', glow: '#ff3d8b', sub: '#3ef2ff', row: '#fff4e6', first: '#ffe27a', head: '700 66px "Pixelify Sans", monospace', font: '"Pixelify Sans", monospace' },
+  starlite: { bg: '#0e2232', edge: 'rgba(255, 201, 74, 0.8)', title: '#ff6f61', glow: '#3ef2ff', sub: '#7ff0c9', row: '#fff1d6', first: '#ffc94a', head: '600 64px Fredoka, sans-serif', font: 'Fredoka, sans-serif' },
+  pier: { bg: '#fff9ef', edge: 'rgba(255, 143, 184, 0.9)', title: '#ff3d8b', glow: null, sub: '#4fb2d4', row: '#5a3a2a', first: '#ff3d8b', head: '700 64px Fredoka, sans-serif', font: 'Fredoka, sans-serif' },
+};
+function drawBoard(canvas, rows, shared, theme = 'classic') {
+  const T = BOARD_THEMES[theme] ?? BOARD_THEMES.classic;
   const g = canvas.getContext('2d');
   const { width: w, height: h } = canvas;
-  g.fillStyle = '#1a0812';
+  g.fillStyle = T.bg;
   g.fillRect(0, 0, w, h);
-  g.strokeStyle = 'rgba(232, 184, 74, 0.5)';
+  g.strokeStyle = T.edge;
   g.lineWidth = 4;
   g.strokeRect(14, 14, w - 28, h - 28);
   g.textAlign = 'center';
-  g.fillStyle = '#ffe6a8';
-  g.shadowColor = '#ff9a3c';
-  g.shadowBlur = 18;
-  g.font = '600 64px Fredoka, sans-serif';
+  g.fillStyle = T.title;
+  g.shadowColor = T.glow ?? 'transparent';
+  g.shadowBlur = T.glow ? 18 : 0;
+  g.font = T.head;
   g.fillText('TOP CHOGS', w / 2, 86);
   g.shadowBlur = 0;
   g.font = '500 24px Figtree, sans-serif';
-  g.fillStyle = '#ffb3c8';
+  g.fillStyle = T.sub;
   g.fillText(shared ? 'most chips in Chog World' : 'most chips at this machine', w / 2, 124);
   rows.slice(0, 7).forEach((row, i) => {
     const y = 180 + i * 46;
-    g.fillStyle = i === 0 ? '#ffd23f' : '#fff6e8';
-    g.font = '600 32px Fredoka, sans-serif';
+    g.fillStyle = i === 0 ? T.first : T.row;
+    g.font = `600 32px ${T.font}`;
     g.textAlign = 'left';
     g.fillText(`${i + 1}`, 64, y);
     g.fillText(String(row.name).slice(0, 18), 112, y);
@@ -374,7 +382,7 @@ function drawBoard(canvas, rows, shared) {
   });
   if (!rows.length) {
     g.textAlign = 'center';
-    g.fillStyle = '#fff6e8';
+    g.fillStyle = T.row;
     g.font = '500 30px Figtree, sans-serif';
     g.fillText('Sign in with your Chog', w / 2, 270);
     g.fillText('to get on the board.', w / 2, 312);
@@ -390,9 +398,12 @@ const STEP = (Math.PI * 2) / STRIP.length;
 /*
  * A slot machine, 2.3 m tall at Chog scale: a lacquered red cabinet on a dark base, three reels
  * behind a glass window ringed with bulbs, a lit "CHOG SLOTS" top and a lever on its right.
- * Returns { group, reels, lever, bulbs, bulbMat, face(img) }.
+ * style (a casino look's, src/casinolooks.js): radius rounds the cabinet; top(group, add) builds its
+ * top in place of the lit sign. The reels, the window, the bulbs and the lever stay where they are.
+ * Returns { group, reels, lever, bulbs, spots }.
  */
-function slotMachine(mats, faceStrip) {
+function slotMachine(mats, faceStrip, style = {}) {
+  const rad = style.radius ?? 0.08;
   const g = new THREE.Group();
   const add = (geo, m, x, y, z) => {
     const mesh = new THREE.Mesh(geo, m);
@@ -403,16 +414,16 @@ function slotMachine(mats, faceStrip) {
   const box = (w, h, d, m, x, y, z) => add(new THREE.BoxGeometry(w, h, d), m, x, y, z);
   // The base, the body behind the reels, and the front round the reel window (x +-0.6, y 1.25 to
   // 1.99), its recess deep enough for the reels to turn in.
-  add(new RoundedBoxGeometry(1.5, 0.9, 0.95, 3, 0.08), mats.dark, 0, 0.45, 0);
-  add(new RoundedBoxGeometry(1.42, 1.5, 0.62, 3, 0.08), mats.body, 0, 1.62, -0.26);
+  add(new RoundedBoxGeometry(1.5, 0.9, 0.95, 3, rad), mats.dark, 0, 0.45, 0);
+  add(new RoundedBoxGeometry(1.42, 1.5, 0.62, 3, rad), mats.body, 0, 1.62, -0.26);
   box(1.42, 0.375, 0.31, mats.body, 0, 1.0625, 0.205);
   box(1.42, 0.36, 0.31, mats.body, 0, 2.17, 0.205);
   for (const sx of [-1, 1]) box(0.11, 0.74, 0.31, mats.body, sx * 0.655, 1.62, 0.205);
   box(1.2, 0.74, 0.02, mats.bezel, 0, 1.62, -0.52);
   // The sloped play shelf, and gold round the window and the cabinet.
   box(1.46, 0.08, 0.5, mats.gold, 0, 0.93, 0.26).rotation.x = -0.18;
-  for (const y of [1.235, 2.005]) box(1.26, 0.04, 0.04, mats.gold, 0, y, 0.37);
-  for (const sx of [-1, 1]) box(0.04, 0.8, 0.04, mats.gold, sx * 0.61, 1.62, 0.37);
+  for (const y of [1.235, 2.005]) box(1.26, 0.04, 0.04, mats.frame ?? mats.gold, 0, y, 0.37);
+  for (const sx of [-1, 1]) box(0.04, 0.8, 0.04, mats.frame ?? mats.gold, sx * 0.61, 1.62, 0.37);
   for (const y of [0.875, 2.36]) box(1.46, 0.05, 0.66, mats.gold, 0, y, 0.05);
   // Three reels, and dark dividers between them.
   const reels = [];
@@ -427,10 +438,13 @@ function slotMachine(mats, faceStrip) {
   box(1.16, 0.016, 0.01, mats.line, 0, 1.62, 0.355);
   add(new THREE.PlaneGeometry(1.2, 0.74), mats.glass, 0, 1.62, 0.36);
   add(new THREE.PlaneGeometry(1.2, 0.74), mats.shade, 0, 1.62, 0.358);
-  // The top: a lit "CHOG SLOTS" panel.
-  add(new RoundedBoxGeometry(1.5, 0.62, 0.7, 3, 0.12), mats.dark, 0, 2.68, -0.08);
-  const sign = add(new THREE.PlaneGeometry(1.36, 0.4), mats.sign, 0, 2.69, 0.28);
-  sign.renderOrder = 1;
+  // The top: a lit "CHOG SLOTS" panel, or the look's own.
+  if (style.top) style.top(g, add);
+  else {
+    add(new RoundedBoxGeometry(1.5, 0.62, 0.7, 3, 0.12), mats.dark, 0, 2.68, -0.08);
+    const sign = add(new THREE.PlaneGeometry(1.36, 0.4), mats.sign, 0, 2.69, 0.28);
+    sign.renderOrder = 1;
+  }
   // Bulbs round the window.
   const spots = [];
   for (let i = 0; i < 9; i++) spots.push([-0.62 + i * 0.155, 2.1], [-0.62 + i * 0.155, 1.14]);
@@ -451,8 +465,12 @@ function slotMachine(mats, faceStrip) {
   return { group: g, reels, lever, bulbs, spots };
 }
 
-/** The casino: a dark red room, slot machines along the back, a card table, the leaderboard. */
-export function buildCasinoRoom() {
+/**
+ * The casino: a dark red room, slot machines along the back, a card table, the leaderboard. Or one
+ * of the looks the user is choosing between (B23), by ?casino=capsule | starlite | pier.
+ */
+export function buildCasinoRoom(look = new URLSearchParams(location.search).get('casino')) {
+  if (LOOKS[look]) return LOOKS[look](KIT);
   const room = new Room({
     w: 15, d: 13, h: 6.6,
     wall: '#5e1c2a', wainscot: '#6e2a3a', floor: carpet(), trim: '#8a5a22', ceiling: '#2c1220',
@@ -472,24 +490,7 @@ export function buildCasinoRoom() {
     felt: new THREE.MeshLambertMaterial({ color: '#1f6b47' }),
     velvet: new THREE.MeshLambertMaterial({ color: '#a01e36' }),
   };
-  // The reels' strip, redrawn with your Chog's face once it's known.
-  const stripCanvas = document.createElement('canvas');
-  stripCanvas.width = 128 * STRIP.length;
-  stripCanvas.height = 128;
-  drawStrip(stripCanvas, null);
-  const stripTex = new THREE.CanvasTexture(stripCanvas);
-  stripTex.colorSpace = THREE.SRGBColorSpace;
-  stripTex.anisotropy = 8;
-  const blurCanvas = document.createElement('canvas');
-  blurCanvas.width = stripCanvas.width;
-  blurCanvas.height = stripCanvas.height;
-  blurStrip(stripCanvas, blurCanvas);
-  const blurTex = new THREE.CanvasTexture(blurCanvas);
-  blurTex.colorSpace = THREE.SRGBColorSpace;
-  const strip = {
-    canvas: stripCanvas, tex: stripTex, mat: new THREE.MeshBasicMaterial({ map: stripTex }),
-    blurCanvas, blurTex, blurMat: new THREE.MeshBasicMaterial({ map: blurTex }),
-  };
+  const strip = makeStrip();
 
   // Three machines along the back wall, the middle one yours to play, the others turned in a little.
   const machines = [-4.2, 0, 4.2].map((x) => {
@@ -559,22 +560,56 @@ export function buildCasinoRoom() {
   for (const [x, z] of [[-4.2, -2.4], [0, -2.4], [4.2, -2.4], [-3.9, 2.4], [3.6, 2.2]]) room.pendant(x, z, 1.6);
 
   // The leaderboard: a lit board on the back wall over the machines, redrawn as the chips change.
-  const board = document.createElement('canvas');
-  board.width = 768;
-  board.height = 512;
-  const boardTex = new THREE.CanvasTexture(board);
-  boardTex.colorSpace = THREE.SRGBColorSpace;
-  boardTex.anisotropy = 8;
-  const boardMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.4), new THREE.MeshBasicMaterial({ map: boardTex }));
-  boardMesh.position.set(0, 4.75, 0.07);
-  room.onWall('back').add(boardMesh);
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(3.86, 2.66, 0.08), mats.gold);
-  frame.position.set(0, 4.75, 0.02);
-  room.onWall('back').add(frame);
-  drawBoard(board, [], false);
+  const board = makeBoard(room.onWall('back'), { x: 0, y: 4.75, w: 3.6, h: 2.4, frame: mats.gold });
+  const burst = makeBurst(room);
 
-  // The chips a win throws out (B6), one mesh for all of them. One sits hidden in the middle machine
-  // so the load draws it, and the casino starts it empty.
+  room.finish();
+  room.casino = { machines, strip, mats, burst, board, look: { name: 'classic', lit: 0.2, glow: 0, bulbs: { on: [new THREE.Color('#ffd27a')], off: [new THREE.Color('#5a3a18')], hot: new THREE.Color('#ff6a8a') } } };
+  return room;
+}
+
+// The reels' strip, redrawn with your Chog's face once it's known, and its blur for fast spins.
+function makeStrip() {
+  const stripCanvas = document.createElement('canvas');
+  stripCanvas.width = 128 * STRIP.length;
+  stripCanvas.height = 128;
+  drawStrip(stripCanvas, null);
+  const stripTex = new THREE.CanvasTexture(stripCanvas);
+  stripTex.colorSpace = THREE.SRGBColorSpace;
+  stripTex.anisotropy = 8;
+  const blurCanvas = document.createElement('canvas');
+  blurCanvas.width = stripCanvas.width;
+  blurCanvas.height = stripCanvas.height;
+  blurStrip(stripCanvas, blurCanvas);
+  const blurTex = new THREE.CanvasTexture(blurCanvas);
+  blurTex.colorSpace = THREE.SRGBColorSpace;
+  return {
+    canvas: stripCanvas, tex: stripTex, mat: new THREE.MeshBasicMaterial({ map: stripTex }),
+    blurCanvas, blurTex, blurMat: new THREE.MeshBasicMaterial({ map: blurTex }),
+  };
+}
+
+// The leaderboard on a wall (x along it, y up, w by h metres) in a frame, drawn in the look's theme.
+function makeBoard(wall, { x, y, w, h, frame, theme = 'classic' }) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 768;
+  canvas.height = 512;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
+  mesh.position.set(x, y, 0.07);
+  wall.add(mesh);
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(w + 0.26, h + 0.26, 0.08), frame);
+  edge.position.set(x, y, 0.02);
+  wall.add(edge);
+  drawBoard(canvas, [], false, theme);
+  return { canvas, tex, theme };
+}
+
+// The chips a win throws out (B6), one mesh for all of them. One sits hidden in the middle machine
+// so the load draws it, and the casino starts it empty.
+function makeBurst(room) {
   const burst = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.06, 0.018, 14), new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#40202a' }), CHIPS_MAX);
   burst.setMatrixAt(0, new THREE.Matrix4().makeTranslation(0, 1.6, -room.d / 2 + 0.6));
   burst.setColorAt(0, new THREE.Color('#c4334a'));
@@ -582,11 +617,10 @@ export function buildCasinoRoom() {
   burst.frustumCulled = false;
   burst.userData.keep = true;
   room.group.add(burst);
-
-  room.finish();
-  room.casino = { machines, strip, mats, burst, board: { canvas: board, tex: boardTex } };
-  return room;
+  return burst;
 }
+
+const KIT = { Room, slotMachine, makeStrip, makeBoard, makeBurst, shadeMat: () => new THREE.MeshBasicMaterial({ map: reelShade(), transparent: true, depthWrite: false }) };
 
 // ---------- the game ----------
 /**
@@ -594,11 +628,12 @@ export function buildCasinoRoom() {
  * camera rig; session(): A's session (for your Chog: its id, name, art and traits).
  * Call update(dt) every frame. A place on the island's list, the panel shows itself while you're in.
  */
-export function createCasino({ room: r, rig, camera, dom, session, entering = () => false }) {
+export function createCasino({ room: r, rig, camera, dom, session, entering = () => false, sky = null }) {
   const c = r.room.casino;
   const machine = c.machines[1];
+  const look = c.look;
   const panel = document.createElement('div');
-  panel.className = 'casino-panel';
+  panel.className = `casino-panel look-${look.name}`;
   panel.hidden = true;
   document.body.appendChild(panel);
 
@@ -621,7 +656,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   let shownChips = 0;
   c.burst.count = 0;
   const banner = document.createElement('div');
-  banner.className = 'cz-banner';
+  banner.className = `cz-banner look-${look.name}`;
   banner.hidden = true;
   document.body.appendChild(banner);
 
@@ -629,8 +664,18 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   // board over them, clear of the panel on the right (the room's view, so the way in ends on it).
   r.room.group.updateMatrixWorld(true);
   const L = (x, y, z) => r.room.group.localToWorld(new THREE.Vector3(x, y, z));
-  r.view.pos.copy(L(5.4, 3.2, 5.4));
-  r.view.target.copy(L(2.81, 2.2, -4.26));
+  // On a tall screen, straight down the middle from the door, so the machines and the sign over them fit.
+  let tall = null;
+  const roomView = () => {
+    const now = window.innerWidth < window.innerHeight;
+    if (now === tall) return;
+    tall = now;
+    r.view.pos.copy(tall ? L(0.4, 3.0, 5.6) : L(5.4, 3.2, 5.4));
+    r.view.target.copy(tall ? L(0, 2.6, -4.2) : L(2.81, 2.2, -4.26));
+    // Already standing at it (a link straight into the casino, a phone turned): take the new framing.
+    if (rig.view === r.id) rig.jump?.(r.id);
+  };
+  roomView();
   // Where to stand to play: in front of the middle machine, eyes level with its reels; on a wide
   // screen a little to its right, so the panel doesn't cover it.
   const M = (x, y, z) => machine.group.localToWorld(new THREE.Vector3(x, y, z));
@@ -638,7 +683,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     const wide = window.innerWidth > window.innerHeight * 1.1;
     rig.views['casino-play'] = wide
       ? { pos: M(0.62, 1.8, 2.5), target: M(0.62, 1.6, 0), enter: true }
-      : { pos: M(0, 2.0, 2.9), target: M(0, 1.45, 0), enter: true };
+      : // A tall screen: back far enough for the whole cabinet, top to tray, over the slim bar (B22).
+        { pos: M(0, 2.15, 3.6), target: M(0, 1.65, 0), enter: true };
   };
 
   function identify() {
@@ -696,7 +742,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
         .sort((a, b) => b.chips - a.chips)
         .slice(0, 8);
     const draw = () => {
-      drawBoard(c.board.canvas, top, shared);
+      drawBoard(c.board.canvas, top, shared, c.board.theme);
       c.board.tex.needsUpdate = true;
     };
     let offUntil = 0;
@@ -937,7 +983,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     panel.innerHTML = atMachine
       ? `
         <div class="cz-top"><span class="cz-chips"><i></i><b>${Math.round(shownChips).toLocaleString('en-US')}</b></span><span class="cz-who">${who.name}</span></div>
-        <div class="cz-msg" aria-live="polite">${message || '&nbsp;'}</div>
+        <div class="cz-msg${message ? '' : ' none'}" aria-live="polite">${message || '&nbsp;'}</div>
         <div class="cz-row">
           <button class="cz-bet" data-d="-1" aria-label="Lower the bet">−</button>
           <span class="cz-betv">Bet ${bet}</span>
@@ -986,7 +1032,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   });
 
   const tmp = new THREE.Color();
-  const on = new THREE.Color('#ffd27a'), off = new THREE.Color('#5a3a18'), hot = new THREE.Color('#ff6a8a');
+  const { on: ons, off: offs, hot } = look.bulbs;
   let t = 0;
   const api = {
     room: r,
@@ -1002,15 +1048,26 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       if (!inside && atMachine) atMachine = false;
       panel.hidden = !inside;
       document.body.classList.toggle('in-casino', inside);
+      // Seated at the machine: the walking controls can step aside (A's HUD).
+      document.body.classList.toggle('cz-playing', inside && atMachine);
     },
     update(dt, env) {
       t += dt;
+      roomView();
       if (!r.room.group.visible) {
         wake = 0;
         return;
       }
       // No windows: the casino is as bright at night as by day (the lamps make up for the sky).
-      if (env) for (const m of r.room.lit) m.emissive.copy(m.color).multiply(LAMP).multiplyScalar(0.2 + env.night * 0.34);
+      if (env) for (const m of r.room.lit) m.emissive.copy(m.color).multiply(LAMP).multiplyScalar(look.lit * (1 + env.night * 1.7));
+      // A look lights the room itself, whatever the hour outside: no windows, so the sky has no say.
+      if (look.light && sky) {
+        sky.hemi.color.set(look.light.sky);
+        sky.hemi.groundColor.set(look.light.ground);
+        sky.hemi.intensity = look.light.intensity;
+        sky.light.intensity *= look.light.sun ?? 0;
+      }
+      look.update?.(t, dt);
       if (!panel.hidden) identify();
       // Walking in, the machines' lights come on one after another, a ripple along each.
       wake = entering() || wake > 0 ? wake + dt : 3;
@@ -1094,7 +1151,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
           else if ((mine || all) && flash > 0) lit = Math.floor(t * 8 + (all ? j : 0)) % 2 === 0;
           else if (mine && spinning) lit = (i + Math.floor(t * 14)) % 3 === 0;
           else lit = (i + Math.floor(t * 3 + (mine ? 0 : 5))) % 4 === 0;
-          tmp.copy(lit ? (flash > 0 && (mine || all) ? hot : on) : off).multiplyScalar(lit ? 1.6 : 1);
+          tmp.copy(lit ? (flash > 0 && (mine || all) ? hot : ons[i % ons.length]) : offs[i % offs.length]).multiplyScalar(lit ? 1.6 : 1);
           m.bulbs.setColorAt(i, tmp);
         }
         m.bulbs.instanceColor.needsUpdate = true;
@@ -1108,6 +1165,10 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       if (spinning && stops) spinning.stops = stops;
     },
     play: () => goPlay(),
+    // How much the room asks the bloom for (its neon), while you're in it.
+    get glow() {
+      return r.room.group.visible ? look.glow : 0;
+    },
     get state() {
       return { who: who?.name, chips: state?.chips, rerolls: state?.rerolls, bet, message, line: lastLine, spinning: !!spinning, canReroll };
     },

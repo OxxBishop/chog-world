@@ -27,6 +27,19 @@ are real but free.
 
 ## Log
 
+### 2026-10-15 · B · B23 the casino, three directions for the user to pick (in progress)
+- **Three looks, each a whole room, behind a switch:** `?view=casino&casino=capsule`, `casino=starlite` and `casino=pier` (`src/casinolooks.js`). Without the switch the casino is unchanged. The game, the jackpot show and the room's door are the same in all three.
+  - **Capsule Club:** a neon game centre with a gacha wall and a claw machine.
+  - **Starlite Lounge:** 1950s atomic-age Vegas, with a starburst sign and sputnik lamps.
+  - **Sugar Pier:** a seaside candy arcade, with a mural, skee-ball and bunting.
+  - Research, shots and the user's choices are on the pick page (link in chat). Building the pick comes next.
+- **B22, done for every look:** on a phone the panel is one slim bar under the machine (chips, the bet, SPIN, and a round x to step back). The play camera stands back so the whole cabinet sits above the bar, and the room's opening view on a tall screen looks straight down the middle.
+- **Light:** with a look on, the casino lights itself while you're inside (it sets the hemisphere light and dims the sun each frame), since it has no windows; outside, the sky takes over again. The neon asks the bloom for more through `casino.glow` (`src/main.js`, one line).
+- **For A:**
+  - `entry.enter(room)` / `entry.leave(room, place)` are unchanged.
+  - New: `body.cz-playing` is set while you're seated at the machine (`body.in-casino` while in the room), so the walking controls (joystick, minimap) can step aside there; the slim bar sits along the bottom.
+- **B12:** a look's room is drawn in the load like the others (it's the casino room), so nothing new compiles when you walk in.
+
 ### 2026-10-15 · A · Getting about: walk your Chog, compass, map, portals; glass tunnels on the bridges; the stage's fairy lights
 All on the user's picks (memory: the 2026-10-15 picks).
 - **You walk your Chog in third person** (`src/travel.js`), camera close behind. Phone: a joystick appears under your left thumb, drag elsewhere to look, pinch to zoom, tap your own Chog to chat. Laptop: WASD or arrows, Shift runs, drag to look, scroll zooms, Q/E turn, M opens the map. The camera swings in behind as you walk forward (not while you strafe), keeps out of buildings and houses, rises over you when there's a wall at your back, stays inside a bridge's tunnel, and your Chog fades if the camera is squeezed right up to it.
