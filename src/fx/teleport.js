@@ -2,12 +2,9 @@ import * as THREE from 'three';
 import { CHOG_HEIGHT } from '../chog.js';
 
 /*
- * The portal trip (B24), three ways for the user to pick from, each behind a switch:
- *   ?portal=gate    the swirl gate: a vortex opens on the pad and pulls your Chog in, spinning;
- *   ?portal=star    a shooting star: ribbons of light wind up round it, it turns to light from the
- *                   feet up and shoots off into the sky as a star, and falls as one at the other end;
- *   ?portal=bubble  a soap bubble grows round it, floats it up and pops; one floats it down there.
- * Without the switch these exports are undefined and the trip is A's waypoint beam (src/travel.js).
+ * The portal trip (B24): the swirl gate, the user's pick (10-16). A vortex opens on the pad and pulls
+ * your Chog in, spinning; at the other end it throws it out onto the pad. The two it was picked from
+ * stay behind a switch for now: ?portal=star (a shooting star) and ?portal=bubble (a soap bubble).
  *
  * travel.js calls departs({ chog, pad, scene, camera }) with your Chog on pad.centre, hides it, cuts to
  * the other pad, shows it there (pad.facing) and calls arrives(...). Travel writes the Chog's position
@@ -22,9 +19,9 @@ const KINDS = ['gate', 'star', 'bubble'];
 const KIND = (() => {
   try {
     const k = new URLSearchParams(location.search).get('portal');
-    return KINDS.includes(k) ? k : null;
+    return KINDS.includes(k) ? k : 'gate';
   } catch {
-    return null;
+    return 'gate';
   }
 })();
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1025,5 +1022,5 @@ const trip = KIND ? (REDUCED ? [calmDeparts, calmArrives] : TRIPS[KIND]) : null;
 export const departs = trip?.[0];
 export const arrives = trip?.[1];
 export const warmTrips = KIND ? warm : undefined;
-/** Which trip this is (null: A's beam). */
+/** Which trip this is. */
 export const kind = KIND;

@@ -214,11 +214,18 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
       H(e.x, e.floor(mid), mid),
       H(e.x, e.floor(e.zIn + 0.6), e.zIn + 0.6),
       L(0, 0, d / 2 - 1.2),
-      to ?? L(0, 0, d / 2 - 3.4),
+      to ?? spotIn(r),
     ];
     // A first point barely apart from the next (it stopped right at the door) would turn it sharply.
     if (pts[0].distanceTo(pts[1]) < 0.6) pts.splice(1, 1);
     return { pts, outside: H(e.x, e.sill, e.z), roomDoor: L(0, 0, d / 2) };
+  }
+  // Where your Chog stands in the room, as A's session has it (spotIn): on the floor in the middle of
+  // the room's view, nearly three quarters of the way from the camera to what it looks at.
+  function spotIn(r) {
+    const g = r.room.group;
+    const p = g.worldToLocal(r.view.pos.clone()).lerp(g.worldToLocal(r.view.target.clone()), 0.72).setY(0);
+    return g.localToWorld(p);
   }
   const yawOf = (dir) => Math.atan2(dir.x, dir.z);
   const turnTowards = (from, to, k) => from + (((((to - from) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * k;
@@ -251,7 +258,10 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
     const sCam = s - back * dir;
     path.at(sCam, pos);
     path.dir(sCam, _d).multiplyScalar(dir);
-    const side = SIDE * h * sc * c.side * dir;
+    // Nearer the middle down the hall, clear of its wall lamps.
+    const a = Math.min(c.sDoor, c.sRoom), b = Math.max(c.sDoor, c.sRoom);
+    const hall = smooth(clamp01((sCam - a + 0.5) / 1.2)) * smooth(clamp01((b + 0.5 - sCam) / 1.2));
+    const side = SIDE * h * sc * c.side * dir * (1 - 0.65 * hall);
     pos.x += -_d.z * side;
     pos.z += _d.x * side;
     pos.y += Math.min(UP * h * sc, clear(sCam));

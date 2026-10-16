@@ -918,13 +918,13 @@ body.intro-open .cz-edgecard { opacity: 0; pointer-events: none; }
 /* ---------- The casino's controls, three looks for the user to pick (?czui=pixel | lounge | neon) ---------- */
 /* The card of your Chog's edges, beside the table while you play (the user's ask): on a laptop at the
    table's side of the screen, on a phone over the table, above the controls. */
-.cz-edgecard { position: fixed; z-index: 6; left: 16px; top: 50%; transform: translateY(-50%); width: 248px; pointer-events: auto; }
+.cz-edgecard { position: fixed; z-index: 6; left: 16px; top: 50%; transform: translateY(-50%); width: 222px; pointer-events: auto; }
 .cz-edgecard[hidden] { display: none; }
 .cz-edgecard .ec-head { display: flex; align-items: center; gap: 10px; }
 .cz-edgecard .ec-face { width: 46px; height: 46px; flex: none; image-rendering: auto; }
 .cz-edgecard .ec-title { display: grid; gap: 2px; min-width: 0; }
 .cz-edgecard .ec-title b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cz-edgecard ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; max-height: calc(100vh - 260px); overflow: auto; }
+.cz-edgecard ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; max-height: calc(100vh - 210px); overflow: auto; overscroll-behavior: contain; }
 .cz-edgecard li { display: grid; gap: 2px; line-height: 1.3; }
 .cz-edgecard li .ec-trait { font-size: 11px; opacity: 0.7; }
 @media (max-width: 640px) {
@@ -951,16 +951,16 @@ body.intro-open .cz-edgecard { opacity: 0; pointer-events: none; }
 .ui-pixel .cz-msg { font-family: 'Press Start 2P', monospace; font-size: 11px; line-height: 1.5; color: var(--px-cyan); }
 .ui-pixel button { border-radius: 0 !important; font-family: 'Press Start 2P', monospace; letter-spacing: 0.02em; }
 .ui-pixel .cz-bet, .ui-pixel .cz-up, .ui-pixel .cz-clear, .ui-pixel .cz-undo, .ui-pixel .cz-rebet {
-  background: #2a1a5e; color: var(--px-ink) !important; font-size: 10px; box-shadow: inset -3px -3px 0 rgba(0, 0, 0, 0.45), inset 3px 3px 0 rgba(255, 255, 255, 0.18), 0 0 0 2px #05020c;
+  background: #2a1a5e; color: var(--px-ink) !important; font-size: 8px; padding: 10px 6px; box-shadow: inset -3px -3px 0 rgba(0, 0, 0, 0.45), inset 3px 3px 0 rgba(255, 255, 255, 0.18), 0 0 0 2px #05020c;
 }
-.ui-pixel .cz-bet { width: 30px; height: 30px; font-size: 14px; }
+.ui-pixel .cz-bet { width: 30px; height: 30px; padding: 0; font-size: 14px; }
 .ui-pixel .cz-spin, .ui-pixel .cz-play {
-  background: var(--px-pink); color: #fff !important; font-size: 13px; border: 0; padding: 14px 16px;
+  background: var(--px-pink); color: #fff !important; font-size: 11px; border: 0; padding: 13px 8px; min-width: 0;
   box-shadow: inset -4px -4px 0 rgba(0, 0, 0, 0.35), inset 4px 4px 0 rgba(255, 255, 255, 0.4), 0 0 0 3px #05020c, 0 0 0 5px var(--px-pink), 0 0 22px rgba(255, 79, 160, 0.55);
 }
 .ui-pixel .cz-games .cz-play + .cz-play { background: var(--px-cyan); color: #05020c !important; box-shadow: inset -4px -4px 0 rgba(0, 0, 0, 0.3), inset 4px 4px 0 rgba(255, 255, 255, 0.45), 0 0 0 3px #05020c, 0 0 0 5px var(--px-cyan); }
 .ui-pixel .cz-spin:active:not(:disabled), .ui-pixel .cz-play:active { transform: translateY(2px); }
-.ui-pixel .cz-q { background: #2a1a5e; color: var(--px-ink) !important; font-size: 9px; padding: 10px 2px; box-shadow: inset -3px -3px 0 rgba(0, 0, 0, 0.45), inset 3px 3px 0 rgba(255, 255, 255, 0.16), 0 0 0 2px #05020c; }
+.ui-pixel .cz-q { background: #2a1a5e; color: var(--px-ink) !important; font-size: 7px; letter-spacing: 0; padding: 10px 1px; min-width: 0; box-shadow: inset -3px -3px 0 rgba(0, 0, 0, 0.45), inset 3px 3px 0 rgba(255, 255, 255, 0.16), 0 0 0 2px #05020c; }
 .ui-pixel .cz-q.q-red { background: #d8264a; }
 .ui-pixel .cz-q.q-black { background: #05020c; box-shadow: inset 3px 3px 0 rgba(255, 255, 255, 0.12), 0 0 0 2px var(--px-line); }
 .ui-pixel .cz-q.q-lucky { background: var(--px-gold); color: #05020c !important; }
@@ -978,7 +978,9 @@ body.intro-open .cz-edgecard { opacity: 0; pointer-events: none; }
 .ui-pixel .ec-title b { font-family: 'Press Start 2P', monospace; font-size: 11px; color: var(--px-ink); }
 .ui-pixel.cz-edgecard li { padding: 8px 10px; background: #1f1248; box-shadow: inset 3px 3px 0 rgba(255, 255, 255, 0.08), 0 0 0 2px #05020c; }
 .ui-pixel.cz-edgecard li .ec-name { font-family: 'Press Start 2P', monospace; font-size: 9px; color: var(--px-gold); line-height: 1.4; }
-.ui-pixel.cz-edgecard li .ec-text { font-size: 14px; }
+.ui-pixel.cz-edgecard li .ec-text { font-size: 13px; line-height: 1.25; }
+.ui-pixel.cz-edgecard li { padding: 6px 8px; }
+.ui-pixel.cz-edgecard ul { gap: 6px; }
 
 /* 2. Atomic Lounge: the Starlite room's own 1958, a cream menu card in a brass frame, chips for buttons. */
 .casino-panel.ui-lounge, .cz-edgecard.ui-lounge {
@@ -1025,7 +1027,8 @@ body.intro-open .cz-edgecard { opacity: 0; pointer-events: none; }
 .ui-lounge .ec-title b { font-family: var(--display); font-style: italic; font-size: 19px; color: var(--lo-coral); }
 .ui-lounge.cz-edgecard li { padding-left: 22px; position: relative; }
 .ui-lounge.cz-edgecard li::before { content: '\2726'; position: absolute; left: 2px; top: 0; color: var(--lo-coral); font-size: 14px; }
-.ui-lounge.cz-edgecard li .ec-name { font-family: var(--display); font-weight: 700; font-size: 15px; }
+.ui-lounge.cz-edgecard li .ec-name { font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--lo-ink); }
+.ui-lounge.cz-edgecard li .ec-trait { color: var(--lo-teal); opacity: 1; font-weight: 600; }
 .ui-lounge.cz-edgecard li .ec-text { font-size: 13px; color: #35505f; }
 @media (max-width: 640px) {
   .ui-lounge.cz-edgecard li { padding: 6px 10px 6px 24px; background: #fff; border-radius: 999px; box-shadow: 0 0 0 2px var(--lo-ink); }
