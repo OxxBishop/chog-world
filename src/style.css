@@ -492,17 +492,20 @@ body.demo .hud, body.demo .places-toggle, body.demo .nav-hint, body.demo .signin
 #loading.intro.live .intro-still { opacity: 0; }
 #loading.intro::before,
 #loading.intro::after { content: ''; position: absolute; inset: 0; pointer-events: none; }
-/* Scanlines, and a slow bright band rolling down like an old screen. */
+/* Scanlines, and a slow bright band rolling down like an old screen. The band moves by transform, so
+   nothing over the live planet is repainted each frame (Safari can drop a WebGL canvas for a frame
+   under a layer that repaints or blurs it). */
 #loading.intro::before {
-  background:
-    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.32) 0 1px, transparent 1px 3px),
-    linear-gradient(180deg, transparent 0%, rgba(183, 156, 255, 0.07) 48%, transparent 56%);
-  background-size: 100% 100%, 100% 260%;
-  animation: intro-roll 6s linear infinite;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.32) 0 1px, transparent 1px 3px);
   z-index: 3;
 }
+.intro-band { display: none; }
+#loading.intro .intro-band { display: block; position: absolute; left: 0; right: 0; top: 0; height: 40%; z-index: 3; pointer-events: none; background: linear-gradient(180deg, transparent 0%, rgba(183, 156, 255, 0.07) 62%, transparent 82%); animation: intro-band 6s linear infinite; will-change: transform; }
+@keyframes intro-band { from { transform: translateY(-100%); } to { transform: translateY(250%); } }
+/* The screen's buttons don't blur what's behind them (the base button style does): they sit over the
+   live planet. */
+#loading.intro button { -webkit-backdrop-filter: none; backdrop-filter: none; }
 #loading.intro::after { background: radial-gradient(circle at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%); z-index: 2; }
-@keyframes intro-roll { from { background-position: 0 0, 0 -160%; } to { background-position: 0 0, 0 100%; } }
 
 #loading.intro > * { position: relative; z-index: 4; }
 /* The world's own controls wait until the screen is gone. */
@@ -669,7 +672,7 @@ body.intro-reveal .hud, body.intro-reveal .places-toggle, body.intro-reveal .nav
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .intro .glitch, .intro .glitch::before, .intro .glitch::after, #loading.intro::before, .intro .prompt .cursor { animation: none; }
+  .intro .glitch, .intro .glitch::before, .intro .glitch::after, #loading.intro .intro-band, .intro .prompt .cursor { animation: none; }
   #loading.intro.leaving { animation: none; opacity: 0; }
 }
 

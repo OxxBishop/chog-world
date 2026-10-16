@@ -191,6 +191,7 @@ export function createIntro(el) {
   // index.html carries the same markup, so the screen is there from the first paint.
   if (!el.querySelector('.glitch')) el.innerHTML = `
     <div class="intro-still" aria-hidden="true"></div>
+    <div class="intro-band" aria-hidden="true"></div>
     <div class="kicker">WELCOME TO</div>
     <div class="glitch" data-text="CHOG WORLD">CHOG WORLD</div>
     <div class="load-bar" aria-hidden="true"><i></i></div>
