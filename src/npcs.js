@@ -474,6 +474,14 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         ...Array.from({ length: plain }, (_, i) => ({ glb: NPC_SLOTS.crowd.plain, tint: new THREE.Color(SHADES[i % SHADES.length]) })),
         ...NPC_SLOTS.crowd.named,
       ];
+      // Looks for the user to pick (A16), behind ?crowd= until then: 'skins', the plain Chogs in the
+      // collection's own skin colours; 'cast', three of them swapped for the bar's regulars.
+      const crowdLook = new URLSearchParams(location.search).get('crowd');
+      if (crowdLook === 'skins' || crowdLook === 'cast') {
+        const skins = ['#f7cdd6', '#8fb6ef', '#93d48c', '#f2d56b', '#e0705f'];
+        for (let i = 0; i < plain; i++) who[i].tint = new THREE.Color('#ffffff').lerp(new THREE.Color(skins[i % skins.length]), 0.7);
+        if (crowdLook === 'cast') [124, 52, 56].slice(0, plain - 2).forEach((id, i) => (who[i] = { glb: M(`chog-${id}`), id }));
+      }
       const crowd = await Promise.all(who.map((w) => npc(w.glb, w.id ?? null, w.tint ?? null)));
       const spots = [0.5, -0.5, 0.95, -0.95, 1.4, -1.4, 1.8].slice(0, crowd.length);
       crowd.forEach((c, i) => {

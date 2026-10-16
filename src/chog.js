@@ -516,6 +516,68 @@ function badgeTexture(mood) {
   return t;
 }
 
+/*
+ * A shadow on the ground that goes with the Chog (A15). The sun's own shadow map covers the whole
+ * archipelago and redraws only when the hour moves, so a walking Chog has none. Looks for the user to pick,
+ * behind ?chogshadow= until then: 'round', a soft contact shadow under the feet; 'sun', the same pushed
+ * and stretched away from the sun, longer as it sets, fainter by moonlight. One small quad per Chog, one
+ * shader for all of them.
+ */
+const SHADOW_MODE = new URLSearchParams(location.search).get('chogshadow');
+const shadowUniforms = { uDir: { value: new THREE.Vector2(0, 1) }, uLen: { value: 1 }, uOff: { value: 0 }, uStrength: { value: 0.6 } };
+let shadowMat = null;
+function groundShadow() {
+  shadowMat ??= new THREE.ShaderMaterial({
+    uniforms: shadowUniforms,
+    transparent: true,
+    depthWrite: false,
+    // Over the paving even where a Chog's feet sink into it a little (the crowd's do), and over the paving's
+    // own offset.
+    polygonOffset: true,
+    polygonOffsetFactor: -8,
+    polygonOffsetUnits: -40,
+    vertexShader: `
+uniform vec2 uDir; uniform float uLen, uOff;
+varying vec2 vRel;
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vec3 c = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+  float s = length(modelMatrix[0].xyz);
+  // Into the shadow's own frame: along the light, then across it, in the Chog's own size.
+  vec2 rel = (wp.xz - c.xz) / max(s, 1e-4);
+  vRel = vec2(dot(rel, uDir) - uOff, dot(rel, vec2(-uDir.y, uDir.x)));
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`,
+    fragmentShader: `
+uniform float uLen, uStrength;
+varying vec2 vRel;
+void main() {
+  vec2 e = vRel / vec2(0.62 * uLen, 0.62);
+  float d = dot(e, e);
+  float a = uStrength * (exp(-d * 2.2) - 0.01 * d) * (1.0 - smoothstep(0.75, 1.0, d));
+  if (a <= 0.003) discard;
+  gl_FragColor = vec4(0.12, 0.07, 0.2, a);
+}`,
+  });
+  // Big enough for the longest evening shadow in any direction (Chog units: 2.2 m tall).
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(5, 5).rotateX(-Math.PI / 2).translate(0, 0.07, 0), shadowMat);
+  m.renderOrder = 1;
+  m.frustumCulled = false;
+  return m;
+}
+/** Where the light comes from this frame, for the 'sun' shadows: the sun (or moon) light and the night. */
+export function setChogSun(light, night = 0) {
+  if (SHADOW_MODE !== 'sun' || !light) return;
+  const d = light.position.clone().sub(light.target.position).normalize();
+  const flat = Math.hypot(d.x, d.z);
+  if (flat > 1e-4) shadowUniforms.uDir.value.set(-d.x / flat, -d.z / flat);
+  const elev = Math.max(0.05, Math.asin(THREE.MathUtils.clamp(d.y, -1, 1)));
+  const len = THREE.MathUtils.clamp(1 + 0.45 / Math.tan(elev), 1, 2.4);
+  shadowUniforms.uLen.value = len;
+  shadowUniforms.uOff.value = (len - 1) * 0.55;
+  shadowUniforms.uStrength.value = THREE.MathUtils.lerp(0.6, 0.3, night) * THREE.MathUtils.smoothstep(elev, 0.05, 0.25);
+}
+
 // The aura: a soft ring of light at the feet, pulsing gently.
 function auraRing(colour, strength) {
   const mat = new THREE.ShaderMaterial({
@@ -668,6 +730,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     aura = auraRing(look.aura, look.glow);
     root.add(aura);
   }
+  if (SHADOW_MODE === 'round' || SHADOW_MODE === 'sun') root.add(groundShadow());
   // The mood badge pops up over the head when the Chog reacts to something said.
   const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
   badge.scale.setScalar(0.62);

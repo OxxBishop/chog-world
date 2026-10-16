@@ -18,7 +18,7 @@ import { LANDMARK_KIT } from './landmarks.js';
 import { FURNITURE_KIT } from './interior.js';
 import { initSession } from './session.js';
 import { buildNpcs } from './npcs.js';
-import { makeChog } from './chog.js';
+import { makeChog, setChogSun } from './chog.js';
 import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createDemo } from './shots.js';
@@ -885,6 +885,7 @@ function frame() {
   sky.fog.near = 600 + dist * 1.3;
   sky.fog.far = sky.fog.near + 2600;
   const env = sky.update(hour, camera, t);
+  setChogSun(sky.light, env.night);
   space?.apply();
   // The shadow box covers the whole world, so only the sun moving calls for a fresh shadow map.
   if (Math.abs(hour - lastShadowHour) > 0.02) {

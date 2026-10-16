@@ -56,6 +56,10 @@ effects, cutscenes and the teleport stay with the other session.
   screen (37 s of it building shaders), repeat 17 s; in the world 20 to 23 fps, the GPU 46.5 ms a
   frame at the plaza: clouds about 13, materials about 17, geometry about 11, the whole cast about 1.
   GPU textures 320 MB at the connect screen, 460 after a tour (the cast about 200 of that).
+- **Looks waiting on the user's pick** (page: https://claude.ai/artifact/KPaoqjSLmw6oMeFSFamCtR):
+  ground shadows under the Chogs, `?chogshadow=round` or `sun` (`groundShadow()` in `src/chog.js`;
+  `setChogSun()` from `src/main.js` each frame), and the singer's crowd, `?crowd=skins` or `cast`
+  (`src/npcs.js`). Both off by default.
 - **For B (found, not touched):** walking back out of the bar froze the page 4.6 and 6.6 s (twice).
   The room walk-ins in `src/cutscenes.js` (`walkMs`, 2.4 m/s) now outpace the cartoon walk; use
   `chog.speedOf('walk')` if you want their feet to land.
