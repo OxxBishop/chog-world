@@ -15,8 +15,11 @@
  * welcome has been up long enough to read (held()); close() just tears it away (a guest, say).
  * current says which state is up.
  *
- * The running Chog is the official art, pixelated here as it loads: no sprite is drawn by hand.
+ * The search's running Chog is the official art, pixelated here as it loads. The loading screen's is
+ * drawn to the user's own design (src/pixelloader.js).
  */
+
+import { ART, createLoaderArt } from './pixelloader.js';
 
 const BASE = import.meta.env?.BASE_URL ?? '/';
 // Faces for the search: a few Chogs whose art ships with the site.
@@ -186,6 +189,43 @@ function createRunner(canvas, { ids = SEARCH_FACES, cycle = true } = {}) {
   };
 }
 
+/*
+ * The loading screen's Chog on its canvas, a whole number of device pixels to each of its pixels and
+ * about 88 CSS pixels across. Drawn in a worker where the browser allows (it keeps going while the
+ * load holds up the main thread), else here. Returns run(on) to play or pause it.
+ */
+function startLoader(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const k = Math.max(1, Math.round((88 * dpr) / ART));
+  canvas.style.width = canvas.style.height = `${(ART * k) / dpr}px`;
+  const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  if (canvas.transferControlToOffscreen && typeof Worker !== 'undefined') {
+    try {
+      const worker = new Worker(new URL('./pixelloader.worker.js', import.meta.url), { type: 'module' });
+      const off = canvas.transferControlToOffscreen();
+      worker.postMessage({ canvas: off, k, calm, run: true }, [off]);
+      return (on) => worker.postMessage({ run: on });
+    } catch {
+      // Drawn here instead.
+    }
+  }
+  const art = createLoaderArt(canvas, k, { calm });
+  let id = 0;
+  const tick = (now) => {
+    id = requestAnimationFrame(tick);
+    art.draw(now / 1000);
+  };
+  const run = (on) => {
+    if (on && !id) id = requestAnimationFrame(tick);
+    if (!on && id) {
+      cancelAnimationFrame(id);
+      id = 0;
+    }
+  };
+  run(true);
+  return run;
+}
+
 export function createIntro(el) {
   el.classList.add('intro');
   // index.html carries the same markup, so the screen is there from the first paint.
@@ -194,14 +234,14 @@ export function createIntro(el) {
     <div class="intro-band" aria-hidden="true"></div>
     <div class="kicker">WELCOME TO</div>
     <div class="glitch" data-text="CHOG WORLD">CHOG WORLD</div>
-    <div class="load-runner" aria-hidden="true"><img src="${BASE}art/chog-loader.webp" alt="" /></div>
+    <canvas class="load-runner" aria-hidden="true"></canvas>
     <div class="sub" aria-live="polite">Waking the island...</div>
     <div class="stage" hidden></div>`;
   const kicker = el.querySelector('.kicker');
   const title = el.querySelector('.glitch');
-  // While the world loads, the user's pixel Chog runs round its ring of dots (their sprite sheet). It's
-  // a CSS animation, so it keeps going on the compositor while the load holds up the main thread.
+  // While the world loads, the user's pixel Chog hops round its ring of dots (src/pixelloader.js).
   const loader = el.querySelector('.load-runner');
+  const loaderRun = startLoader(loader);
   const sub = el.querySelector('.sub');
   const stage = el.querySelector('.stage');
   const runnerCanvas = document.createElement('canvas');
@@ -226,6 +266,7 @@ export function createIntro(el) {
   };
   const show = (html, { run = false } = {}) => {
     loader.hidden = true;
+    loaderRun(false);
     sub.hidden = true;
     stage.hidden = false;
     stage.innerHTML = html;
@@ -261,6 +302,7 @@ export function createIntro(el) {
       runner.stop();
       stage.hidden = true;
       loader.hidden = false;
+      loaderRun(true);
       sub.hidden = false;
       setTitle('WELCOME TO', 'CHOG WORLD');
       sub.textContent = `${label}... ${Math.round(f * 100)}%`;

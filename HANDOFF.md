@@ -27,7 +27,87 @@ are real but free.
 
 ## Log
 
-### 2026-10-16 · B · The loading screen: the user's own pixel Chog sprite
+### 2026-10-16 · B · Session wrap: the pixel loader, and everything in flight (next B: read this first)
+
+**This commit: the loading screen's Chog, drawn natively.** The user on the sprite-strip version: "you implemented that loading icon in all the wrong ways possible. looks like a slapped on png that's being manually rotated. just use it as reference as to how i want it to look. and it's way too big". Now:
+- `src/pixelloader.js`: a pixel Chog hand drawn from the user's sheet (spiky violet mane, lilac rim, cream dome face, dot eyes, blush, mouth), hopping clockwise round a ring of twelve square dots. The dots it has just passed light up white, then lilac, then fade. Little four-point sparkles twinkle in its wake. Everything sits on one pixel grid (52 art pixels square), a whole number of device pixels to each, so it is crisp at any DPR. The Chog moves a pixel at a time and is never rotated or scaled. To change the look, edit `SPRITE` (one character per pixel) and `PAL`.
+- About 88 CSS px across: 104 px on a 1x laptop, 78 px at 2x, 87 px on a 3x phone (`startLoader` in `src/intro.js`). The old one was 192 px.
+- It draws in a worker (`src/pixelloader.worker.js`, OffscreenCanvas), so it keeps moving while the load blocks the main thread. Without OffscreenCanvas it draws on the main thread.
+- The user's sheet is reference only and does not ship. `public/art/chog-loader.webp` is deleted.
+- Not yet seen by the user. Over the bright planet the unlit dots read darker than the ground. If the user minds, try a faint dark halo behind the ring (ask first: it's a look).
+
+**Pushed today, all on main** (newest first):
+- `a4ad80d`: the casino fixes from the user's test.
+  - Bets come off: Undo, and hold a bet to take a chip off. The − and + are labelled Chip.
+  - The table holds still: the idle camera turn is off in rooms.
+  - Chips and coins never sink.
+  - Phones draw at 2x, and the casino's textures are doubled.
+- `f60267f`, `6d518ae`, `10154d4`: the iPhone black-frame flicker on the entry page. NaN guards in the shaders, a finite-pixel guard in the bloom (`?nobloom` to tell), no blur layers over the live planet. **The user confirmed it's fixed.** The planet also turns visibly now.
+- `fc9fc16`: a guest's dive keeps the world's controls hidden until it lands.
+- `0b0e299`: B25, the planet, warp speed and the dazed wake-up.
+
+**Skills installed this session** (project skills in `.claude/skills/<name>/SKILL.md`). Each one is written from the user's skill list: none of the names on that list exist in a catalog. The rest of the list covers A's or C's areas.
+- `skybox-and-space-shot-generation`: how space is built (planet, cosmos, warp), the purple rules, framing a planet shot.
+- `volumetric-clouds-and-vfx`: the cloud and effect conventions.
+- `webgl-webgpu-shader-authoring`: shader rules, including the NaN guards that fixed the iPhone flicker (pow of a negative base, normalize of zero, Apple fast math).
+- `fixing-motion-performance`: no long frames, warm-ups, the HD 520.
+- `js-canvas-performance-profiler`: how to profile, read `?debug`, and hold the clock in tests.
+- `js-timeline-and-easing-orchestrator`: cutscene timing and easing.
+- `ai-cinema-director`: camera language for cutscenes.
+- The user also says they gave "a plethora of UI skills" so the casino would not get "this default ui claude always uses". Treat bespoke UI as a hard requirement.
+
+**CLAUDE.md** (unchanged this session). What the user pushed hardest on:
+- **No creative direction without their pick.** They warned about this sternly, over the loading screen ("this is you taking creative directions again"). For a look, a camera move or a Chog's behaviour: show options with visuals, recommend one, wait. Bug fixes that restore intended behaviour don't need asking.
+- Their standard: "if you're gonna do something then make it the best looking thing in existence". Use it on a phone and the laptop, by touch and mouse, before pushing.
+- Commits are authored as OxxBishop (`317957607+OxxBishop@users.noreply.github.com`) with no trailers. Never use the user's personal email: it leaked into `21ed3a1`, which can't be rewritten. Never commit `planetlab.html`.
+
+**Work in progress, NOT on main.** It is on branch `claude/vigilant-cannon-uqurem`, one commit on top of this one. Bring the files over with `git checkout origin/claude/vigilant-cannon-uqurem -- <paths>`. Test scripts and tools are in that branch's `wip/b/`. Nothing in it is verified enough for main.
+1. **Your Chog walks into the room, the camera behind it** (the user: "the chogs should be the one entering the casino, not the camera. or rather, they go in with the camera following in behind"). Files: `src/entry.js` (`walkIn`, `walkOut`, `flightIn`, `followPose`, `course`) and `src/main.js` (`enterRoom` passes travel's Chog as `walker`).
+   - The first test found two faults:
+     - Out walking, the Chog is 5.0 m tall (travel's `SCALE` 1.7). The casino's outside door is 4.55 m and its room door only 3.36 m, so the camera, kept above the Chog's head, went into the wall over the door.
+     - The Chog's head hid the doorway.
+   - Rewritten since:
+     - On the last steps to the door the Chog comes down to its room size (1). The camera's distance and height come down with it, so on screen it stays the same size and only the door grows.
+     - The camera keeps under the hall's height, and comes down under the room's lower door only where it passes it.
+     - It sits a little to the side, so the doorway shows past the head.
+     - Once the Chog stops, the camera flies under the room door to the room's view, and the Chog turns to face it.
+     - Out is the same, backwards: it grows back to 1.7 once the camera is outside, a few steps out, and travel takes over.
+   - **Untested since the rewrite.** Test with `wip/b/walkdbg.mjs` (it logs the camera, Chog, scale and FOV, and takes shots). It needs a temporary `get _dbg() { return run; }` on entry's api. Check:
+     - all three rooms;
+     - your own Chog and a guest;
+     - tap or Esc to skip;
+     - walking back out;
+     - phone and laptop.
+2. **Your Chog's edges beside the table** (the user: "as the user initiates the game, he sees his chog trait benefits at the side of the roulette table so he knows his advantages"). `src/casino.js`: a `.cz-edgecard` with the portrait, the name and that game's edges, shown while you sit at a game.
+   - Laptop: on the left, centred. Phone: a strip under the top HUD, its chips scrolling sideways.
+   - The edges list is out of the game panels (it's on the card). Unverified.
+3. **The casino's controls, bespoke** (the user: "i hate how it looks"). Three looks are in `src/style.css` (the casino section) behind `?czui=pixel|lounge|neon`:
+   - Pixel Arcade: the loading screen's look.
+   - Atomic Lounge: the Starlite room's 1958, with chip buttons.
+   - Neon Marquee: neon tubes on dark glass.
+   - Next: capture them in-engine on a phone and the laptop, put them on one pick page with the portal trips, recommend one, and **wait for the pick**. Then drop the switch and keep that look only.
+4. **B24 effects** (the user's picks; still `doing` on the board):
+   - Stage LED floor and confetti (`src/fx/stagefx.js`, warmed in `src/npcs.js`): seen by day, not yet at night.
+   - Lobby light shafts and dust (`src/fx/lobbyfx.js`, `src/hub.js`): built, but **not visible** in in-engine shots. The additive strengths (shafts 0.16, pools 0.3) are far too faint in the bright lobby. Boost, then check at 9, 16:48, 18:24 and 22:00 (`wip/b/lobbycap.mjs`).
+   - Portal trip, three ways (`src/fx/teleport.js`, behind `?portal=gate|star|bubble`; `warmTrips` in `src/travel.js`):
+     - All three are recorded in-engine: 143 frames each (`wip/b/portalcap.mjs`). The frames are too big to keep; re-record them.
+     - The pick page is `wip/b/portal-pick/index.html`. Encode `gate.mp4`, `star.mp4` and `bubble.mp4` with ffmpeg (minterpolate to 30 fps), publish it, and wait for the user's pick.
+   - For A (`src/travel.js`, a bug fix): the beam's arrival cut ran the wrong way. `setBeam(level, -1)` should be `setBeam(1.1 → 0, 1)`, in three places.
+5. **The user's 10-16 casino test, item by item:**
+   - Bets couldn't be reduced: done (`a4ad80d`).
+   - "i hate how it looks": item 3.
+   - The Chog walks in, the camera behind: item 1.
+   - Trait benefits beside the table: item 2.
+   - "the roulette table, slot machines and the entire casino looks low res. this even is a problem with the entire island": done in `a4ad80d` (2x on phones, sharper textures). Ask the user whether it's enough.
+   - "the roulette table was spinning": done.
+   - The loading screen ("a pixelated chog moving in circles like a cursor"): this commit.
+
+**Testing notes:**
+- SwiftShader runs about 1 fps here. To test, hold the clock: override `performance.now`, queue `requestAnimationFrame`, and call `chogWorld.frame()` step by step (see `walkdbg.mjs`).
+- Editing `src` reloads every page on the dev server that serves it, so run long tests on a copy.
+- `pkill -f` patterns must be anchored (`^node ...`), or they kill the calling shell.
+
+### 2026-10-16 · B · The loading screen: the user's own pixel Chog sprite (replaced by the native pixel loader, above)
 - The user's sprite sheet (eight frames: a pixel Chog going round a ring of dots that light up behind it) replaces the runner. Cut by `tools/sheet2strip.py` in B's scratchpad: black keyed out, every frame aligned and scaled by its own ring so the dots hold still, into `public/art/chog-loader.webp` (eight 384 px frames side by side).
 - It plays as a CSS animation (a stepped transform, `.load-runner img` in `src/style.css`), so the compositor keeps it moving while the load blocks the main thread. The `<img>` is in `index.html`, so it loads with the page. `src/intro.js` only hides and shows it.
 
