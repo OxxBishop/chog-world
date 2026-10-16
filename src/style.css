@@ -970,6 +970,8 @@ body.intro-open .cz-edgecard { opacity: 0; pointer-events: none; }
 .ui-pixel .cz-chiplabel, .ui-pixel .cz-on { font-family: 'Press Start 2P', monospace; font-size: 8px; }
 .ui-pixel .cz-on b { font-size: 12px; color: var(--px-gold); }
 .ui-pixel .cz-leave { color: var(--px-line) !important; font-family: 'Press Start 2P', monospace; font-size: 9px; }
+/* On a phone Step back is the × in the corner, in every look. */
+@media (max-width: 640px) { .casino-panel.ui-pixel .cz-leave { font-size: 0; } }
 .ui-pixel .cz-edges summary { font-family: 'Press Start 2P', monospace; font-size: 9px; }
 .ui-pixel .cz-perks b { color: var(--px-gold); }
 .cz-edgecard.ui-pixel { padding: 14px; }

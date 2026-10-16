@@ -19,7 +19,7 @@ await page.evaluate(() => {
   Object.defineProperty(w.session, 'active', { configurable: true, get: () => ({ id: 1517, info: { id: 1517, name: 'Chog #1517', traits, image: '/art/1517.webp' } }) });
   w.casino.play('roulette');
 });
-await page.waitForTimeout(20000);
+await page.waitForTimeout(45000);
 const tap = (k) => page.click(`.cz-q[data-k="${k}"]`, { timeout: 60000, force: true });
 await tap('red'); await tap('red'); await tap('d2');
 const looks = ['', 'pixel', 'lounge', 'neon'];
@@ -36,7 +36,7 @@ for (const ui of looks) {
 }
 console.log(await page.evaluate(() => ({ card: !document.querySelector('.cz-edgecard')?.hidden, items: document.querySelectorAll('.cz-edgecard li').length, cardBox: document.querySelector('.cz-edgecard')?.getBoundingClientRect().toJSON(), panelBox: document.querySelector('.casino-panel')?.getBoundingClientRect().toJSON() })));
 await page.evaluate(() => window.chogWorld.casino.play('slots'));
-await page.waitForTimeout(8000);
+await page.waitForTimeout(30000);
 for (const ui of looks) {
   await setLook(ui);
   await page.waitForTimeout(1200);
