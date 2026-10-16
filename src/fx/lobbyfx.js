@@ -57,7 +57,7 @@ void main() {
   float facing = abs(dot(normalize(vN), normalize(vV)));
   float depth = 0.35 + 0.65 * (1.0 - facing);
   float k = side * along * st * depth * uI;
-  gl_FragColor = vec4(uCol * k * 0.16, 1.0);
+  gl_FragColor = vec4(uCol * k * 0.8, 1.0);
 }`;
 const POOL_FRAG = /* glsl */ `
 uniform float uI;
@@ -67,7 +67,7 @@ void main() {
   // The window's light on the floor: soft edges, the frame's shadow a cross through it.
   vec2 e = smoothstep(0.0, 0.08, vUv) * smoothstep(1.0, 0.92, vUv);
   float bars = 1.0 - 0.55 * (1.0 - smoothstep(0.0, 0.02, abs(vUv.x - 0.5))) - 0.55 * (1.0 - smoothstep(0.0, 0.02, abs(vUv.y - 0.5)));
-  gl_FragColor = vec4(uCol * e.x * e.y * bars * uI * 0.3, 1.0);
+  gl_FragColor = vec4(uCol * e.x * e.y * bars * uI * 1.5, 1.0);
 }`;
 const POOL_VERT = /* glsl */ `attribute vec2 aUv; varying vec2 vUv; void main() { vUv = aUv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 
