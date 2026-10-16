@@ -194,15 +194,14 @@ export function createIntro(el) {
     <div class="intro-band" aria-hidden="true"></div>
     <div class="kicker">WELCOME TO</div>
     <div class="glitch" data-text="CHOG WORLD">CHOG WORLD</div>
-    <canvas class="runner load-runner" aria-hidden="true"></canvas>
+    <div class="load-runner" aria-hidden="true"><img src="${BASE}art/chog-loader.webp" alt="" /></div>
     <div class="sub" aria-live="polite">Waking the island...</div>
     <div class="stage" hidden></div>`;
   const kicker = el.querySelector('.kicker');
   const title = el.querySelector('.glitch');
-  // While the world loads, one pixel Chog runs round its little track (the user's pick, not a bar).
-  const loadCanvas = el.querySelector('.load-runner');
-  const loadRunner = createRunner(loadCanvas, { ids: [SEARCH_FACES[0]], cycle: false });
-  loadRunner.start();
+  // While the world loads, the user's pixel Chog runs round its ring of dots (their sprite sheet). It's
+  // a CSS animation, so it keeps going on the compositor while the load holds up the main thread.
+  const loader = el.querySelector('.load-runner');
   const sub = el.querySelector('.sub');
   const stage = el.querySelector('.stage');
   const runnerCanvas = document.createElement('canvas');
@@ -226,8 +225,7 @@ export function createIntro(el) {
     burst();
   };
   const show = (html, { run = false } = {}) => {
-    loadCanvas.hidden = true;
-    loadRunner.stop();
+    loader.hidden = true;
     sub.hidden = true;
     stage.hidden = false;
     stage.innerHTML = html;
@@ -262,8 +260,7 @@ export function createIntro(el) {
       document.body.classList.add('intro-open');
       runner.stop();
       stage.hidden = true;
-      loadCanvas.hidden = false;
-      loadRunner.start();
+      loader.hidden = false;
       sub.hidden = false;
       setTitle('WELCOME TO', 'CHOG WORLD');
       sub.textContent = `${label}... ${Math.round(f * 100)}%`;

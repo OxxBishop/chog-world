@@ -649,9 +649,12 @@ body.intro-reveal .hud, body.intro-reveal .places-toggle, body.intro-reveal .nav
 .intro .link:hover { color: var(--ink); }
 .intro .link:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 .intro .runner { width: 224px; height: 224px; margin: -24px 0 -30px; image-rendering: pixelated; }
-/* The loading screen's runner, in place of a bar. */
-.intro .load-runner { width: 192px; height: 192px; margin: -18px auto -26px; justify-self: center; }
+/* The loading screen's Chog: the user's sprite strip (eight square frames side by side), stepped
+   through with a transform so the compositor plays it even while the load blocks the main thread. */
+.intro .load-runner { width: 192px; height: 192px; margin: -18px auto -26px; justify-self: center; overflow: hidden; }
 .intro .load-runner[hidden] { display: none; }
+.intro .load-runner img { display: block; width: 800%; height: 100%; max-width: none; animation: load-run 0.75s steps(8) infinite; will-change: transform; }
+@keyframes load-run { to { transform: translateX(-100%); } }
 .intro .note a { color: var(--cyan); }
 /* Picking one of your Chogs: their art, chunky, in pixel frames. */
 .intro .chogs { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; max-width: 560px; }

@@ -27,6 +27,10 @@ are real but free.
 
 ## Log
 
+### 2026-10-16 · B · The loading screen: the user's own pixel Chog sprite
+- The user's sprite sheet (eight frames: a pixel Chog going round a ring of dots that light up behind it) replaces the runner. Cut by `tools/sheet2strip.py` in B's scratchpad: black keyed out, every frame aligned and scaled by its own ring so the dots hold still, into `public/art/chog-loader.webp` (eight 384 px frames side by side).
+- It plays as a CSS animation (a stepped transform, `.load-runner img` in `src/style.css`), so the compositor keeps it moving while the load blocks the main thread. The `<img>` is in `index.html`, so it loads with the page. `src/intro.js` only hides and shows it.
+
 ### 2026-10-16 · B · Casino fixes from the user's test; the world sharper on phones
 - **Bets come off again:** Undo takes back the last chip you put down, and holding a bet takes a chip off it (read off the events' own times, so a hold counts even if the page was busy). The − and + are labelled Chip: they set the chip's size, never a bet.
 - **The roulette table no longer turns round under you:** the camera's slow idle turn (meant for the island) carried on in the casino until you touched the 3D view, and tapping only the panel never stopped it. It's off in every room now (`src/camera.js`), and the casino's table views count as inside the room.
