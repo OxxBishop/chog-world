@@ -59,11 +59,25 @@ export class Post {
     this.composer.addPass(new OverlayPass(this.overlay, camera, this.composer));
 
     this.bloom = new BloomEffect({ mipmapBlur: true, luminanceThreshold: 0.85, luminanceSmoothing: 0.25, intensity: 0.6, radius: 0.65, resolutionScale: 0.5 });
+    // One pixel whose maths went wrong (NaN, or brighter than a half float holds, so Infinity) spreads
+    // through the bloom's blur over the whole frame: on Apple's GPUs a black flash. The bloom skips any
+    // such pixel, tested on the float's bits, which their fast maths can't optimise away.
+    const lm = this.bloom.luminanceMaterial;
+    const head = 'void main(){vec4 texel=texture2D(inputBuffer,vUv);';
+    if (lm.fragmentShader.includes(head)) {
+      lm.fragmentShader = lm.fragmentShader.replace(
+        head,
+        'vec4 finiteTexel(vec4 t){bvec4 bad=equal(floatBitsToUint(t)&uvec4(0x7F800000u),uvec4(0x7F800000u));return vec4(bad.x?0.0:t.x,bad.y?0.0:t.y,bad.z?0.0:t.z,bad.w?0.0:t.w);}\nvoid main(){vec4 texel=finiteTexel(texture2D(inputBuffer,vUv));',
+      );
+      lm.needsUpdate = true;
+    } else console.warn('Bloom: the luminance shader changed; NaN guard not applied');
     const tone = new ToneMappingEffect({ mode: ToneMappingMode.AGX });
     const sat = new HueSaturationEffect({ saturation: 0.32 });
     const contrast = new BrightnessContrastEffect({ brightness: 0.0, contrast: 0.14 });
     const vignette = new VignetteEffect({ offset: 0.5, darkness: 0.22 });
-    this.composer.addPass(new EffectPass(camera, this.bloom, tone, sat, contrast, vignette));
+    // ?nobloom leaves the bloom out, to tell on a phone whether a flicker comes through it.
+    const bloom = /[?&]nobloom\b/.test(location.search) ? [] : [this.bloom];
+    this.composer.addPass(new EffectPass(camera, ...bloom, tone, sat, contrast, vignette));
     this.smaaPass = new EffectPass(camera, new SMAAEffect());
     this.composer.addPass(this.smaaPass);
   }
