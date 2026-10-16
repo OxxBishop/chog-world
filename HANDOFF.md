@@ -27,6 +27,9 @@ are real but free.
 
 ## Log
 
+### 2026-10-16 · B · The loading screen: a pixel Chog running in circles, not a bar (the user's pick)
+- While the world loads, one pixel Chog runs round its little track (the wallet search's runner, one face, no swapping), the step and percentage under it. The bar is gone (`src/intro.js`, `index.html`); `src/loader.js` still writes the line of text.
+
 ### 2026-10-15 · B · The connect screen's flicker on phones fixed; the planet turns where you can see it
 - **The flicker** (the user's iPhone recording: the whole planet blinking black for a frame, several times a second): one pixel's maths going NaN, which the bloom's blur spreads over the whole frame. Apple's GPUs give NaN where desktop ones don't, so it never showed on the laptop or in tests. Fixed at every source I could find:
   - `pow(x, k)` where x can dip below 0, even by a rounding error (`1.0 - dot(n, v)` for two unit vectors, `pow(x, 2.0)` of a signed value): clamped, or written as `x * x`. In the planet, the nebula, warp speed, the dome glass, the bridges' tunnel glass (`src/tunnels.js`, A's), the sea's fresnel (`src/sky.js`) and the aura ring (`src/chog.js`, A's).

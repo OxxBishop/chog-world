@@ -67,7 +67,7 @@ function loadImage(src) {
  * The pixel Chog running round a little track: hops, squashes as it lands, kicks up dust, and casts a
  * shadow. While searching it flickers to another Chog's face every lap; with `face` set it is yours.
  */
-function createRunner(canvas) {
+function createRunner(canvas, { ids = SEARCH_FACES, cycle = true } = {}) {
   const W = 64;
   canvas.width = canvas.height = W;
   const ctx = canvas.getContext('2d');
@@ -81,7 +81,7 @@ function createRunner(canvas) {
   let raf = 0;
   let t0 = performance.now();
   const dust = [];
-  for (const id of SEARCH_FACES) loadImage(`${BASE}art/${id}.webp`).then((img) => faces.push(pixelFace(img))).catch(() => {});
+  for (const id of ids) loadImage(`${BASE}art/${id}.webp`).then((img) => faces.push(pixelFace(img))).catch(() => {});
 
   function draw(now) {
     raf = requestAnimationFrame(draw);
@@ -101,7 +101,7 @@ function createRunner(canvas) {
       const l = Math.floor(a / (Math.PI * 2));
       if (l !== lap) {
         lap = l;
-        if (!mine && faces.length > 1) {
+        if (cycle && !mine && faces.length > 1) {
           faceIndex++;
           glitch = 4;
         }
@@ -194,12 +194,15 @@ export function createIntro(el) {
     <div class="intro-band" aria-hidden="true"></div>
     <div class="kicker">WELCOME TO</div>
     <div class="glitch" data-text="CHOG WORLD">CHOG WORLD</div>
-    <div class="load-bar" aria-hidden="true"><i></i></div>
+    <canvas class="runner load-runner" aria-hidden="true"></canvas>
     <div class="sub" aria-live="polite">Waking the island...</div>
     <div class="stage" hidden></div>`;
   const kicker = el.querySelector('.kicker');
   const title = el.querySelector('.glitch');
-  const bar = el.querySelector('.load-bar');
+  // While the world loads, one pixel Chog runs round its little track (the user's pick, not a bar).
+  const loadCanvas = el.querySelector('.load-runner');
+  const loadRunner = createRunner(loadCanvas, { ids: [SEARCH_FACES[0]], cycle: false });
+  loadRunner.start();
   const sub = el.querySelector('.sub');
   const stage = el.querySelector('.stage');
   const runnerCanvas = document.createElement('canvas');
@@ -223,7 +226,8 @@ export function createIntro(el) {
     burst();
   };
   const show = (html, { run = false } = {}) => {
-    bar.hidden = true;
+    loadCanvas.hidden = true;
+    loadRunner.stop();
     sub.hidden = true;
     stage.hidden = false;
     stage.innerHTML = html;
@@ -258,10 +262,10 @@ export function createIntro(el) {
       document.body.classList.add('intro-open');
       runner.stop();
       stage.hidden = true;
-      bar.hidden = false;
+      loadCanvas.hidden = false;
+      loadRunner.start();
       sub.hidden = false;
       setTitle('WELCOME TO', 'CHOG WORLD');
-      bar.style.setProperty('--p', f.toFixed(3));
       sub.textContent = `${label}... ${Math.round(f * 100)}%`;
     },
     state(name, data = {}) {
