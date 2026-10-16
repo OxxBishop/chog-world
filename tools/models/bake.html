@@ -12,7 +12,8 @@ import { MeshoptDecoder } from 'meshoptimizer';
 import { retarget, MAPS } from '/tools/models/retarget.js';
 const q = new URLSearchParams(location.search);
 const models = q.get('m').split(',');
-// spec: name:source:clip[:armsOut[:headK[:amp[:armsFwd]]]], amp like arms=1.6;legs=1.2;spine=1.8;bob=2.5
+// spec: name:source:clip[:armsOut[:headK[:amp[:armsFwd[:adjust]]]]], amp like arms=1.6;legs=1.2;spine=1.8;bob=2.5,
+// adjust like UpperArmR@x@-30;ForeArmR@x@-25 (extra turns in model space, degrees)
 // (an empty field keeps its default). &arms=model=out/fwd;... sets a model's arms for every clip.
 const spec = q.get('spec').split(',').map((s) => s.split(':'));
 const SRC = {
@@ -20,6 +21,8 @@ const SRC = {
   ual2: { file: '/models/_wip/src/ual2.glb', rest: 'A_TPose', toe: 'ball_l' },
   // https://github.com/mrdoob/three.js/tree/r170/examples/models/gltf/RobotExpressive (CC0): rests in its bind.
   robot: { file: '/models/_wip/src/robot.glb', rest: null, toe: null, tpose: true },
+  // The old Tripo singer (git: public/models/npcs/singer.glb before 10-16), posed round its mic in its bind.
+  singer: { file: '/models/_wip/src/singer-tripo.glb', rest: null, toe: null, tpose: true, map: 'chog' },
 };
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 withKtx2(loader);
@@ -30,13 +33,13 @@ for (const m of models) {
   const dg = await loader.loadAsync(`/models/${q.get('dir') || 'npcs'}/${m}.glb`);
   out[m] = {};
   const own = Object.fromEntries((q.get('arms') || '').split(';').filter(Boolean).map((kv) => kv.split('=')).map(([k, v]) => [k, v.split('/').map(Number)]));
-  for (const [name, s, clip, arms, head, , fwd] of spec) {
+  for (const [name, s, clip, arms, head, , fwd, adj] of spec) {
     const sg = srcs[s];
     const srcClip = sg.animations.find((a) => a.name === clip);
     const rest = sg.animations.find((a) => a.name === SRC[s].rest) ?? null;
     const amp = spec.find((x) => x[0] === name)[5];
     const ampObj = amp ? Object.fromEntries(amp.split(';').map((kv) => kv.split('=')).map(([k, v]) => [k, +v])) : null;
-    const c = retarget({ src: cloneSkinned(sg.scene), srcClip, srcRest: rest, map: MAPS[s], dst: cloneSkinned(dg.scene), name, srcToe: SRC[s].toe, srcTPose: !!SRC[s].tpose, armsOut: own[m]?.[0] ?? (arms ? +arms : 0.12), armsFwd: own[m]?.[1] ?? (fwd ? +fwd : 0), headK: head ? +head : 0.5, amp: ampObj });
+    const c = retarget({ src: cloneSkinned(sg.scene), srcClip, srcRest: rest, map: MAPS[SRC[s].map ?? s], dst: cloneSkinned(dg.scene), name, srcToe: SRC[s].toe, srcTPose: !!SRC[s].tpose, armsOut: own[m]?.[0] ?? (arms ? +arms : 0.12), armsFwd: own[m]?.[1] ?? (fwd ? +fwd : 0), headK: head ? +head : 0.5, amp: ampObj, adjust: adj ? adj.split(';').map((x) => x.split('@')).map(([b, ax, d]) => [b, ax, +d]) : null });
     out[m][name] = THREE.AnimationClip.toJSON(c);
   }
 }

@@ -46,3 +46,10 @@ Since 10-16 (A13, A14):
   stage 0.12x the area, pack; 27% of the atlas used before, 57% after), then `relayout_tex.py` (the shipped
   colours resampled into it; `detail=0`, since the singer's own 2048 original carries Tripo's junk patterns),
   then `apply.mjs --corners` and `ktx2.mjs`. Texel density 52 to 178 texels/m on the body, 84 to 303 on the head.
+- **The singer, rebuilt on the plain Chog's body** (the user, 10-16): `singer_rebuild.mjs <plain.glb> <old singer,
+  JPEG> <out> 0.06,0,0,25,0,0` keeps the old file's stage disc (the triangles only its Root holds, with its texture),
+  lifts the plain body onto it (the Root joint up 0.258) and puts a new mic in the right hand (tilted 25 degrees
+  toward the mouth). Sing comes from the old singer (`public/models/_wip/src/singer-tripo.glb`, the file before
+  10-16 in git) through `bake.html`, measured from straightened arms, with extra lift for the shorter arm:
+  `spec=Sing:singer:Sing:0:0.5:::UpperArmR@x@-44;ForeArmR@x@-42;UpperArmR@y@35`. Then `ktx2.mjs`. Its face sheet
+  is the plain Chog's (`faces.json` "singer").

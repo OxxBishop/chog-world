@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-16 · A · The singer rebuilt on the plain Chog's body
+- **The user's ask:** the old Tripo singer was the weakest model in the cast. `public/models/npcs/singer.glb` is
+  now the plain Chog (its clean 2048 texture, rig, face sheet and the cast's clips) standing on the old stage
+  disc (cut from the old file, unchanged: top at 0.258, radius about 1.85, so B's stage effects still fit)
+  with a new handheld mic in its right hand. It sings with the old singer's Sing, retargeted, the mic at its
+  mouth all through the loop; its face opens its eyes and sings along; between songs the cast's idle and
+  cheer, mic in hand. `tools/models/fix/singer_rebuild.mjs`, README there.
+- `src/npcs.js`: the stand-cutting code at load is gone (the new file has no stand).
+
 ### 2026-10-16 · A · The singer sharper, a real wave and cheer, the cast notices you (A13 done)
 - **The singer:** a new texture layout (its old one spent 73% of the image on gutters, scraps and the stage
   disc). 57% used now, the head given 2.5x the room: 52 to 178 texels/m on the body, 84 to 303 on the head,

@@ -35,6 +35,8 @@ export const MAPS = {
     ThighL: 'UpperLeg.L', ShinL: 'LowerLeg.L', FootL: 'Foot.L',
     ThighR: 'UpperLeg.R', ShinR: 'LowerLeg.R', FootR: 'Foot.R',
   },
+  // Another Chog (Tripo's rig, the same bone names): the old singer's Sing onto the plain body.
+  chog: Object.fromEntries(['Hips', 'Spine', 'Chest', 'Neck', 'Head', 'UpperArmL', 'ForeArmL', 'HandL', 'UpperArmR', 'ForeArmR', 'HandR', 'ThighL', 'ShinL', 'FootL', 'ThighR', 'ShinR', 'FootR'].map((b) => [b, b])),
   // KayKit Character Animations (CC0), Rig_Medium.
   kk: {
     Hips: 'hips', Spine: 'spine', Chest: 'chest', Neck: 'head', Head: 'head',
@@ -105,7 +107,7 @@ function straightenArms(root, map) {
   }
 }
 
-export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name = srcClip.name, fps = 30, armsOut = 0.12, armsFwd = 0, srcToe = null, headK = 0.5, amp = null, srcTPose = false }) {
+export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name = srcClip.name, fps = 30, armsOut = 0.12, armsFwd = 0, srcToe = null, headK = 0.5, amp = null, srcTPose = false, adjust = null }) {
   // three.js drops reserved characters from node names on load (DEF-upper_arm.L is DEF-upper_armL).
   const clean = THREE.PropertyBinding.sanitizeNodeName;
   const map = Object.fromEntries(Object.entries(rawMap).map(([k, v]) => [k, clean(v)]));
@@ -184,6 +186,11 @@ export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name 
     for (const [b, side] of [['UpperArmL', 1], ['UpperArmR', -1]]) {
       if (want[b]) want[b].premultiply(_q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), side * armsOut));
       if (want[b] && armsFwd) want[b].premultiply(_q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -armsFwd));
+    }
+    // adjust: extra turns for a body of other proportions, [[bone, axis 'x' | 'y' | 'z', degrees], ...] in
+    // the model's space, in order (the plain Chog's shorter arm needs more lift to bring the singer's mic to its mouth).
+    for (const [b, ax, deg] of adjust ?? []) {
+      if (want[b]) want[b].premultiply(_q.setFromAxisAngle(new THREE.Vector3(ax === 'x' ? 1 : 0, ax === 'y' ? 1 : 0, ax === 'z' ? 1 : 0), THREE.MathUtils.degToRad(deg)));
     }
     // Into local rotations, parents first (bones keep their order in the scene).
     const world = new Map();

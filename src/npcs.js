@@ -60,96 +60,13 @@ async function npc(glb, id = null, tint = null) {
 }
 
 /**
- * The singer: one file with its own stage, driven like any Chog (its face sings along), with the mic
- * stand cut away so only the mic in its hand is left.
+ * The singer: the plain Chog's body on its stage disc with a handheld mic, in one file (A rebuilt it on
+ * 10-16: tools/models/fix/singer_rebuild.mjs), driven like any Chog (its face sings along).
  */
 async function singerNpc(url) {
   const chog = await makeChog({ model: url });
-  chog.root.updateMatrixWorld(true);
-  chog.root.traverse((o) => {
-    if (!o.isSkinnedMesh) return;
-    dropStand(o);
-    o.receiveShadow = true;
-  });
+  chog.root.traverse((o) => o.isMesh && (o.receiveShadow = true));
   return chog;
-}
-
-/*
- * The singer's file has a mic on a stand as well as the one in its hand, all fused into one mesh. The
- * stand goes: the triangles round its pole and its mic, which only the root holds (no arm, hand or head
- * moves them), so the singer is left with the mic in its hand. Returns the triangle numbers to drop.
- */
-const STAGE_FLOOR = 0.258;
-const HOLDERS = ['UpperArmL', 'ForeArmL', 'HandL', 'UpperArmR', 'ForeArmR', 'HandR', 'Head', 'Neck'];
-export function standTriangles(mesh) {
-  const geo = mesh.geometry;
-  const pos = geo.attributes.position, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
-  const names = mesh.skeleton.bones.map((b) => b.name);
-  const rootI = names.indexOf('Root');
-  const holders = new Set(HOLDERS.map((n) => names.indexOf(n)));
-  const weightOn = (i, test) => {
-    let w = 0;
-    for (let j = 0; j < 4; j++) if (test(si.getComponent(i, j))) w += sw.getComponent(i, j);
-    return w;
-  };
-  const v = new THREE.Vector3();
-  const world = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) world.set(v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).toArray(), i * 3);
-  // Vertices at one place are one vertex (UV seams split them in the file).
-  const weld = new Map();
-  const canon = new Int32Array(pos.count);
-  for (let i = 0; i < pos.count; i++) {
-    const k = `${world[i * 3].toFixed(4)},${world[i * 3 + 1].toFixed(4)},${world[i * 3 + 2].toFixed(4)}`;
-    if (!weld.has(k)) weld.set(k, i);
-    canon[i] = weld.get(k);
-  }
-  const idx = geo.index.array;
-  const nbrs = new Map();
-  const link = (a, b) => (nbrs.get(a) ?? nbrs.set(a, []).get(a)).push(b);
-  for (let t = 0; t < idx.length; t += 3) {
-    const a = canon[idx[t]], b = canon[idx[t + 1]], c = canon[idx[t + 2]];
-    link(a, b), link(b, a), link(b, c), link(c, b), link(a, c), link(c, a);
-  }
-  // Seed: the stand's mic, held by the root alone at mouth height, away from the body's middle.
-  const seeds = [];
-  for (let i = 0; i < pos.count; i++) {
-    const y = world[i * 3 + 1];
-    if (canon[i] === i && y > 0.9 && y < 1.4 && weightOn(i, (b) => b === rootI) > 0.9) seeds.push(i);
-  }
-  const inStand = new Uint8Array(pos.count);
-  if (!seeds.length) return new Set();
-  let ax = 0, az = 0;
-  for (const i of seeds) (ax += world[i * 3]), (az += world[i * 3 + 2]);
-  ax /= seeds.length;
-  az /= seeds.length;
-  // Flood down the stand's surface: above the stage floor, near its line, never into an arm or the head.
-  const queue = [...seeds];
-  for (const i of seeds) inStand[i] = 1;
-  while (queue.length) {
-    const i = queue.pop();
-    for (const j of nbrs.get(i) ?? []) {
-      if (inStand[j]) continue;
-      const x = world[j * 3], y = world[j * 3 + 1], z = world[j * 3 + 2];
-      if (y < STAGE_FLOOR || Math.hypot(x - ax, z - az) > 0.42 || weightOn(j, (b) => holders.has(b)) > 0.3) continue;
-      inStand[j] = 1;
-      queue.push(j);
-    }
-  }
-  // Its round foot stays: the stage has no floor under it.
-  const cut = new Set();
-  for (let t = 0; t < idx.length; t += 3) if (inStand[canon[idx[t]]] && inStand[canon[idx[t + 1]]] && inStand[canon[idx[t + 2]]]) cut.add(t / 3);
-  return cut;
-}
-export function dropStand(mesh) {
-  const geo = mesh.geometry;
-  if (geo.userData.standCut) return;
-  const cut = standTriangles(mesh);
-  const idx = geo.index.array;
-  const kept = new (idx.constructor)(idx.length - cut.size * 3);
-  let o = 0;
-  for (let t = 0; t < idx.length; t += 3) if (!cut.has(t / 3)) kept.set([idx[t], idx[t + 1], idx[t + 2]], (o += 3) - 3);
-  geo.setIndex(new THREE.BufferAttribute(kept, 1));
-  geo.userData.standCut = true;
 }
 
 /*
