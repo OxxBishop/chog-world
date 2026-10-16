@@ -477,8 +477,12 @@ const COIN_SLOTS = (() => {
   for (let i = 0; i < 56; i++) {
     const spread = 0.08 + (i / 56) * 0.26;
     const x = (r() - 0.5) * 2 * spread, z = 0.58 + (r() - 0.5) * Math.min(0.17, spread);
-    const y = 0.345 + Math.max(0, 1 - Math.abs(x) / 0.36) * Math.min(i, 30) * 0.0016 + r() * 0.004;
-    out.push({ p: new THREE.Vector3(x, y, z), q: new THREE.Quaternion().setFromEuler(new THREE.Euler((r() - 0.5) * 0.5, r() * 6, (r() - 0.5) * 0.5)) });
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler((r() - 0.5) * 0.5, r() * 6, (r() - 0.5) * 0.5));
+    // Its lowest edge on the tray's floor (0.34), tilted as it is, or on the heap: never through it.
+    const c = Math.abs(new THREE.Vector3(0, 1, 0).applyQuaternion(q).y);
+    const lift = 0.034 * Math.sqrt(1 - c * c) + 0.004 * c;
+    const y = 0.341 + lift + Math.max(0, 1 - Math.abs(x) / 0.36) * Math.min(i, 30) * 0.0016 + r() * 0.003;
+    out.push({ p: new THREE.Vector3(x, y, z), q });
   }
   return out;
 })();
@@ -617,8 +621,9 @@ export function buildCasinoRoom(look = new URLSearchParams(location.search).get(
 // The reels' strip, redrawn with your Chog's face once it's known, and its blur for fast spins.
 function makeStrip() {
   const stripCanvas = document.createElement('canvas');
-  stripCanvas.width = 128 * STRIP.length;
-  stripCanvas.height = 128;
+  // 256 pixels a symbol: sharp at the machine on a phone's screen.
+  stripCanvas.width = 256 * STRIP.length;
+  stripCanvas.height = 256;
   drawStrip(stripCanvas, null);
   const stripTex = new THREE.CanvasTexture(stripCanvas);
   stripTex.colorSpace = THREE.SRGBColorSpace;
@@ -750,6 +755,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   // The roulette.
   let chip = 10;
   const bets = new Map(); // what's on the felt: key -> chips
+  // Each chip as it went down, so Undo and a held bet can take them off again, last first.
+  let placed = [];
   let lastBets = null;
   let wheel = null; // the spin running: { step, n, bets, kind }
   let coast = null; // the wheel turning on after the ball has landed
@@ -799,7 +806,9 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   };
   // At the roulette: over the felt to bet, over the wheel while the ball runs.
   const goTable = (kind, now = false) => {
-    rig.views['casino-roulette'] = table.view(kind, window.innerWidth < window.innerHeight);
+    // Inside the room (so the camera keeps to it, and never takes up the world's slow idle turn).
+    rig.views['casino-roulette'] = { ...table.view(kind, window.innerWidth < window.innerHeight), enter: true };
+    rig.idleSpin = false;
     if (now) rig.jump?.('casino-roulette');
     else rig.go('casino-roulette', kind === 'wheel' ? 1.1 : 1.3);
   };
@@ -1056,8 +1065,25 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     else if (now + chip > state.chips) message = state.chips < BETS[0] ? 'Out of chips. Free chips again tomorrow.' : 'Not enough chips for that.';
     else {
       bets.set(key, (bets.get(key) ?? 0) + chip);
+      placed.push({ key, amount: chip });
       message = '';
     }
+    drawFelt();
+    render();
+  }
+  // Takes a chip back off the felt: the last one placed, or the last one on `key`.
+  function takeOff(key = null) {
+    if (!table || wheel || show) return;
+    let i = placed.length - 1;
+    if (key) while (i >= 0 && placed[i].key !== key) i--;
+    let amount, k;
+    if (i >= 0) ({ key: k, amount } = placed.splice(i, 1)[0]);
+    else if (key && bets.has(key)) (k = key), (amount = bets.get(key));
+    else return;
+    const left = (bets.get(k) ?? 0) - amount;
+    if (left > 0) bets.set(k, left);
+    else bets.delete(k);
+    message = '';
     drawFelt();
     render();
   }
@@ -1066,9 +1092,11 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     clearFelt();
     bets.clear();
     let total = 0;
+    placed = [];
     for (const [key, amount] of lastBets) {
       if (total + amount > Math.min(state.chips, TABLE_MAX)) break;
       bets.set(key, amount);
+      placed.push({ key, amount });
       total += amount;
     }
     message = bets.size < lastBets.size ? 'Not enough chips for all of them.' : '';
@@ -1079,6 +1107,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     if (wheel) return;
     clearFelt();
     bets.clear();
+    placed = [];
     message = '';
     drawFelt();
     render();
@@ -1105,6 +1134,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       state.chips -= total;
       lastBets = new Map(bets);
     }
+    placed = [];
     lost = null;
     settledFelt = false;
     const n = forced ?? randomInt(37);
@@ -1210,13 +1240,21 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       });
     }
   }
-  const m4 = new THREE.Matrix4(), dq = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), sc = new THREE.Vector3();
+  const m4 = new THREE.Matrix4(), dq = new THREE.Quaternion(), flat = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), sc = new THREE.Vector3(), ax = new THREE.Vector3();
+  const UP = new THREE.Vector3(0, 1, 0), DOWN = new THREE.Vector3(0, -1, 0);
+  // A chip (makeBurst's): its radius and half its thickness at size 1.
+  const CHIP_R = 0.06, CHIP_H = 0.009;
   // Chips off the felt land back on the table where they fall over it, on the floor past its edge.
   const toTable = table ? table.group.matrix.clone().invert() : null;
   const floorAt = (ch) => {
-    if (!ch.onTable) return 0.012;
+    if (!ch.onTable) return 0.002;
     sc.copy(ch.p).applyMatrix4(toTable);
-    return Math.abs(sc.x) < 1.75 && Math.abs(sc.z) < 0.8 ? 1.012 : 0.012;
+    return Math.abs(sc.x) < 1.75 && Math.abs(sc.z) < 0.8 ? 1.002 : 0.002;
+  };
+  // How high its middle sits when its lowest edge touches the floor, tilted as it is, at size s.
+  const restAt = (ch, s) => {
+    const c = Math.abs(ax.copy(UP).applyQuaternion(ch.q).y);
+    return floorAt(ch) + s * (CHIP_R * Math.sqrt(Math.max(0, 1 - c * c)) + CHIP_H * c);
   };
   function stepChips(dt) {
     let n = 0;
@@ -1227,24 +1265,35 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     }
     for (const ch of chips) {
       if (ch.age < 0) continue;
-      ch.v.y -= 9.8 * dt;
+      const s = THREE.MathUtils.clamp((ch.life - ch.age) / 0.5, 0, 1) * ch.size;
+      const wasAbove = ch.p.y >= restAt(ch, s) - 0.002;
+      if (!ch.down) ch.v.y -= 9.8 * dt;
       ch.p.addScaledVector(ch.v, dt);
-      // Down on the carpet: a small bounce, then they lie there.
-      const floor = floorAt(ch);
-      if (ch.p.y < floor && ch.v.y < 0 && ch.p.y > floor - 0.25) {
-        ch.p.y = floor;
-        ch.v.y *= -0.28;
-        ch.v.x *= 0.55;
-        ch.v.z *= 0.55;
-        ch.w.multiplyScalar(0.4);
-        if (Math.abs(ch.v.y) < 0.4) {
-          ch.v.y = 0;
-          ch.q.slerp(new THREE.Quaternion(), 0.5);
+      if (ch.w.lengthSq() > 1e-4) ch.q.premultiply(dq.setFromAxisAngle(sc.copy(ch.w).normalize(), ch.w.length() * dt));
+      // Down on the carpet (or the felt): a small bounce, then it settles flat and lies there. Its
+      // lowest edge never goes through, however fast it falls or slow the frame.
+      const rest = restAt(ch, s);
+      if (ch.p.y < rest && wasAbove) {
+        ch.p.y = rest;
+        if (!ch.down) {
+          ch.v.y *= -0.28;
+          ch.v.x *= 0.55;
+          ch.v.z *= 0.55;
+          ch.w.multiplyScalar(0.4);
+          if (Math.abs(ch.v.y) < 0.4) ch.down = true;
         }
       }
-      dq.setFromAxisAngle(sc.copy(ch.w).normalize(), ch.w.length() * dt);
-      if (ch.w.lengthSq() > 1e-4) ch.q.premultiply(dq);
-      const s = THREE.MathUtils.clamp((ch.life - ch.age) / 0.5, 0, 1) * ch.size;
+      if (ch.down) {
+        // Sliding to a stop, tipping flat onto whichever face is nearer the floor.
+        ch.v.set(ch.v.x * Math.exp(-dt * 7), 0, ch.v.z * Math.exp(-dt * 7));
+        ch.w.multiplyScalar(Math.exp(-dt * 10));
+        ax.copy(UP).applyQuaternion(ch.q);
+        flat.setFromUnitVectors(ax, ax.y >= 0 ? UP : DOWN).multiply(ch.q);
+        ch.q.slerp(flat, 1 - Math.exp(-dt * 12));
+        // Off the table's edge: it falls again.
+        if (ch.p.y > restAt(ch, s) + 0.05) ch.down = false;
+        else ch.p.y = restAt(ch, s);
+      }
       m4.compose(ch.p, ch.q, sc.copy(one).multiplyScalar(s));
       c.burst.setMatrixAt(n, m4);
       c.burst.setColorAt(n, ch.colour);
@@ -1487,6 +1536,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       : '';
     return `${chipsTop()}${msg()}
       <div class="cz-row cz-chiprow">
+        <span class="cz-chiplabel">Chip</span>
         <button class="cz-bet" data-c="-1" aria-label="Smaller chip">−</button>
         <span class="cz-chipv"><i class="v${chip}"></i>${chip}</span>
         <button class="cz-bet" data-c="1" aria-label="Bigger chip">+</button>
@@ -1495,11 +1545,12 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       <div class="cz-quick"${wheel ? ' inert' : ''}>${quick}</div>
       <div class="cz-row">
         <button class="cz-clear"${wheel || !on ? ' disabled' : ''}>Clear</button>
+        <button class="cz-undo"${wheel || !on ? ' disabled' : ''} aria-label="Take the last chip back">Undo</button>
         <button class="cz-rebet"${wheel || !lastBets ? ' disabled' : ''}>Rebet</button>
         <button class="cz-spin"${wheel ? ' disabled' : ''}>SPIN</button>
       </div>
       ${offers}
-      <p class="cz-hint">Tap the felt to bet on any number.</p>
+      <p class="cz-hint">Tap a bet or the felt to add a chip, hold a bet to take one off.</p>
       ${edgesList('roulette')}
       <button class="cz-leave">Step back</button>`;
   }
@@ -1541,7 +1592,36 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
         chip = BETS[Math.min(BETS.length - 1, Math.max(0, BETS.indexOf(chip) + Number(b.dataset.c)))];
         render();
       });
-      on('.cz-q', (b) => placeBet(b.dataset.k));
+      // A tap adds a chip; holding a bet takes one back off it (and the tap that ends the hold doesn't count).
+      // How long it was held is read off the events' own times too, so a hold counts even when the page
+      // was busy while the finger was down.
+      panel.querySelectorAll('.cz-q').forEach((b) => {
+        let timer = 0, held = false, downAt = 0;
+        const HOLD = 420;
+        const cancel = () => clearTimeout(timer);
+        b.addEventListener('pointerdown', (e) => {
+          held = false;
+          downAt = e.timeStamp;
+          timer = setTimeout(() => {
+            held = true;
+            takeOff(b.dataset.k);
+          }, HOLD);
+        });
+        b.addEventListener('pointerup', (e) => {
+          cancel();
+          if (!held && e.timeStamp - downAt >= HOLD) {
+            held = true;
+            takeOff(b.dataset.k);
+          }
+        });
+        for (const ev of ['pointerleave', 'pointercancel']) b.addEventListener(ev, cancel);
+        b.addEventListener('contextmenu', (e) => e.preventDefault());
+        b.addEventListener('click', () => {
+          if (held) return;
+          placeBet(b.dataset.k);
+        });
+      });
+      on('.cz-undo', () => takeOff());
       on('.cz-clear', () => clearBets());
       on('.cz-rebet', () => rebet());
       on('.cz-second', () => spinWheel('second'));
@@ -1556,6 +1636,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     message = '';
     if (game === 'slots') {
       playView();
+      rig.idleSpin = false;
       rig.go('casino-play', 1.2);
     } else {
       drawFelt();

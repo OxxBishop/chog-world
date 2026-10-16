@@ -621,7 +621,9 @@ export class CameraRig {
       f.phi *= decay;
       f.pan.multiplyScalar(decay);
     }
-    if (this.idleSpin && !this.focused && !this.tween) this.goal.theta += dt * 0.05;
+    // The slow idle turn is for the world outside: never in a room (it turned the casino's table
+    // round under you while you played with the panel, which a tap on the 3D view would have stopped).
+    if (this.idleSpin && !this.focused && !this.tween && !this.room) this.goal.theta += dt * 0.05;
     if (this.view === 'overview' && this.overview && !this.tween && !this.focused) {
       this.overviewAim(this.goal.theta, this.goal.target);
       this.goal.dist = this.overview.dist;

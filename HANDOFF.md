@@ -27,6 +27,12 @@ are real but free.
 
 ## Log
 
+### 2026-10-16 · B · Casino fixes from the user's test; the world sharper on phones
+- **Bets come off again:** Undo takes back the last chip you put down, and holding a bet takes a chip off it (read off the events' own times, so a hold counts even if the page was busy). The − and + are labelled Chip: they set the chip's size, never a bet.
+- **The roulette table no longer turns round under you:** the camera's slow idle turn (meant for the island) carried on in the casino until you touched the 3D view, and tapping only the panel never stopped it. It's off in every room now (`src/camera.js`), and the casino's table views count as inside the room.
+- **Chips and coins never sink:** chips land on their lowest edge however they're tilted, tip flat and slide to a stop, and can't fall through the carpet at any frame rate; the tray's coins rest on its floor the same way.
+- **Sharper on phones** (the user: the casino and the whole island looked low-res): phones and tablets draw at 2x, not 1.5x (`BASE_DPR` in `src/main.js`), with their clouds at the pixel count they had (`clouds.setQuality(q, { pixelRatio })`); the roulette's layout and the reels' symbols at twice the resolution. In the casino the clouds stop drawing on every machine (no windows), which pays for it there.
+
 ### 2026-10-16 · B · The loading screen: a pixel Chog running in circles, not a bar (the user's pick)
 - While the world loads, one pixel Chog runs round its little track (the wallet search's runner, one face, no swapping), the step and percentage under it. The bar is gone (`src/intro.js`, `index.html`); `src/loader.js` still writes the line of text.
 

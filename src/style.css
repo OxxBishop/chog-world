@@ -766,8 +766,11 @@ body.intro-open .casino-panel { opacity: 0; pointer-events: none; }
 .cz-q i { position: absolute; top: -8px; right: -5px; min-width: 18px; padding: 1px 5px; border-radius: 999px; font-style: normal; font-size: 10px; line-height: 14px; background: #ffc94a; color: #12263a; box-shadow: 0 0 0 1.5px #12263a; }
 .cz-q:active { transform: translateY(1px); }
 .cz-quick[inert] { opacity: 0.45; }
-.cz-clear, .cz-rebet { padding: 11px 12px; border-radius: 999px; font-weight: 600; background: rgba(255, 255, 255, 0.1); }
-.cz-clear:disabled, .cz-rebet:disabled { opacity: 0.4; cursor: default; }
+.cz-clear, .cz-rebet, .cz-undo { padding: 11px 12px; border-radius: 999px; font-weight: 600; background: rgba(255, 255, 255, 0.1); }
+.cz-clear:disabled, .cz-rebet:disabled, .cz-undo:disabled { opacity: 0.4; cursor: default; }
+.cz-chiplabel { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; }
+/* Held to take a chip off: no text selection or callout on a long press. */
+.cz-q { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: none; }
 .cz-hint { margin: 2px 0 0; font-size: 12px; opacity: 0.7; }
 /* On a phone the panel is one slim bar along the bottom (B22): chips, the bet and SPIN in a row, the
    last result over them, "step back" a small round x. It never covers the machine. */

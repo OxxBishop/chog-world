@@ -622,11 +622,12 @@ export function createVolumetricClouds(renderer, camera) {
       shownAt = lastT;
       return true;
     },
-    setQuality(q) {
+    // pixelRatio: the canvas's; above 1.5 the clouds draw at a smaller share of it, the same pixels as at 1.5.
+    setQuality(q, { pixelRatio = 1.5 } = {}) {
       const p = PRESETS[q] ?? PRESETS.high;
       clouds.qualityPreset = p.preset;
       composite.uniforms.get('puffSteps').value = { low: 10, medium: 14 }[q] ?? 20;
-      clouds.resolutionScale = p.resolutionScale;
+      clouds.resolutionScale = p.resolutionScale * Math.min(1, 1.5 / pixelRatio);
       clouds.lightShafts = false;
       const c = clouds.clouds, s = clouds.shadow;
       c.minStepSize *= STEP;

@@ -45,7 +45,9 @@ const WEAK_GPU = !ASKED && (params.has('weakgpu') || /\bIntel\b.*\bU?HD Graphics
 const QUALITY = ASKED ?? (WEAK_GPU ? 'medium' : 'high');
 console.info(`GPU: ${gpuName(renderer)}; quality ${QUALITY}${WEAK_GPU ? ' (light look for this GPU)' : ''}`);
 const LIGHT = WEAK_GPU || QUALITY === 'low' || QUALITY === 'medium';
-const BASE_DPR = Math.min(window.devicePixelRatio, WEAK_GPU ? 1 : { low: 1, ultra: 2 }[QUALITY] ?? 1.5);
+// Phones and tablets draw at 2 (their screens are 3 pixels to the point, and at 1.5 the world looked soft
+// beside the crisp panels); their clouds keep the pixel count they had (volclouds' setQuality).
+const BASE_DPR = Math.min(window.devicePixelRatio, WEAK_GPU ? 1 : { low: 1, ultra: 2 }[QUALITY] ?? (TOUCH ? 2 : 1.5));
 renderer.setPixelRatio(BASE_DPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = QUALITY !== 'low';
@@ -352,7 +354,7 @@ async function init() {
   ]);
   // The clouds: their pass joins the post chain held off, and their textures come down with the rest.
   clouds = createVolumetricClouds(renderer, camera);
-  clouds.setQuality(WEAK_GPU ? 'low' : QUALITY === 'auto' ? 'high' : QUALITY);
+  clouds.setQuality(WEAK_GPU ? 'low' : QUALITY === 'auto' ? 'high' : QUALITY, { pixelRatio: BASE_DPR });
   post.addClouds(clouds.effects);
   clouds.hold(post.cloudPass);
   clouds.fetch();
@@ -898,7 +900,8 @@ function frame() {
   npcs?.update(dt, camera, env, renderer);
   // On a lighter look, settled in a room, the clouds fade out: they show only through its windows and
   // cost nearly half a frame. They come back as you leave, before the doors open.
-  const settled = LIGHT && rig.room instanceof RoomBox && !entry?.active && !arrival?.active;
+  // In the casino (no windows) they never show, so they stop there on every machine.
+  const settled = (LIGHT || rig.room === casino?.room.pod) && rig.room instanceof RoomBox && !entry?.active && !arrival?.active;
   indoorK = THREE.MathUtils.clamp(indoorK + (settled ? dt : -dt) / 0.8, 0, 1);
   clouds?.setIndoor(indoorK);
   clouds?.update(env, sky, t);

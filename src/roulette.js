@@ -258,9 +258,11 @@ export function buildRoulette(room, x, z, rot, style) {
   for (const sx of [-1, 1]) g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, D, 10).rotateX(Math.PI / 2).translate(sx * (W / 2), H + 0.02, 0), mats.rail));
   // The layout on the felt's right part.
   const layoutCanvas = document.createElement('canvas');
-  layoutCanvas.width = LAYOUT.w;
-  layoutCanvas.height = LAYOUT.h;
+  // Drawn at twice the layout's own units, so the numbers stay crisp close up on a phone's screen.
+  layoutCanvas.width = LAYOUT.w * 2;
+  layoutCanvas.height = LAYOUT.h * 2;
   const lg = layoutCanvas.getContext('2d');
+  lg.setTransform(2, 0, 0, 2, 0, 0);
   drawLayout(lg);
   const layoutTex = new THREE.CanvasTexture(layoutCanvas);
   layoutTex.colorSpace = THREE.SRGBColorSpace;
