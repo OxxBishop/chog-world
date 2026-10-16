@@ -728,10 +728,20 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   const look = c.look;
   const table = c.roulette ?? null;
   const sparks = c.burst.userData.sparks;
+  // The controls' look, while the user picks one (?czui=pixel | lounge | neon); the room's own without.
+  const ui = ['pixel', 'lounge', 'neon'].find((x) => x === new URLSearchParams(location.search).get('czui'));
+  const uiClass = ui ? ` ui-${ui}` : '';
   const panel = document.createElement('div');
-  panel.className = `casino-panel look-${look.name}`;
+  panel.className = `casino-panel look-${look.name}${uiClass}`;
   panel.hidden = true;
   document.body.appendChild(panel);
+  // Your Chog's edges at the game you sit down to, on a card at the table's side (the user's ask), so
+  // you see what you have going for you while you play.
+  const card = document.createElement('aside');
+  card.className = `cz-edgecard look-${look.name}${uiClass}`;
+  card.hidden = true;
+  card.setAttribute('aria-label', 'Your edges');
+  document.body.appendChild(card);
   const banner = document.createElement('div');
   banner.className = `cz-banner look-${look.name}`;
   banner.hidden = true;
@@ -1521,7 +1531,6 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
         <button class="cz-spin"${spinning ? ' disabled' : ''}>SPIN</button>
       </div>
       ${row}
-      ${edgesList('slots')}
       <button class="cz-leave">Step back</button>`;
   }
   const QUICK = ['red', 'black', 'odd', 'even', 'low', 'high', 'd1', 'd2', 'd3'];
@@ -1551,7 +1560,6 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       </div>
       ${offers}
       <p class="cz-hint">Tap a bet or the felt to add a chip, hold a bet to take one off.</p>
-      ${edgesList('roulette')}
       <button class="cz-leave">Step back</button>`;
   }
   function roomPanel() {
@@ -1563,8 +1571,22 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       </div>
       ${edgesList(null)}`;
   }
+  let cardFor = '';
+  function renderCard() {
+    const game = !panel.hidden && who ? mode : null;
+    card.hidden = !game;
+    if (!game) return;
+    const list = who.perks.list.filter((x) => x.game === game || x.game === 'both');
+    const key = `${who.key}|${game}|${list.map((x) => x.name).join()}`;
+    if (key === cardFor) return;
+    cardFor = key;
+    const guest = who.key === 'guest' ? '<li class="ec-guest"><span class="ec-text">Playing as a guest. Sign in with a Chog and its traits give it edges here.</span></li>' : '';
+    const item = (x) => `<li><span class="ec-name">${x.name}</span><span class="ec-text">${x.text}</span><span class="ec-trait">${x.trait}</span></li>`;
+    card.innerHTML = `<div class="ec-head"><img class="ec-face" src="${who.image}" alt=""><div class="ec-title"><span>Your edges at the ${game}</span><b>${who.name}</b></div></div><ul>${guest}${list.map(item).join('')}</ul>`;
+  }
   function render() {
     if (!who) return;
+    renderCard();
     panel.classList.toggle('at-slots', mode === 'slots');
     panel.classList.toggle('at-roulette', mode === 'roulette');
     panel.innerHTML = mode === 'slots' ? slotsPanel() : mode === 'roulette' ? roulettePanel() : roomPanel();
@@ -1705,6 +1727,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
         render();
       }
       panel.hidden = !inside;
+      renderCard();
       document.body.classList.toggle('in-casino', inside);
       // Seated at a game: the walking controls can step aside (A's HUD).
       document.body.classList.toggle('cz-playing', inside && !!mode);

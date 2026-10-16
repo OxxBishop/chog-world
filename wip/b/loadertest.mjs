@@ -1,0 +1,14 @@
+import { createRequire } from 'module';
+const require = createRequire('/opt/node22/lib/node_modules/');
+const { chromium } = require('playwright');
+const [,, out = 'px/frames.png', q = 'n=12&k=4', w = '1300', h = '700'] = process.argv;
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: +w, height: +h } });
+const logs = [];
+page.on('console', (m) => logs.push(m.text()));
+page.on('pageerror', (e) => logs.push(e.message));
+await page.goto(`http://localhost:5176/loadertest.html?${q}`);
+await page.waitForFunction(() => window.done, null, { timeout: 60000 });
+await page.screenshot({ path: out, fullPage: true });
+console.log(logs.join('\n'));
+await browser.close();

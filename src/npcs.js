@@ -434,6 +434,14 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     await prewarm?.(warm.group);
     square.remove(warm.group);
   }
+  // B's stage effects too (the LED floor, the confetti).
+  if (stageFx?.createStageFx) {
+    const warm = stageFx.createStageFx({ facing: 0, quality });
+    warm.warmAll?.(true);
+    square.add(warm.group);
+    await prewarm?.(warm.group);
+    square.remove(warm.group);
+  }
   square.scale.setScalar(OUTDOOR);
   const facing = Math.atan2(s.faces[0] - s.plaza[0], s.faces[1] - s.plaza[1]);
   set(

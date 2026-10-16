@@ -1,0 +1,14 @@
+<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;background:#0b0618;display:flex;flex-wrap:wrap;gap:8px;padding:8px}canvas{image-rendering:pixelated;background:#0b0618;outline:1px solid #222}</style></head>
+<body><script type="module">
+import { createLoaderArt, ART } from '/src/pixelloader.js';
+const n = +(new URLSearchParams(location.search).get('n') ?? 12), k = +(new URLSearchParams(location.search).get('k') ?? 4);
+for (let i = 0; i < n; i++) {
+  const c = document.createElement('canvas'); document.body.appendChild(c);
+  const art = createLoaderArt(c, k);
+  // run it up to t so the sparkles exist
+  const t = i * (1.7 / n);
+  for (let s = 0; s <= t; s += 1 / 60) art.draw(s);
+  art.draw(t);
+}
+window.done = true;
+</script></body></html>

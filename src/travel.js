@@ -116,6 +116,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       f.update = (dt, on, who) => (own(dt, on, who), dress.update?.(dt, { near: on, charge: f.charge, beam: f.beam }));
     }
   }
+  // B's trip effects too, when it brings its own (B12).
+  if (teleportFx?.warmTrips) world.prewarm?.(teleportFx.warmTrips(scene));
   // Drawn once now, so their first sight never stalls a frame on Intel (B12); the beam too.
   for (const f of portalFx) {
     f.beamMesh.visible = true;
@@ -586,7 +588,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     else
       await tween(1.05, (t) => {
         to.beam = (1 - t) * 1.4;
-        chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, -1);
+        chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, 1);
       });
     chog.setBeam?.(0, 0);
     to.charge = 0;
@@ -1044,7 +1046,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
           const pad = portalFx[0];
           place(pad.centre, pad.facing);
           state.onPortal = 0;
-          if (!teleportFx?.arrives) chog.setBeam?.(1.1, -1);
+          if (!teleportFx?.arrives) chog.setBeam?.(1.1, 1);
           resolve();
           // Beams down onto the plaza's portal.
           pad.charge = 1;
@@ -1053,7 +1055,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
           else
             await tween(1.1, (t) => {
               pad.beam = (1 - t) * 1.4;
-              chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, -1);
+              chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, 1);
             });
           chog.setBeam?.(0, 0);
           pad.charge = 0;

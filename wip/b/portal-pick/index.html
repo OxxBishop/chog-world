@@ -1,0 +1,128 @@
+<title>Portal Trips</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Figtree:wght@400;500;600&family=Pixelify+Sans:wght@600&display=swap">
+<style>
+/* Layout: one column. Each trip is a looping in-engine clip over a short spec; a side-by-side table at the end. */
+:root {
+  --bg: #110d1c;
+  --panel: #1a1529;
+  --line: #2d2645;
+  --fg: #f2ecf8;
+  --muted: #b0a6c4;
+  --gate: #b98cff;
+  --gate2: #ff7ad9;
+  --star: #7ee8ff;
+  --star2: #ffd27a;
+  --bubble: #ffb3e6;
+  --bubble2: #a8f0ff;
+  --display: 'Fredoka', 'Trebuchet MS', system-ui, sans-serif;
+  --body: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pixel: 'Pixelify Sans', 'Courier New', monospace;
+  color-scheme: dark;
+}
+html { background: var(--bg); }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-block: 40px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 56px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.1; }
+h1 { font-size: clamp(34px, 6vw, 54px); font-weight: 700; }
+h2 { font-size: clamp(28px, 4.4vw, 40px); font-weight: 700; }
+h3 { font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+p { margin: 0; max-width: 66ch; }
+.lede { font-size: 18px; color: var(--muted); }
+header { display: grid; gap: 14px; }
+.ask { display: grid; gap: 10px; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+.ask b { color: var(--fg); }
+section.trip { display: grid; gap: 18px; padding-top: 28px; border-top: 1px solid var(--line); }
+.head { display: grid; gap: 8px; }
+.tag { font-family: var(--pixel); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+.gate .tag, .gate h2 { color: var(--gate); } .gate h2 span { color: var(--gate2); }
+.star .tag, .star h2 { color: var(--star); } .star h2 span { color: var(--star2); }
+.bubble .tag, .bubble h2 { color: var(--bubble); } .bubble h2 span { color: var(--bubble2); }
+.rec { display: inline-flex; width: fit-content; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--bg); background: var(--gate); }
+figure { margin: 0; display: grid; gap: 6px; }
+video { width: 100%; height: auto; display: block; border-radius: 12px; background: #000; aspect-ratio: 16 / 9; }
+figcaption { font-size: 13px; color: var(--muted); }
+.spec { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px 28px; }
+.spec div { display: grid; gap: 4px; min-width: 0; }
+.spec p { color: var(--muted); font-size: 15px; }
+.try { font-size: 14px; color: var(--muted); }
+.try code { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; font-size: 13px; color: var(--fg); background: var(--panel); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+.compare { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 14px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--display); font-weight: 600; color: var(--muted); }
+td:first-child { color: var(--muted); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { video { animation: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Portal trips, three ways</h1>
+    <p class="lede">The trip between portals, built three ways in the engine on your Chog and A's portal pads. Each clip is the real game: a guest beaming down on the plaza, then a trip to another hub. In all three your Chog only ever moves, turns and grows or shrinks evenly, so it never goes flat.</p>
+    <div class="ask">
+      <h3>What I need from you</h3>
+      <p><b>Your pick:</b> the swirl gate, the shooting star or the bubble (or parts of each). Until then the trip stays A's beam of light.</p>
+    </div>
+  </header>
+
+  <section class="trip gate">
+    <div class="head">
+      <span class="tag">Trip 1</span>
+      <h2>Swirl <span>Gate</span></h2>
+      <span class="rec">My recommendation</span>
+      <p>Your pick from the effects lookbook, rebuilt so the Chog stays round the whole way. A violet vortex opens on the pad, taller than your Chog, and pulls it in spinning. Sparkles stream into the eye with it, and the gate flares and snaps shut.</p>
+    </div>
+    <figure><video src="gate.mp4" autoplay muted loop playsinline preload="auto"></video><figcaption>Beaming down on the plaza, then a trip to a neighbourhood.</figcaption></figure>
+    <div class="spec">
+      <div><h3>Leaving</h3><p>The vortex opens just past your Chog. It turns to face it, lifts off the pad and is drawn in, spinning faster and getting smaller until it's gone. A flare, then a burst of sparkles as the gate shuts.</p></div>
+      <div><h3>Arriving</h3><p>The gate opens ahead of the pad and throws your Chog out, spinning down to a stop as it grows to its size. A little hop as it lands, then the gate closes behind it.</p></div>
+      <div><h3>Risk</h3><p>The fastest and busiest of the three, with a 2.5-turn spin, so it can feel like a lot if you travel often. The swirl is a flat disc: it reads best from behind the Chog, where the camera always is.</p></div>
+    </div>
+  </section>
+
+  <section class="trip star">
+    <div class="head">
+      <span class="tag">Trip 2</span>
+      <h2>Shooting <span>Star</span></h2>
+      <p>A grown-up take on A's beam of light. Three ribbons of light wind up round your Chog, it turns to light from the feet up, and it leaves as a star that shoots off into the sky. At the other end a star falls, hits the pad and your Chog is built back from the head down.</p>
+    </div>
+    <figure><video src="star.mp4" autoplay muted loop playsinline preload="auto"></video><figcaption>Beaming down on the plaza, then a trip to a neighbourhood.</figcaption></figure>
+    <div class="spec">
+      <div><h3>Leaving</h3><p>Pink, cyan and violet ribbons spiral up round your Chog. It lifts a little and dissolves from the feet up while a star gathers at its head. The star shoots up and away, trailing sparkles.</p></div>
+      <div><h3>Arriving</h3><p>A star streaks down from the sky and lands on the pad with a ring of light and a burst. The ribbons unwind down round your Chog as it's built back from the head down, then it settles onto the pad.</p></div>
+      <div><h3>Risk</h3><p>The calmest of the three and the closest to what's there now, so the least new. The star leaves the frame fast, and on a phone it's small.</p></div>
+    </div>
+  </section>
+
+  <section class="trip bubble">
+    <div class="head">
+      <span class="tag">Trip 3</span>
+      <h2>Soap <span>Bubble</span></h2>
+      <p>The cosiest. A soap bubble swells round your Chog from the pad, its film swirling with colour, floats it up and pops, and your Chog is gone in the puff. At the other end a bubble drifts down with your Chog inside and pops on the pad.</p>
+    </div>
+    <figure><video src="bubble.mp4" autoplay muted loop playsinline preload="auto"></video><figcaption>Beaming down on the plaza, then a trip to a neighbourhood.</figcaption></figure>
+    <div class="spec">
+      <div><h3>Leaving</h3><p>The bubble grows round your Chog and lifts it off the pad. It bobs up, turning slowly with your Chog inside, then pops in a spray of droplets and sparkles.</p></div>
+      <div><h3>Arriving</h3><p>A bubble floats down onto the pad with your Chog in it, gives a little as it lands, wobbles and pops. Your Chog drops the last bit onto its feet.</p></div>
+      <div><h3>Risk</h3><p>The biggest thing on screen (it has to hold a Chog), so on a phone it fills the view for a moment. The gentlest pace, which reads as cosy but slower: about 2.5 s each way.</p></div>
+    </div>
+  </section>
+
+  <section class="trip">
+    <h2>Side by side</h2>
+    <div class="compare">
+      <table>
+        <thead><tr><th></th><th>Swirl Gate</th><th>Shooting Star</th><th>Soap Bubble</th></tr></thead>
+        <tbody>
+          <tr><td>Feel</td><td>Magic portal, energetic</td><td>Sparkly, graceful</td><td>Cosy, playful</td></tr>
+          <tr><td>Your Chog</td><td>Spins and shrinks into the eye</td><td>Dissolves into a star</td><td>Floats inside, then pops away</td></tr>
+          <tr><td>Each way</td><td>About 2.3 s out, 1.5 s in</td><td>About 2.2 s out, 1.6 s in</td><td>About 2.5 s out, 2.3 s in</td></tr>
+          <tr><td>On the HD 520</td><td>One swirl disc, sparkles</td><td>Lightest: ribbons and sparkles</td><td>One bubble, sparkles</td></tr>
+          <tr><td>New vs today's beam</td><td>Most different</td><td>Closest</td><td>Different, gentle</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="try">Try them yourself on the laptop or a phone: <code>chog-world.vercel.app/?portal=gate</code>, then <code>portal=star</code> or <code>portal=bubble</code>. Explore as a guest, step on a portal and pick where to. Without the switch the trip is unchanged for everyone else.</p>
+  </section>
+</div>

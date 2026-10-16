@@ -1,0 +1,79 @@
+# A hand-drawn pixel Chog: the fill mask and the face are drawn; outline, rim and shading follow.
+import sys
+from PIL import Image
+FILL = """
+....................
+..........#.........
+..........##........
+..#......####..#....
+..##....######.##...
+..###..##########...
+...###############..
+.#################..
+..#################.
+..#################.
+..#################.
+.##################.
+..#################.
+..#################.
+...################.
+....#.############..
+....................
+"""
+FACE = """
+....................
+....................
+....................
+....................
+....................
+....................
+....................
+....................
+....................
+...........ffff.....
+..........ffffff....
+.........ffffffff...
+.........ffeffeff...
+.........ffeffeff...
+.........pffkkffp...
+....................
+....................
+"""
+PAL = {'o': '#120a2e', 'l': '#c3adff', 'L': '#f1eaff', 'm': '#3d2596', 'n': '#5b3fcc', 'd': '#29176c',
+       'f': '#fde9d6', 's': '#f1cdb8', 'e': '#1b1240', 'w': '#8a7ae0', 'p': '#f7a1b6', 'k': '#e9879f'}
+fill = [list(r) for r in FILL.strip('\n').split('\n')]
+face = [list(r) for r in FACE.strip('\n').split('\n')]
+H, W = len(fill), len(fill[0])
+F = lambda x, y: 0 <= x < W and 0 <= y < H and fill[y][x] == '#'
+g = [['.'] * W for _ in range(H)]
+for y in range(H):
+    for x in range(W):
+        if F(x, y):
+            out4 = [not F(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+            if any(out4):
+                # the rim: brightest where it faces up and left
+                g[y][x] = 'L' if (out4[1] and out4[3]) else 'l'
+            else:
+                g[y][x] = 'm'
+                if not F(x - 2, y) or not F(x, y - 2) or not F(x - 1, y - 1): g[y][x] = 'n'
+                elif not F(x + 2, y + 1) or not F(x, y + 2): g[y][x] = 'd'
+        elif any(F(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+            g[y][x] = 'o'
+for y in range(H):
+    for x in range(W):
+        if face[y][x] != '.' and F(x, y): g[y][x] = face[y][x]
+art = '\n'.join(''.join(r) for r in g)
+print(art)
+open(sys.argv[1] + '.txt', 'w').write(art)
+def hexc(h): return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) + (255,)
+im = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+for y in range(H):
+    for x in range(W):
+        if g[y][x] != '.': im.putpixel((x, y), hexc(PAL[g[y][x]]))
+big = im.resize((W * 16, H * 16), Image.NEAREST)
+bg = Image.new('RGBA', big.size, (8, 4, 18, 255)); bg.alpha_composite(big)
+ref = Image.open(sys.argv[2]).convert('RGBA').resize((big.size[0], int(big.size[0] * 560 / 600)))
+sheet = Image.new('RGBA', (big.size[0] * 2 + 20, max(big.size[1], ref.size[1])), (30, 30, 30, 255))
+sheet.paste(bg, (0, 0)); sheet.paste(ref, (big.size[0] + 20, 0))
+sheet.save(sys.argv[1] + '.png')
+im.save(sys.argv[1] + '-1x.png')
