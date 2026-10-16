@@ -63,6 +63,33 @@ effects, cutscenes and the teleport stay with the other session.
   installing it), Chogs that walk through benches, shadows that follow the Chogs (looks to pick), the
   island's cost on the HD 520.
 
+### 2026-10-16 · B · Later the same day: the swirl gate picked, a pad fix for A, the walk-in and the casino looks tested
+Read this with the "Session wrap" entry below. The work is on branch `claude/vigilant-cannon-uqurem`, latest commit `647b6db`.
+- **The portal trip: the user picked the swirl gate** (pick page: https://claude.ai/artifact/Ah9DMMBDZsQ3yhLnYy4KBf). On the branch, `src/fx/teleport.js` uses the gate by default. Star and bubble remain behind `?portal=star|bubble` until someone deletes them.
+- **For A: Chogs stand inside a portal pad, not on it** (the user: "the chogs keep entering the portal circle instead of standing on it").
+  - The cause: travel's `groundAt` knows islands and bridges, but not the pads. A pad's top is `0.27 * SCALE` (0.46 m) above the ground, so after any snap to the ground your Chog stands sunk into it.
+  - The fix is ready in `src/travel.js` on the branch, 15 lines: a pad counts as ground at its top, with an eased step at its edge so you still walk on and off (`PAD_TOP`, `PAD_OUT`).
+    - The patch also has `world.prewarm?.(teleportFx.warmTrips(scene))`, which draws the gate in the load (B12).
+    - And the beam-direction fix: `setBeam(…, 1)` in three places.
+  - Tested on the plaza pad: your Chog stands at 30.66 m (the pad's top) and the ground beside it is 30.20 m. It walks off and back on (the portal menu comes up), and the gate trip runs and lands on the far pad.
+  - The user said B should leave travel.js to A for now. **A: please apply those lines.** After that, `src/fx/teleport.js` can go to main.
+  - Don't ship teleport.js without the warm-up line: the gate would build its shaders on the first trip.
+- **The walk-in, tested in the casino on the laptop** (shots in B's scratchpad, not kept).
+  - It works. Your Chog comes down to room size on the approach, and on screen you can't see it happen. The camera follows it through both doors, the casino opens up past its head, and the camera comes round to the room's view.
+  - Out works too: the camera follows behind into daylight, and travel takes over.
+  - Fixed since the test, not yet retested:
+    - Your Chog now ends at A's room spot (`spotIn`). It used to stand so close to the room's view that it was cut off at the frame's edge.
+    - In the hall the camera eases toward the middle, away from the wall lamps that swelled past it.
+  - Still to test: the bar and the lobby, a phone, your own Chog, and skipping.
+- **The casino looks, captured on the laptop** at the roulette and the slots: the room's own look plus pixel, lounge and neon (`wip/b/czui.mjs`). All four render and the edges card works.
+  - Fixed after the shots:
+    - Pixel's buttons and SPIN ran off its panel.
+    - Lounge's edge names were cream on cream.
+    - The card covered the roulette wheel's rim. It is now 222 px wide.
+  - On the phone the card is a strip of perk chips under the top bar, and it works in all four looks.
+  - Some phone panels came out half-drawn while the camera was still moving. Re-shoot with a longer wait (20 s is too short at 1 fps). Then build the pick page, recommend one, and wait for the pick.
+- **The lobby light** on the branch is 5x stronger, still unverified.
+
 ### 2026-10-16 · B · Session wrap: the pixel loader, and everything in flight (next B: read this first)
 
 **This commit: the loading screen's Chog, drawn natively.** The user on the sprite-strip version: "you implemented that loading icon in all the wrong ways possible. looks like a slapped on png that's being manually rotated. just use it as reference as to how i want it to look. and it's way too big". Now:
