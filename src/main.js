@@ -18,7 +18,7 @@ import { LANDMARK_KIT } from './landmarks.js';
 import { FURNITURE_KIT } from './interior.js';
 import { initSession } from './session.js';
 import { buildNpcs } from './npcs.js';
-import { makeChog, setChogSun } from './chog.js';
+import { makeChog, setChogSun, setChogRenderer } from './chog.js';
 import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createDemo } from './shots.js';
@@ -55,6 +55,8 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.NoToneMapping;
 $('app').appendChild(renderer.domElement);
+// The cast's KTX2 textures transcode to what this GPU takes (src/chog.js).
+setChogRenderer(renderer);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(outdoorFov(), window.innerWidth / window.innerHeight, 0.3, 2600);

@@ -27,6 +27,30 @@ are real but free.
 
 ## Log
 
+### 2026-10-16 · A · Sharper Chogs (KTX2 at 2048), the picked shadows and crowd, B's pad lines in
+- **The cast's colour maps are 2048 now, as KTX2** (A14; the user: "scuffed and low res"). Built from the
+  2048 originals in git in each model's current layout (`tools/models/fix/upres.py`), keeping every colour
+  fix; then `tools/models/fix/ktx2.mjs` (KTX-Software's toktx, installed on the laptop): colour,
+  normal and metal-roughness ETC1S, mipmapped. Face sheets too (`public/faces/<name>.ktx2`, stored
+  flipped; the PNGs stay as the fallback).
+  - Sharpness: 4x the texels on every Chog; against the 2048 source the shipped 1024 JPEG scored 32.1 dB,
+    the KTX2 36.8 dB.
+  - GPU memory: the cast's textures about 200 MB to about 93 MB after a full tour (they stay compressed,
+    BC7 on the HD 520). Download: the 14 files 12 to 13 MB.
+  - `src/chog.js` loads them with three's KTX2Loader (`setChogRenderer` from `src/main.js`; the transcoder
+    is in `public/basis/`). **Tool pages:** any GLTFLoader that reads `public/models/npcs/` needs
+    `withKtx2(loader)` from `/src/chog.js` (done in every page in `tools/models/`). The fix pipeline still
+    starts from the git originals; the JPEG files of this morning are only in A's scratchpad.
+  - Stalls: a tour as a guest with the old JPEGs had frames up to 1.1 s and one of 5.1 s as sets came in;
+    with KTX2 none over 500 ms.
+- **Shadows under the Chogs: the user's pick, the soft shadow from the sun** (on by default;
+  `?chogshadow=round|off` to compare). **The singer's crowd: the user's pick, three of the cast join in**
+  (Snooze, Toasty, Patrol; `?crowd=plain|skins` to compare).
+- **B's travel.js lines are in** (pads are ground at their top, the gate's warm-up, the beam direction):
+  a Chog stands at 30.66 m on the plaza pad, the pad's top. **B: `src/fx/teleport.js` can go to main.**
+- **A17** (earning $CHOG, the billboard, the balance, tipping the singer, the astronaut, the biker, the
+  dino's blocks) **moves to the new B** (the user). A keeps polishing the Chogs and the world.
+
 ### 2026-10-16 · A · The picked walks, King Pom's spike, and the audit (A13, A14 in progress)
 The user now gives A the Chogs, the island, animations and per-Chog behaviours. Casino, loading screen,
 effects, cutscenes and the teleport stay with the other session.

@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { lookFor, personalityFor, CLIPS, CLIP_FALLBACK, CLIP_RATE, ATTACH, MOODS } from './traitmap.js';
 import { createGait, canGait, CAST_STYLE } from './gait.js';
 
@@ -17,10 +18,36 @@ import { createGait, canGait, CAST_STYLE } from './gait.js';
 
 const BASE = import.meta.env.BASE_URL;
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+
+/*
+ * The cast's textures are KTX2 (A14): they stay compressed on the GPU, so a 2048 colour map costs less
+ * than the old 1024 JPEG did. The transcoder (public/basis/) needs the renderer to know which formats the
+ * GPU takes: main.js hands it over with setChogRenderer before anything loads; a tool page without one gets
+ * a throwaway renderer for the check. withKtx2(loader) lets another GLTFLoader read the cast's files.
+ */
+const ktx2 = new KTX2Loader().setTranscoderPath(`${BASE}basis/`);
+let ktxReady = false;
+export function setChogRenderer(renderer) {
+  if (ktxReady) return;
+  ktx2.detectSupport(renderer);
+  ktxReady = true;
+}
+function ensureKtx() {
+  if (ktxReady) return;
+  const r = new THREE.WebGLRenderer();
+  setChogRenderer(r);
+  r.dispose();
+}
+export function withKtx2(gltfLoader) {
+  ensureKtx();
+  return gltfLoader.setKTX2Loader(ktx2);
+}
+loader.setKTX2Loader(ktx2);
 const gltfs = new Map();
 // Each file is fetched and put on the GPU once. keep < 1 also gives it a lighter index (that share of the
 // triangles) for Chogs seen from a distance; their copies drop the finer maps (see makeChog).
 const loadGltf = (url, keep = 1) => {
+  ensureKtx();
   if (!gltfs.has(url)) gltfs.set(url, loader.loadAsync(BASE + url).then(slim));
   return keep < 1 ? gltfs.get(url).then((g) => lighten(g, keep)) : gltfs.get(url);
 };
@@ -195,7 +222,9 @@ function faceFor(url) {
       const f = all[key];
       if (!f) return null;
       if (!faceSheets.has(key)) {
-        faceSheets.set(key, textures.loadAsync(`${BASE}faces/${key}.png`).then((t) => {
+        // KTX2 (stored upside down, as a PNG would load), or the PNG if a sheet has no KTX2 yet.
+        ensureKtx();
+        faceSheets.set(key, ktx2.loadAsync(`${BASE}faces/${key}.ktx2`).catch(() => textures.loadAsync(`${BASE}faces/${key}.png`)).then((t) => {
           t.colorSpace = THREE.SRGBColorSpace;
           t.anisotropy = 4;
           return t;
@@ -518,12 +547,11 @@ function badgeTexture(mood) {
 
 /*
  * A shadow on the ground that goes with the Chog (A15). The sun's own shadow map covers the whole
- * archipelago and redraws only when the hour moves, so a walking Chog has none. Looks for the user to pick,
- * behind ?chogshadow= until then: 'round', a soft contact shadow under the feet; 'sun', the same pushed
- * and stretched away from the sun, longer as it sets, fainter by moonlight. One small quad per Chog, one
- * shader for all of them.
+ * archipelago and redraws only when the hour moves, so a walking Chog has none. The user's pick (10-16):
+ * 'sun', a soft shadow pushed and stretched away from the sun, longer as it sets, fainter by moonlight.
+ * ?chogshadow=round (the same at any hour) or off for comparison. One small quad per Chog, one shader.
  */
-const SHADOW_MODE = new URLSearchParams(location.search).get('chogshadow');
+const SHADOW_MODE = new URLSearchParams(location.search).get('chogshadow') ?? 'sun';
 const shadowUniforms = { uDir: { value: new THREE.Vector2(0, 1) }, uLen: { value: 1 }, uOff: { value: 0 }, uStrength: { value: 0.6 } };
 let shadowMat = null;
 function groundShadow() {

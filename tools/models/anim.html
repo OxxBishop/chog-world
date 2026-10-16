@@ -6,6 +6,7 @@
 // speed x the clip's own ground speed so sliding feet show. ?src=ual|kk&clip=Walk_Loop&m=chog-1151
 // &rate=1 (playback rate)&speed=<m/s world, default: matched to the stride>&ts=..&v=side|front|back|q&size=
 import * as THREE from 'three';
+import { withKtx2 } from '/src/chog.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'meshoptimizer';
@@ -48,6 +49,7 @@ floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+withKtx2(loader);
 const [sg, dg] = await Promise.all([loader.loadAsync(SRC.file), loader.loadAsync(`/models/${q.get('dir') || 'npcs'}/${name}.glb`)]);
 const src = cloneSkinned(sg.scene);
 const model = cloneSkinned(dg.scene);

@@ -5,12 +5,14 @@
 // Models side by side, the same clip at the same time: one column per model in ?m=, one row per folder in
 // ?dirs= (default public/models/npcs). Run under `npx vite`: /tools/models/compare.html?m=plain,chog-66&clip=Walk&t=0.4
 import * as THREE from 'three';
+import { withKtx2 } from '/src/chog.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'meshoptimizer';
 const q = new URLSearchParams(location.search);
 const names = (q.get('m') || 'plain').split(',');
 const clip = q.get('clip') || 'Walk', at = +(q.get('t') || 0.4);
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+withKtx2(loader);
 const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, preserveDrawingBuffer: true });
 r.setScissorTest(true);
 const W = 1400 / names.length, H = 450;

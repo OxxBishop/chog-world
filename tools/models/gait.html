@@ -7,6 +7,7 @@
 // &ts=1,1.1,1.2 (frames at these seconds, one column each)&v=side|front|q|back&size=&scale=1.7&rows=<n>
 // window.__done: the strip as JPEG (base64).
 import * as THREE from 'three';
+import { withKtx2 } from '/src/chog.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'meshoptimizer';
@@ -53,6 +54,7 @@ floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+withKtx2(loader);
 const gltf = await loader.loadAsync(`/models/${q.get('dir') || 'npcs'}/${name}.glb`);
 const model = cloneSkinned(gltf.scene);
 model.traverse((o) => o.isMesh && ((o.castShadow = true), (o.frustumCulled = false)));

@@ -36,6 +36,9 @@ const RADIUS = 0.9;
 const STEP_UP = 1.25;
 // Steeper than this (rise over run) is a cliff: you walk along it, not up it. A bridge's stair is about 0.4.
 const MAX_SLOPE = 1.1;
+// A portal pad's top over the ground, and how far out from its middle its edge's step reaches.
+const PAD_TOP = 0.27 * SCALE;
+const PAD_OUT = 1.75 * SCALE + 0.35;
 // The map covers the archipelago out to this far from the middle (metres).
 const EXT = 360;
 // The camera: how far behind, how high it looks (a Chog's chest), its tilt.
@@ -126,6 +129,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       f.update = (dt, on, who) => (own(dt, on, who), dress.update?.(dt, { near: on, charge: f.charge, beam: f.beam }));
     }
   }
+  // B's trip effects too, when it brings its own (B12).
+  if (teleportFx?.warmTrips) world.prewarm?.(teleportFx.warmTrips(scene));
   // Drawn once now, so their first sight never stalls a frame on Intel (B12); the beam too.
   for (const f of portalFx) {
     f.beamMesh.visible = true;
@@ -280,6 +285,13 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   // ---------- the ground ----------
   // Where you can stand at (x, z), and how high: on an island (clear of its very rim) or a bridge's deck.
   function groundAt(x, z, nearY) {
+    // A portal's pad: you stand on its top, not in it. Its edge is a short eased step, so you walk on.
+    for (const p of portals) {
+      const r = Math.hypot(x - p.at.x, z - p.at.z);
+      if (r > PAD_OUT) continue;
+      const k = 1 - THREE.MathUtils.smoothstep(r, PAD_OUT - 0.8, PAD_OUT);
+      return { y: Math.max(heightAt(x, z), p.at.y + PAD_TOP * k), on: 'pad' };
+    }
     const options = [];
     for (const br of bridges) {
       const ux = (br.bx - br.ax) / br.len, uz = (br.bz - br.az) / br.len;
@@ -606,7 +618,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     else
       await tween(1.05, (t) => {
         to.beam = (1 - t) * 1.4;
-        chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, -1);
+        chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, 1);
       });
     chog.setBeam?.(0, 0);
     to.charge = 0;
@@ -1064,7 +1076,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
           const pad = portalFx[0];
           place(pad.centre, pad.facing);
           state.onPortal = 0;
-          if (!teleportFx?.arrives) chog.setBeam?.(1.1, -1);
+          if (!teleportFx?.arrives) chog.setBeam?.(1.1, 1);
           resolve();
           // Beams down onto the plaza's portal.
           pad.charge = 1;
@@ -1073,7 +1085,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
           else
             await tween(1.1, (t) => {
               pad.beam = (1 - t) * 1.4;
-              chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, -1);
+              chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, 1);
             });
           chog.setBeam?.(0, 0);
           pad.charge = 0;

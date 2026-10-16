@@ -5,6 +5,7 @@
 // /tools/models/bake.html?m=plain,chog-1151&spec=Idle:ual:Idle_Loop,Talk:ual:Idle_Talking_Loop
 // window.__json: { model: { clipName: AnimationClip.toJSON() } }.
 import * as THREE from 'three';
+import { withKtx2 } from '/src/chog.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'meshoptimizer';
@@ -19,6 +20,7 @@ const SRC = {
   ual2: { file: '/models/_wip/src/ual2.glb', rest: 'A_TPose', toe: 'ball_l' },
 };
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+withKtx2(loader);
 const srcs = {};
 for (const [, s] of spec) srcs[s] ??= await loader.loadAsync(SRC[s].file);
 const out = {};

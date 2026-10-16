@@ -33,4 +33,7 @@ Since 10-16 (A13, A14):
   `patch.mjs` writes it into the shipped file in its own vertex order.
 - **2048 colour maps:** `upres.py` rebuilds each model's colour map at 2048 in its current layout from the
   originals in git (`git show 6f5f217^:public/models/npcs/<name>.glb`, dumped with `dump.mjs` to
-  `<work>/o2k-<name>`), keeping the colour fixes. `patch.mjs --base` writes it in.
+  `<work>/o2k-<name>`), keeping the colour fixes. `ktx2.mjs <in> <out> --base <name>.png` writes it in
+  with every texture as KTX2 (needs KTX-Software's toktx). The shipped files hold KTX2: run any step
+  that edits images (`apply.mjs`, `patch.mjs --base`, `dump.mjs` images) on a JPEG copy, then `ktx2.mjs`
+  last. Face sheets: `public/faces/<name>.ktx2`, the PNG flipped top to bottom, ETC1S.

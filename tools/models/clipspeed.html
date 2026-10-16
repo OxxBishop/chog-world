@@ -7,11 +7,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { clipSpeed, sweepSpeed } from '/src/chog.js';
+import { clipSpeed, sweepSpeed, withKtx2 } from '/src/chog.js';
 const q = new URLSearchParams(location.search);
 const models = (q.get('m') || 'chog-409').split(',');
 const clips = (q.get('c') || 'WalkCartoon,JogCartoon').split(',');
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+withKtx2(loader);
 const out = {};
 for (const m of models) {
   const g = await loader.loadAsync(`/models/npcs/${m}.glb`);
