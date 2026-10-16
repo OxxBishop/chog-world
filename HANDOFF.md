@@ -67,6 +67,26 @@ effects, cutscenes and the teleport stay with the other session.
   installing it), Chogs that walk through benches, shadows that follow the Chogs (looks to pick), the
   island's cost on the HD 520.
 
+### 2026-10-16 · B · The casino's controls: the user picked "Chips in hand" (build it next)
+- The user asked whether the three CSS looks (pixel, lounge, neon) were the best I could do. They weren't: all three were the same boxy panel in new colours. I drew three new directions over stills of the real game: https://claude.ai/artifact/5hoKcbpCVyXFZeFjJ1Jfd3. **The user picked A, "Chips in hand".**
+  - The mockup's source is `wip/b/casino-ui/index.html` on branch `claude/vigilant-cannon-uqurem`. Its CSS (`.chip`, `.a-*`, `.badge`) is a good start for the real thing.
+  - Drop the three looks behind `?czui` and the edges card (`.cz-edgecard`): A replaces them.
+- **What A is** (build it in `src/casino.js` and the casino section of `src/style.css`, in place of the panel, at the roulette and the slots):
+  - **No panel.** The 3D table and reels stay in clear view. Reframe the table and slots views to the centre, since there is no right-hand panel to leave room for any more.
+  - **A rack of real chips along the bottom centre:** 5, 10, 25, 50, 100, round with striped edges in the game's colours. The chip you hold lifts with a white glow. At the roulette you pick a chip and tap the felt (tapping the felt already works); at the slots the chip you hold is the bet.
+    - Show a soft glow on the felt where a chip will land, under the pointer or finger.
+    - Holding a bet takes a chip off, as now.
+  - **Your chips:** a big gold count to the left of the rack. "On the felt N" is a small pill above it.
+  - **To the right of the rack:** Undo and Clear as small round icon keys, and SPIN as a big round domed coral button in a gold ring (104 px on a laptop, 82 px on a phone). Rebet can be a long press on SPIN, or a third small key.
+  - **Your Chog's edges:** a row of round gold badges at the top left, under its portrait and name ("6 edges at the roulette").
+    - Each badge has an icon and a short name, plus a pink count of what's left today (on a phone, the icons only).
+    - A used one greys out. Tapping one shows a short tip (name, one line, "1 left today").
+    - **A badge glows the moment it fires:** Second sight saving a losing spin, Red giving a bet back, a wild spin, a nudge. The user's ask was to see your Chog's advantages, so this matters.
+  - At the slots the free and wild spins are gold tokens above the rack.
+  - Phone layout: badges across the top under the HUD; your chips and SPIN in one row above the rack; the rack spread full width.
+  - Everything needs real interaction states (hover, press, disabled while the wheel turns, focus) and has to work by touch and mouse. Sizes are in the mockup.
+- **Also from this session** (details in the entries below): the swirl gate waits on A's travel.js lines; the walk-in works but its last fixes are untested; the lobby light is unverified.
+
 ### 2026-10-16 · B · Later the same day: the swirl gate picked, a pad fix for A, the walk-in and the casino looks tested
 Read this with the "Session wrap" entry below. The work is on branch `claude/vigilant-cannon-uqurem`, latest commit `647b6db`.
 - **The portal trip: the user picked the swirl gate** (pick page: https://claude.ai/artifact/Ah9DMMBDZsQ3yhLnYy4KBf). On the branch, `src/fx/teleport.js` uses the gate by default. Star and bubble remain behind `?portal=star|bubble` until someone deletes them.
