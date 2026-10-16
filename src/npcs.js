@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { makeChog } from './chog.js';
+import { makeChog, CHOG_HEIGHT } from './chog.js';
+import { placeBubble } from './chat.js';
 import { chogInfo } from './chogdata.js';
 import { HOODS, roadDistance, nearDome } from './layout.js';
 import { heightAt, islandAt } from './terrain.js';
@@ -400,6 +401,35 @@ function openSpot(hood, from, step = 0.35) {
   return new THREE.Vector3(hood.x, heightAt(hood.x, hood.z), hood.z);
 }
 
+/*
+ * The cast notices you (A13): when the Chog you walk as comes near, each stops, turns to you and reacts as
+ * its approved persona says, then carries on, and not again for a while. Steps: [move, seconds, face,
+ * a line in a bubble, how fast the move plays].
+ */
+const CAST_NAMES = { 1151: 'Monty', 409: 'King Pom', 66: 'Quackers', 68: 'Cosmo', 124: 'Snooze', 52: 'Toasty', 56: 'Patrol', 132: 'Peel', 37: 'Puff' };
+const NOTICE = 7.5;
+const NOTICE_AGAIN = 30;
+const REACT = {
+  // Monty: spots you from across the plaza and waves.
+  1151: [['wave', 2.6, 'excited', null, 1.15]],
+  // King Pom: stops, lifts its chin and waits for a bow; then gives in and waves back.
+  409: [['idle', 1.8, 'surprised'], ['wave', 2.2, 'happy']],
+  // Quackers: strikes a pose, as if you were there for a photo.
+  66: [['cheer', 1.4, 'excited'], ['idle', 1.2, 'happy']],
+  // Cosmo: waves, then reports you.
+  68: [['wave', 2.0, 'happy'], ['talk', 2.8, 'curious', 'New lifeform spotted. Friendly.']],
+  // Snooze: opens one eye, a slow wave.
+  124: [['idle', 1.0, 'sleepy'], ['wave', 2.6, 'sleepy', null, 0.6]],
+  // Toasty: starts a story whether you asked or not.
+  52: [['talk', 3.2, 'happy']],
+  // Patrol: stiffens as if on duty, then a small, shy wave.
+  56: [['idle', 0.9, 'surprised'], ['wave', 1.8, 'happy', null, 0.8]],
+  // Peel: a big come-here wave.
+  132: [['wave', 2.4, 'excited', null, 1.35]],
+  // Puff: wipes its eyes, then a big two-armed wave.
+  37: [['idle', 1.0, 'sad'], ['cheer', 1.6, 'happy']],
+};
+
 /**
  * The sets, each built the first time the camera comes near (or at once with standees: show every
  * slot, ?npcs). plaza is the plaza group (its origin is the square's). quality 'low' has a smaller crowd.
@@ -413,6 +443,87 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   let lastRenderer = null;
   const wp = new THREE.Vector3();
   let t = 0;
+
+  // ---------- noticing you ----------
+  const noticers = [];
+  const _a = new THREE.Vector3();
+  const _b = new THREE.Vector3();
+  const bubble = document.createElement('div');
+  bubble.className = 'chog-bubble bar-bubble';
+  bubble.hidden = true;
+  document.body.append(bubble);
+  // f: the Chog's own routine, which waits while it reacts. steer: whether that routine sets which way it
+  // faces (a stroller does; one standing in the crowd keeps the way it faced). resume: back to its routine.
+  function own(c, f, { steer = false, resume = () => c.play('idle') } = {}) {
+    const steps = REACT[c.root.userData.chogId];
+    if (!steps) return f;
+    const n = { c, steps, steer, resume, step: -1, left: 0, cool: 4 + Math.random() * 4, back: 0, yaw0: 0, yaw: 0 };
+    noticers.push(n);
+    return (...args) => (n.step >= 0 ? undefined : f(...args));
+  }
+  function startStep(n) {
+    const [move, secs, face, line, pace] = n.steps[n.step];
+    n.left = secs;
+    n.c.play(move);
+    n.c.setPace(pace ?? 1);
+    n.c.express(face, secs + 0.4);
+    if (move === 'talk') n.c.talk(secs);
+    if (line) {
+      bubble.innerHTML = `<span class="who"></span>`;
+      bubble.firstChild.textContent = CAST_NAMES[n.c.root.userData.chogId] ?? '';
+      bubble.append(line);
+      bubble.hidden = false;
+      bubble.style.opacity = '0';
+      n.line = true;
+    }
+  }
+  function endReaction(n) {
+    n.c.lookAt(null);
+    n.c.setPace(1);
+    if (n.line) bubble.hidden = true;
+    n.line = false;
+    n.step = -1;
+    n.cool = NOTICE_AGAIN;
+    n.back = 0.8;
+    n.yaw = n.c.root.rotation.y;
+    n.resume();
+  }
+  function notice(n, dt, me, camera) {
+    const c = n.c;
+    n.cool -= dt;
+    if (n.step < 0) {
+      // Back from the reaction: turn the way its routine wants (a stroller's path, or the way it stood).
+      if (n.back > 0) {
+        n.back -= dt;
+        n.yaw = angleLerp(n.yaw, n.steer ? c.root.rotation.y : n.yaw0, 1 - Math.exp(-dt * 6));
+        c.root.rotation.y = n.yaw;
+      }
+      if (n.cool > 0 || !me || !c.root.visible || c.root.userData.away) return;
+      c.root.getWorldPosition(_a);
+      me.getWorldPosition(_b);
+      if (_a.distanceTo(_b) > NOTICE || Math.abs(_a.y - _b.y) > 3) return;
+      n.step = 0;
+      n.yaw0 = c.root.rotation.y;
+      c.lookAt(me);
+      startStep(n);
+    }
+    // Turn to you, about its own middle.
+    if (me && c.root.parent) {
+      c.root.parent.worldToLocal(me.getWorldPosition(_b));
+      const want = Math.atan2(_b.x - c.root.position.x, _b.z - c.root.position.z);
+      c.root.rotation.y = angleLerp(c.root.rotation.y, want, 1 - Math.exp(-dt * 5));
+    }
+    if (n.line) {
+      c.root.localToWorld(_a.set(0, CHOG_HEIGHT + 0.7, 0));
+      _a.project(camera);
+      const shown = _a.z < 1 && Math.abs(_a.x) < 1.2 && Math.abs(_a.y) < 1.2;
+      bubble.style.opacity = shown ? '1' : '0';
+      if (shown) placeBubble(bubble, ((_a.x + 1) / 2) * window.innerWidth, ((1 - _a.y) / 2) * window.innerHeight);
+    }
+    if ((n.left -= dt) > 0) return;
+    if (++n.step < n.steps.length) startStep(n);
+    else endReaction(n);
+  }
 
   // A set: where it is (for the distance check), and how to build it.
   const set = (where, build) => sets.push({ where, build, state: 'waiting' });
@@ -494,7 +605,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         if (quality === 'low') c.root.traverse((o) => o.isMesh && (o.castShadow = false));
         square.add(c.root);
         chogs.push(c);
-        ticks.push(idler(c, ['cheer', 'cheer', 'wave'], [3, 9]));
+        ticks.push(own(c, idler(c, ['cheer', 'cheer', 'wave'], [3, 9])));
       });
       // Strolling round the fountain, now and then stopping to wave.
       for (const w of NPC_SLOTS.strollers) {
@@ -510,7 +621,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         let next = 8 + Math.random() * 10;
         c.play('walk');
         c.setPace(legs);
-        ticks.push((dt) => {
+        ticks.push(own(c, (dt) => {
           if (pause > 0) {
             pause -= dt;
             if (pause <= 0) c.play('walk'), c.setPace(legs);
@@ -526,7 +637,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
           angle += (dt * pace * w.dir) / STROLL_R;
           c.root.position.set(FOUNTAIN.x + Math.sin(angle) * STROLL_R, 0, FOUNTAIN.z + Math.cos(angle) * STROLL_R);
           c.root.rotation.y = angle + (w.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-        });
+        }, { steer: true, resume: () => (pause > 0 ? c.play('idle') : (c.play('walk'), c.setPace(legs))) }));
       }
       // By the lobby door, greeting whoever comes up the walk.
       const d = NPC_SLOTS.doorman;
@@ -536,7 +647,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       doorman.root.rotation.y = Math.atan2(FOUNTAIN.x - d.plaza[0], FOUNTAIN.z - d.plaza[1]);
       plaza.add(doorman.root);
       chogs.push(doorman);
-      ticks.push(idler(doorman, ['wave', 'talk'], [7, 13]));
+      ticks.push(own(doorman, idler(doorman, ['wave', 'talk'], [7, 13])));
       await prewarm?.(plaza);
       return { group: square, chogs, tick: (tt, dt) => ticks.forEach((f) => f(dt)), extra: [...chogs.slice(-NPC_SLOTS.strollers.length - 1).map((c) => c.root)] };
     },
@@ -670,7 +781,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         group: stroll,
         chogs: await shown(stroll, [astro]),
         where: (v) => v.copy(lapAt(walkAngle, hood1)),
-        tick: (tt, dt) => {
+        tick: own(astro, (tt, dt) => {
           if (pause > 0) {
             pause -= dt;
             if (pause <= 0) astro.play('walk'), astro.setPace(astro.paceFor('walk'));
@@ -686,7 +797,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
           const p = lapAt(walkAngle, hood1);
           astro.root.position.set(p.x, heightAt(p.x, p.z), p.z);
           astro.root.rotation.y = Math.atan2(Math.sin(walkAngle), -Math.cos(walkAngle));
-        },
+        }, { steer: true, resume: () => (pause > 0 ? astro.play('idle') : (astro.play('walk'), astro.setPace(astro.paceFor('walk')))) }),
       };
     },
   );
@@ -727,7 +838,8 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     get loading() {
       return sets.some((st) => st.state === 'loading');
     },
-    update(dt, camera, env = null, renderer = null) {
+    // me: the Chog you walk as (its root), or null when you're not out walking.
+    update(dt, camera, env = null, renderer = null, me = null) {
       t += dt;
       lastEnv = env;
       lastRenderer = renderer;
@@ -756,6 +868,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         a.tick?.(t, dt);
         for (const c of a.chogs) c.update(dt, camera);
       }
+      for (const n of noticers) if (n.c.root.parent && (n.step >= 0 || n.back > 0 || me)) notice(n, dt, me, camera);
     },
   };
 }

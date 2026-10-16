@@ -27,6 +27,14 @@ export const MAPS = {
     ThighL: 'thigh_l', ShinL: 'calf_l', FootL: 'foot_l',
     ThighR: 'thigh_r', ShinR: 'calf_r', FootR: 'foot_r',
   },
+  // RobotExpressive (Quaternius, CC0; the three.js example robot): a big cartoon Wave, ThumbsUp, Jump, Dance.
+  robot: {
+    Hips: 'Hips', Spine: 'Abdomen', Chest: 'Torso', Neck: 'Neck', Head: 'Head',
+    UpperArmL: 'UpperArm.L', ForeArmL: 'LowerArm.L', HandL: 'Palm2.L',
+    UpperArmR: 'UpperArm.R', ForeArmR: 'LowerArm.R', HandR: 'Palm2.R',
+    ThighL: 'UpperLeg.L', ShinL: 'LowerLeg.L', FootL: 'Foot.L',
+    ThighR: 'UpperLeg.R', ShinR: 'LowerLeg.R', FootR: 'Foot.R',
+  },
   // KayKit Character Animations (CC0), Rig_Medium.
   kk: {
     Hips: 'hips', Spine: 'spine', Chest: 'chest', Neck: 'head', Head: 'head',
@@ -80,7 +88,24 @@ const PART = (b) => (/Arm|Hand/.test(b) ? 'arms' : /Thigh|Shin|Foot/.test(b) ? '
  * amp: cartoon exaggeration, { arms, legs, spine, hips, bob }: each part's turns from the T-pose scaled
  * (relative to its parent part's), and the hips' up-and-down scaled by bob.
  */
-export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name = srcClip.name, fps = 30, armsOut = 0.12, armsFwd = 0, srcToe = null, headK = 0.5, amp = null }) {
+// A library that rests with its arms down (the robot): its arms turned straight out to the side, each bone
+// toward the next, so the moves are measured from a T-pose like the Chog's.
+function straightenArms(root, map) {
+  root.updateMatrixWorld(true);
+  for (const [side, sign] of [['L', 1], ['R', -1]]) {
+    for (const [b, c] of [['UpperArm', 'ForeArm'], ['ForeArm', 'Hand']]) {
+      const bone = root.getObjectByName(map[b + side]), child = root.getObjectByName(map[c + side]);
+      if (!bone || !child) continue;
+      const dir = child.getWorldPosition(new THREE.Vector3()).sub(bone.getWorldPosition(new THREE.Vector3())).normalize();
+      const turn = new THREE.Quaternion().setFromUnitVectors(dir, new THREE.Vector3(sign, 0, 0));
+      const world = turn.multiply(bone.getWorldQuaternion(new THREE.Quaternion()));
+      bone.quaternion.copy(bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(world));
+      root.updateMatrixWorld(true);
+    }
+  }
+}
+
+export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name = srcClip.name, fps = 30, armsOut = 0.12, armsFwd = 0, srcToe = null, headK = 0.5, amp = null, srcTPose = false }) {
   // three.js drops reserved characters from node names on load (DEF-upper_arm.L is DEF-upper_armL).
   const clean = THREE.PropertyBinding.sanitizeNodeName;
   const map = Object.fromEntries(Object.entries(rawMap).map(([k, v]) => [k, clean(v)]));
@@ -94,7 +119,15 @@ export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name 
     a.play();
     mixer.setTime(0);
   }
+  // srcTPose: measure from straightened arms, then put every bone back, so one the clip leaves alone (the
+  // robot's resting arm in its wave) hangs as it does in the library.
+  const bindQ = [];
+  if (srcTPose) {
+    src.traverse((o) => bindQ.push([o, o.quaternion.clone()]));
+    straightenArms(src, map);
+  }
   const s0 = modelSpace(src, srcNames.concat(srcToe ? [srcToe] : []));
+  for (const [o, q] of bindQ) o.quaternion.copy(q);
   mixer.stopAllAction();
   // The Chog's T-pose: its bind.
   const allDst = [];

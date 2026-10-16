@@ -900,7 +900,7 @@ function frame() {
   session?.update(dt);
   casino?.show(!entry?.active && rig.room === casino.room.pod);
   casino?.update(dt, env);
-  npcs?.update(dt, camera, env, renderer);
+  npcs?.update(dt, camera, env, renderer, travel?.active ? travel.chog?.root : null);
   // On a lighter look, settled in a room, the clouds fade out: they show only through its windows and
   // cost nearly half a frame. They come back as you leave, before the doors open.
   // In the casino (no windows) they never show, so they stop there on every machine.

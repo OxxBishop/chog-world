@@ -27,6 +27,23 @@ are real but free.
 
 ## Log
 
+### 2026-10-16 · A · The singer sharper, a real wave and cheer, the cast notices you (A13 done)
+- **The singer:** a new texture layout (its old one spent 73% of the image on gutters, scraps and the stage
+  disc). 57% used now, the head given 2.5x the room: 52 to 178 texels/m on the body, 84 to 303 on the head,
+  the blocky squares on its face gone. Its own Tripo 2048 original carries junk patterns, so the colours are
+  the cleaned ones, resampled (`relayout.py`, `relayout_tex.py`). A clearly better singer needs a new model.
+- **Wave and cheer, every walking Chog:** from the CC0 RobotExpressive clips (Quaternius), retargeted with
+  the cartoon pass: the wave lifts the arm and waves, the other arm hangs relaxed (Tripo's sat bent on the
+  hip); the cheer is a jump for joy with both arms up. King Pom, Quackers and Cosmo keep their robe-safe arms.
+- **The cast notices you** (their approved personas, `REACT` in `src/npcs.js`): when the Chog you walk as
+  comes within 7.5 m, each stops, turns to you, makes its face and reacts, then turns back and carries on;
+  not again for 30 s. Monty waves; King Pom lifts his chin, waits, then waves back; Quackers strikes a pose;
+  Cosmo waves and says "New lifeform spotted. Friendly." in a bubble; Snooze, a slow sleepy wave; Toasty
+  starts talking; Patrol stiffens, then a shy wave; Peel, a big come-here wave; Puff, a teary jump. `main.js`
+  passes your Chog to `npcs.update` (one line). The dino, the sniffer and the singer don't react yet.
+- **Dev server note:** a file replaced while `vite` runs can come back as `index.html` (it happened to
+  `dino.glb`); restart `vite` after rewriting models. The live site is fine.
+
 ### 2026-10-16 · A · Sharper Chogs (KTX2 at 2048), the picked shadows and crowd, B's pad lines in
 - **The cast's colour maps are 2048 now, as KTX2** (A14; the user: "scuffed and low res"). Built from the
   2048 originals in git in each model's current layout (`tools/models/fix/upres.py`), keeping every colour

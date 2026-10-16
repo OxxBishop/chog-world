@@ -37,3 +37,12 @@ Since 10-16 (A13, A14):
   with every texture as KTX2 (needs KTX-Software's toktx). The shipped files hold KTX2: run any step
   that edits images (`apply.mjs`, `patch.mjs --base`, `dump.mjs` images) on a JPEG copy, then `ktx2.mjs`
   last. Face sheets: `public/faces/<name>.ktx2`, the PNG flipped top to bottom, ETC1S.
+- **Wave and cheer** (A13): from RobotExpressive (Quaternius, CC0; put it at `public/models/_wip/src/robot.glb`
+  from https://github.com/mrdoob/three.js/tree/r170/examples/models/gltf/RobotExpressive). It rests with its
+  arms down, so `bake.html` measures it from straightened arms (`srcTPose` in `retarget.js`):
+  `spec=Wave:robot:Wave:0.12:0.5:arms=2.6;spine=1.4;bob=1.5,Cheer:robot:Jump:0.12:0.5:arms=2;spine=1.4;bob=1.6`,
+  with the same `&arms=` as the hands fix.
+- **The singer's layout** (A14): `relayout.py` (Blender: weld, re-unwrap at `unwrap=80`, the head 2.5x and the
+  stage 0.12x the area, pack; 27% of the atlas used before, 57% after), then `relayout_tex.py` (the shipped
+  colours resampled into it; `detail=0`, since the singer's own 2048 original carries Tripo's junk patterns),
+  then `apply.mjs --corners` and `ktx2.mjs`. Texel density 52 to 178 texels/m on the body, 84 to 303 on the head.
