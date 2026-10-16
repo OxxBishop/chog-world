@@ -80,7 +80,7 @@ const PART = (b) => (/Arm|Hand/.test(b) ? 'arms' : /Thigh|Shin|Foot/.test(b) ? '
  * amp: cartoon exaggeration, { arms, legs, spine, hips, bob }: each part's turns from the T-pose scaled
  * (relative to its parent part's), and the hips' up-and-down scaled by bob.
  */
-export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name = srcClip.name, fps = 30, armsOut = 0.12, srcToe = null, headK = 0.5, amp = null }) {
+export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name = srcClip.name, fps = 30, armsOut = 0.12, armsFwd = 0, srcToe = null, headK = 0.5, amp = null }) {
   // three.js drops reserved characters from node names on load (DEF-upper_arm.L is DEF-upper_armL).
   const clean = THREE.PropertyBinding.sanitizeNodeName;
   const map = Object.fromEntries(Object.entries(rawMap).map(([k, v]) => [k, clean(v)]));
@@ -146,9 +146,11 @@ export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name 
       }
       want[b] = delta.multiply(d0[b].q);
     }
-    // Arms a touch further from the body: a Chog is round and its arms are short.
+    // Arms a touch further from the body: a Chog is round and its arms are short. armsFwd brings them
+    // forward too, so hands rest in front of a wide robe instead of sinking into it (King Pom).
     for (const [b, side] of [['UpperArmL', 1], ['UpperArmR', -1]]) {
       if (want[b]) want[b].premultiply(_q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), side * armsOut));
+      if (want[b] && armsFwd) want[b].premultiply(_q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -armsFwd));
     }
     // Into local rotations, parents first (bones keep their order in the scene).
     const world = new Map();

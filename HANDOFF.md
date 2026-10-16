@@ -45,6 +45,13 @@ effects, cutscenes and the teleport stay with the other session.
   of his mane to his upper arms, so the 1.45x longer arms (10-15) pushed that spike down into a long
   wedge, and every arm move swung it. The mane is back where Tripo had it and off the arm bones;
   his arms stay long (`tools/models/fix/mane.py`). Checked front, side, back, idle, walk, wave.
+- **Hands out of robes** (the user: King Pom's "hands keep entering their cloak"): his hands sank into the
+  robe in Idle, Talk and the walk; Quackers' into the duck float; Cosmo's into the suit. Their clips are
+  rebaked with the arms held a little out and forward (`tools/models/handcheck.html` measures it; the
+  other eight measured clean).
+- **The sky** draws after the islands now (`src/sky.js`, one line): its shader was shading the whole
+  screen under everything, 12.5 ms of a 46 ms frame on the HD 520. Plaza 21.6 to 28 fps, a
+  neighbourhood 29, looking up at open sky 23. Same picture.
 - **Measured on the user's laptop (HD 520, 10-16), for every agent:** first visit 65.6 s to the connect
   screen (37 s of it building shaders), repeat 17 s; in the world 20 to 23 fps, the GPU 46.5 ms a
   frame at the plaza: clouds about 13, materials about 17, geometry about 11, the whole cast about 1.

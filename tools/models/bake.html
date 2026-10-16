@@ -11,7 +11,8 @@ import { MeshoptDecoder } from 'meshoptimizer';
 import { retarget, MAPS } from '/tools/models/retarget.js';
 const q = new URLSearchParams(location.search);
 const models = q.get('m').split(',');
-// spec: name:source:clip[:armsOut[:headK[:amp]]], amp like arms=1.6;legs=1.2;spine=1.8;bob=2.5
+// spec: name:source:clip[:armsOut[:headK[:amp[:armsFwd]]]], amp like arms=1.6;legs=1.2;spine=1.8;bob=2.5
+// (an empty field keeps its default). &arms=model=out/fwd;... sets a model's arms for every clip.
 const spec = q.get('spec').split(',').map((s) => s.split(':'));
 const SRC = {
   ual: { file: '/models/_wip/src/ual.glb', rest: 'A_TPose', toe: 'DEF-toe.L' },
@@ -24,13 +25,14 @@ const out = {};
 for (const m of models) {
   const dg = await loader.loadAsync(`/models/${q.get('dir') || 'npcs'}/${m}.glb`);
   out[m] = {};
-  for (const [name, s, clip, arms, head] of spec) {
+  const own = Object.fromEntries((q.get('arms') || '').split(';').filter(Boolean).map((kv) => kv.split('=')).map(([k, v]) => [k, v.split('/').map(Number)]));
+  for (const [name, s, clip, arms, head, , fwd] of spec) {
     const sg = srcs[s];
     const srcClip = sg.animations.find((a) => a.name === clip);
     const rest = sg.animations.find((a) => a.name === SRC[s].rest) ?? null;
     const amp = spec.find((x) => x[0] === name)[5];
     const ampObj = amp ? Object.fromEntries(amp.split(';').map((kv) => kv.split('=')).map(([k, v]) => [k, +v])) : null;
-    const c = retarget({ src: cloneSkinned(sg.scene), srcClip, srcRest: rest, map: MAPS[s], dst: cloneSkinned(dg.scene), name, srcToe: SRC[s].toe, armsOut: arms ? +arms : 0.12, headK: head ? +head : 0.5, amp: ampObj });
+    const c = retarget({ src: cloneSkinned(sg.scene), srcClip, srcRest: rest, map: MAPS[s], dst: cloneSkinned(dg.scene), name, srcToe: SRC[s].toe, armsOut: own[m]?.[0] ?? (arms ? +arms : 0.12), armsFwd: own[m]?.[1] ?? (fwd ? +fwd : 0), headK: head ? +head : 0.5, amp: ampObj });
     out[m][name] = THREE.AnimationClip.toJSON(c);
   }
 }

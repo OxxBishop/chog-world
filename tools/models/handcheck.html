@@ -1,0 +1,99 @@
+<!doctype html><meta charset="utf-8"><title>Hands in the body</title>
+<pre id="log">checking</pre>
+<script type="module">
+// How much of each hand ends up inside the body (a robe, a cloak, a belly) in the retargeted clips, for a few
+// arm spreads (retarget.js armsOut), so each cast model can get the least spread that keeps its hands out
+// (A, the user 10-16: "king pom's hands keep entering their cloak"). Run under `npx vite`:
+// /tools/models/handcheck.html?m=chog-409,plain&a=0.12,0.25,0.35&spec=<bake.html's spec>
+// window.__json: { model: { armsOut: { clip: share of hand vertices inside, worst frame } } }.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { MeshoptDecoder } from 'meshoptimizer';
+import { retarget, MAPS } from '/tools/models/retarget.js';
+const q = new URLSearchParams(location.search);
+const models = q.get('m').split(',');
+// a: arm settings to try, each out or out/fwd (radians).
+const arms = (q.get('a') || '0.12').split(',');
+const spec = q.get('spec').split(',').map((s) => s.split(':'));
+const FRAMES = +(q.get('frames') || 10);
+const SRC = {
+  ual: { file: '/models/_wip/src/ual.glb', rest: 'A_TPose', toe: 'DEF-toe.L' },
+  ual2: { file: '/models/_wip/src/ual2.glb', rest: 'A_TPose', toe: 'ball_l' },
+};
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+const srcs = {};
+for (const [, s] of spec) srcs[s] ??= await loader.loadAsync(SRC[s].file);
+const log = document.getElementById('log');
+const out = {};
+const ray = new THREE.Raycaster();
+const v = new THREE.Vector3();
+for (const m of models) {
+  const dg = await loader.loadAsync(`/models/${q.get('dir') || 'npcs'}/${m}.glb`);
+  out[m] = {};
+  for (const a of arms) {
+    out[m][a] = {};
+    for (const [name, s, clip, , head, amp] of spec) {
+      const sg = srcs[s];
+      const ampObj = amp ? Object.fromEntries(amp.split(';').map((kv) => kv.split('=')).map(([k, x]) => [k, +x])) : null;
+      const rig = cloneSkinned(dg.scene);
+      const c = retarget({ src: cloneSkinned(sg.scene), srcClip: sg.animations.find((x) => x.name === clip), srcRest: sg.animations.find((x) => x.name === SRC[s].rest) ?? null, map: MAPS[s], dst: cloneSkinned(dg.scene), name, srcToe: SRC[s].toe, armsOut: +a.split('/')[0], armsFwd: +(a.split('/')[1] ?? 0), headK: head ? +head : 0.5, amp: ampObj });
+      let mesh = null;
+      rig.traverse((o) => o.isSkinnedMesh && (!mesh || o.geometry.attributes.position.count > mesh.geometry.attributes.position.count) && (mesh = o));
+      const geo = mesh.geometry, n = geo.attributes.position.count;
+      const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
+      const bones = mesh.skeleton.bones.map((b) => b.name);
+      const wOf = (i, names) => { let w = 0; for (let k = 0; k < 4; k++) if (names.includes(bones[si.getComponent(i, k)])) w += sw.getComponent(i, k); return w; };
+      const armNames = bones.filter((b) => /Arm|Hand/.test(b));
+      const hands = [], bodyVert = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        if (wOf(i, ['HandL', 'HandR']) > 0.5) hands.push(i);
+        if (wOf(i, armNames) < 0.15) bodyVert[i] = 1;
+      }
+      const sample = hands.filter((_, k) => k % Math.max(1, Math.floor(hands.length / 80)) === 0);
+      // The body: every triangle no arm moves.
+      const idx = geo.index.array, keep = [];
+      for (let t = 0; t < idx.length; t += 3) if (bodyVert[idx[t]] && bodyVert[idx[t + 1]] && bodyVert[idx[t + 2]]) keep.push(idx[t], idx[t + 1], idx[t + 2]);
+      const bodyGeo = new THREE.BufferGeometry();
+      const pos = new Float32Array(n * 3);
+      bodyGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      bodyGeo.setIndex(keep);
+      const body = new THREE.Mesh(bodyGeo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+      const mixer = new THREE.AnimationMixer(rig);
+      mixer.clipAction(c).play();
+      let inside = 0, total = 0, worst = 0;
+      for (let f = 0; f < FRAMES; f++) {
+        mixer.setTime((f / FRAMES) * c.duration);
+        rig.updateMatrixWorld(true);
+        mesh.skeleton.update();
+        for (let i = 0; i < n; i++) {
+          mesh.getVertexPosition(i, v);
+          pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z;
+        }
+        bodyGeo.attributes.position.needsUpdate = true;
+        bodyGeo.computeBoundingSphere();
+        bodyGeo.computeBoundingBox();
+        let inF = 0;
+        for (const i of sample) {
+          const p = new THREE.Vector3(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+          // Odd crossings on the way out sideways: inside. Two directions must agree (an open hem lets a
+          // ray slip out under the robe).
+          let votes = 0;
+          for (const dir of [new THREE.Vector3(Math.sign(p.x) || 1, 0, 0), new THREE.Vector3(Math.sign(p.x) || 1, 0, 0.6).normalize(), new THREE.Vector3(Math.sign(p.x) || 1, 0, -0.6).normalize()]) {
+            ray.set(p, dir);
+            if (ray.intersectObject(body, false).length % 2 === 1) votes++;
+          }
+          if (votes >= 2) inF++;
+        }
+        inside += inF;
+        total += sample.length;
+        worst = Math.max(worst, inF / Math.max(1, sample.length));
+      }
+      out[m][a][name] = { inside: +(inside / Math.max(1, total)).toFixed(3), worst: +worst.toFixed(2) };
+      log.textContent = JSON.stringify(out, null, 1);
+    }
+  }
+}
+window.__json = JSON.stringify(out);
+window.__done = 1;
+</script>

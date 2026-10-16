@@ -24,6 +24,10 @@ Since 10-16 (A13, A14):
 - **Walks:** the user's picks, `WalkCartoon` and `JogCartoon`, are baked into every walking Chog:
   `bake.html?m=<models>&spec=WalkCartoon:ual:Walk_Loop:0.12:0.5:arms=1.6;legs=1.2;spine=1.8;bob=2.5,JogCartoon:ual:Jog_Fwd_Loop:0.12:0.5:arms=1.4;legs=1.1;spine=1.5;bob=2`,
   then `addclips.mjs`. The world plays them at 1.7x and 1.3x (`CLIP_RATE` in `src/traitmap.js`).
+- **Hands out of robes** (the user: King Pom's "hands keep entering their cloak"): `handcheck.html` measures how
+  much of each hand ends up inside the body in each clip. Three needed their arms held wider for Idle, Talk,
+  WalkCartoon and JogCartoon: `bake.html?...&arms=chog-409=0.6/0.45;chog-66=0.45/0.25;chog-68=0.45/0.25`
+  (out/forward, radians; `armsFwd` in `retarget.js`). The rest measure 0 at the default.
 - **King Pom's mane** (the user: "the bottom one is overextended"): `mane.py` takes the mane off his arm
   bones and puts it back where Tripo had it (the longer arms had pushed the lowest spike out), then
   `patch.mjs` writes it into the shipped file in its own vertex order.
