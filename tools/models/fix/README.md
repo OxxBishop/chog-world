@@ -17,4 +17,16 @@ Rebuilds every cast model from its original Tripo file. Work folder: anywhere ou
    from the originals): today Idle (Idle_Loop) and Talk (Idle_Talking_Loop).
 
 Checks: `tools/models/review.html` (the world's shader and faces), `stretch.html` (skin tearing),
-`anim.html` (a retargeted clip on a checkered floor, with its natural ground speed).
+`anim.html` (a retargeted clip on a checkered floor, with its natural ground speed), `clipspeed.html`
+(each model's walk and run speeds, both measures).
+
+Since 10-16 (A13, A14):
+- **Walks:** the user's picks, `WalkCartoon` and `JogCartoon`, are baked into every walking Chog:
+  `bake.html?m=<models>&spec=WalkCartoon:ual:Walk_Loop:0.12:0.5:arms=1.6;legs=1.2;spine=1.8;bob=2.5,JogCartoon:ual:Jog_Fwd_Loop:0.12:0.5:arms=1.4;legs=1.1;spine=1.5;bob=2`,
+  then `addclips.mjs`. The world plays them at 1.7x and 1.3x (`CLIP_RATE` in `src/traitmap.js`).
+- **King Pom's mane** (the user: "the bottom one is overextended"): `mane.py` takes the mane off his arm
+  bones and puts it back where Tripo had it (the longer arms had pushed the lowest spike out), then
+  `patch.mjs` writes it into the shipped file in its own vertex order.
+- **2048 colour maps:** `upres.py` rebuilds each model's colour map at 2048 in its current layout from the
+  originals in git (`git show 6f5f217^:public/models/npcs/<name>.glb`, dumped with `dump.mjs` to
+  `<work>/o2k-<name>`), keeping the colour fixes. `patch.mjs --base` writes it in.

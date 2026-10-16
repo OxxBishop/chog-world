@@ -26,8 +26,10 @@ const teleportFx = Object.values(import.meta.glob('./fx/teleport.js', { eager: t
 
 // Outdoors everything is built 1.7 x life size (plaza.js, npcs.js); so is the Chog you walk.
 const SCALE = 1.7;
-const WALK = 3.6;
-const RUN = 7.2;
+// Walking and running go at the speed the Chog's feet cover in its walk and jog (the user's picks, 10-16,
+// at their true pace), about 1 and 1.6 m/s; these are for a Chog without them.
+const WALK = 1;
+const RUN = 1.6;
 const ACCEL = 9;
 const TURN = 11;
 const RADIUS = 0.9;
@@ -411,7 +413,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const right = _w.set(-fwd.z, 0, fwd.x);
     const want = new THREE.Vector3().addScaledVector(fwd, w.y).addScaledVector(right, w.x);
     const mag = Math.min(1, want.length());
-    const top = w.run ? RUN : WALK + (RUN - WALK) * Math.max(0, mag - 0.75) * 0;
+    const walkV = (chog?.speedOf?.('walk') || WALK / SCALE) * SCALE;
+    const runV = Math.max(walkV, (chog?.speedOf?.('run') || RUN / SCALE) * SCALE);
+    const top = w.run ? runV : walkV;
     const target = mag > 0.01 ? want.normalize().multiplyScalar(top * Math.max(mag, 0.35)) : want.set(0, 0, 0);
     state.vel.lerp(target, 1 - Math.exp(-dt * ACCEL));
     const speed = state.vel.length();
@@ -442,16 +446,16 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     }
     chog.root.position.copy(state.pos);
     chog.root.rotation.y = state.yaw;
-    animate(chog, speed, dt);
+    animate(chog, speed, walkV, runV);
     if (!state.own) chog.update(dt, camera);
 
     // The camera swings round behind you as you go (unless you've just turned it yourself).
     state.lastLook += dt;
     // Only while you're heading away from the camera: swinging round as you walk sideways would curl
     // your path into a circle.
-    if (speed > 0.6 && state.lastLook > 1.2 && w.y > 0.55 && Math.abs(w.x) < 0.45) {
+    if (speed > 0.4 * walkV && state.lastLook > 1.2 && w.y > 0.55 && Math.abs(w.x) < 0.45) {
       const behind = state.yaw + Math.PI;
-      state.camYaw += wrap(behind - state.camYaw) * (1 - Math.exp(-dt * 1.4 * Math.min(1, speed / WALK)));
+      state.camYaw += wrap(behind - state.camYaw) * (1 - Math.exp(-dt * 1.4 * Math.min(1, speed / walkV)));
     }
     if (keys.has('q')) state.camYaw += dt * 1.8;
     if (keys.has('e')) state.camYaw -= dt * 1.8;
@@ -470,30 +474,29 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     return true;
   }
 
-  // Idle, walk or run, its legs keeping pace with how fast it's actually going.
-  function animate(chog, speed, dt) {
-    const walkV = (chog.speedOf?.('walk') || 1) * SCALE;
-    const runV = (chog.speedOf?.('run') || 2.4) * SCALE;
-    let move = speed < 0.25 ? 'idle' : speed < (WALK + RUN) / 2 ? 'walk' : 'run';
+  // Idle, walk or run, its legs keeping pace with how fast it's actually going (the clip's own rate at its
+  // full speed, slower while it speeds up or slows down).
+  function animate(chog, speed, walkV, runV) {
+    let move = speed < 0.12 * walkV ? 'idle' : speed < (walkV + runV) / 2 ? 'walk' : 'run';
     if (move !== state.move) {
       state.move = move;
       chog.play(move);
     }
-    if (move === 'walk') chog.setPace(THREE.MathUtils.clamp(speed / walkV, 0.7, 1.7));
-    else if (move === 'run') chog.setPace(THREE.MathUtils.clamp(speed / runV, 0.8, 1.9));
+    if (move === 'walk') chog.setPace((chog.paceFor?.('walk') ?? 1) * THREE.MathUtils.clamp(speed / walkV, 0.55, 1.1));
+    else if (move === 'run') chog.setPace((chog.paceFor?.('run') ?? 1) * THREE.MathUtils.clamp(speed / runV, 0.7, 1.1));
     else chog.setPace(1);
   }
 
   // ---------- doors ----------
   function checkDoors() {
-    if (state.vel.lengthSq() < 0.5) return;
+    if (state.vel.lengthSq() < 0.09) return;
     for (const d of doors) {
       if (!d.room || !world.canEnter(d.room)) continue;
       const rel = _v.subVectors(state.pos, d.at).setY(0);
       const ahead = rel.dot(d.out);
       const side = Math.abs(rel.x * d.out.z - rel.z * d.out.x);
       // Right at the door, walking into it.
-      if (ahead > -0.5 && ahead < 3.2 && side < d.half + 0.6 && state.vel.dot(d.out) < -0.8) {
+      if (ahead > -0.5 && ahead < 3.2 && side < d.half + 0.6 && state.vel.dot(d.out) < -0.3) {
         state.lastDoor = d;
         world.enterRoom(d.room);
         return;
@@ -503,7 +506,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const s = world.session()?.active;
     if (state.own && s?.room) {
       const home = homeDoor(s.room);
-      if (home && _v.subVectors(state.pos, home.at).setY(0).length() < 2.6 && state.vel.dot(home.out) < -0.8) {
+      if (home && _v.subVectors(state.pos, home.at).setY(0).length() < 2.6 && state.vel.dot(home.out) < -0.3) {
         state.lastDoor = home;
         world.enterRoom(s.room);
       }

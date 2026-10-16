@@ -27,6 +27,35 @@ are real but free.
 
 ## Log
 
+### 2026-10-16 · A · The picked walks, King Pom's spike, and the audit (A13, A14 in progress)
+The user now gives A the Chogs, the island, animations and per-Chog behaviours. Casino, loading screen,
+effects, cutscenes and the teleport stay with the other session.
+- **Walking is the user's pick:** card 3 on the walks page, the cartoon walk (`WalkCartoon`), and card 4
+  for running, the cartoon jog (`JogCartoon`), for every walking Chog (all 11 files in `public/models/npcs/`
+  but the singer, dino and sniffer). They play at the page's rates (1.7x, 1.3x; `CLIP_RATE` in
+  `src/traitmap.js`) and **move at the speed their feet cover** (the user said yes to that): Monty
+  walks about 1.0 m/s and runs 1.8, King Pom 0.5 and 0.75. Before: 3.6 and 7.2 for everyone, feet sliding.
+  - `chog.speedOf()` measures the picked clips with `sweepSpeed()` (each foot's backward sweep over the
+    time it sweeps). The old measure missed most of each step on these rolling feet. Monty's walk measures
+    0.341, the walks page's own 0.336.
+  - `src/travel.js` takes its walk and run speeds from your Chog. A door or your home's door opens when
+    you walk into it at the new speeds.
+  - A model without the clips (the dino) keeps its own `Walk`/`Run` (`CLIP_FALLBACK`).
+- **King Pom's lowest spike** (the user: "the bottom one is overextended"): Tripo had skinned the bottom
+  of his mane to his upper arms, so the 1.45x longer arms (10-15) pushed that spike down into a long
+  wedge, and every arm move swung it. The mane is back where Tripo had it and off the arm bones;
+  his arms stay long (`tools/models/fix/mane.py`). Checked front, side, back, idle, walk, wave.
+- **Measured on the user's laptop (HD 520, 10-16), for every agent:** first visit 65.6 s to the connect
+  screen (37 s of it building shaders), repeat 17 s; in the world 20 to 23 fps, the GPU 46.5 ms a
+  frame at the plaza: clouds about 13, materials about 17, geometry about 11, the whole cast about 1.
+  GPU textures 320 MB at the connect screen, 460 after a tour (the cast about 200 of that).
+- **For B (found, not touched):** walking back out of the bar froze the page 4.6 and 6.6 s (twice).
+  The room walk-ins in `src/cutscenes.js` (`walkMs`, 2.4 m/s) now outpace the cartoon walk; use
+  `chog.speedOf('walk')` if you want their feet to land.
+- **Next (A):** the 2048 colour maps as KTX2 (built, `upres.py`; waiting on KTX-Software, the user is
+  installing it), Chogs that walk through benches, shadows that follow the Chogs (looks to pick), the
+  island's cost on the HD 520.
+
 ### 2026-10-16 · B · Session wrap: the pixel loader, and everything in flight (next B: read this first)
 
 **This commit: the loading screen's Chog, drawn natively.** The user on the sprite-strip version: "you implemented that loading icon in all the wrong ways possible. looks like a slapped on png that's being manually rotated. just use it as reference as to how i want it to look. and it's way too big". Now:

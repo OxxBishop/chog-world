@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { lookFor, personalityFor, CLIPS, ATTACH, MOODS } from './traitmap.js';
+import { lookFor, personalityFor, CLIPS, CLIP_FALLBACK, CLIP_RATE, ATTACH, MOODS } from './traitmap.js';
 import { createGait, canGait, CAST_STYLE } from './gait.js';
 
 /*
@@ -283,6 +283,42 @@ export function clipSpeed(gltf, clipName) {
   return speed;
 }
 
+/*
+ * The same for the picked cartoon clips, whose feet roll heel to toe instead of sitting flat (so "the
+ * lowest third of the swing" misses most of each step): each foot's backward sweep under the body, over the
+ * time it spends sweeping back. Both feet averaged. Measured once per file and clip.
+ */
+export function sweepSpeed(gltf, clipName) {
+  gltf.userData.sweeps ??= {};
+  if (clipName in gltf.userData.sweeps) return gltf.userData.sweeps[clipName];
+  const clip = THREE.AnimationClip.findByName(gltf.animations, clipName);
+  let speed = 0;
+  if (clip) {
+    const rig = cloneSkinned(gltf.scene);
+    const mixer = new THREE.AnimationMixer(rig);
+    mixer.clipAction(clip).play();
+    const feet = ['FootL', 'FootR'].map((n) => rig.getObjectByName(n)).filter(Boolean);
+    const p = new THREE.Vector3();
+    const N = 120;
+    const dt = clip.duration / N;
+    const speeds = [];
+    for (const foot of feet) {
+      let back = 0, n = 0, prev = null;
+      for (let i = 0; i <= N; i++) {
+        mixer.setTime(i * dt);
+        rig.updateMatrixWorld(true);
+        const z = foot.getWorldPosition(p).z;
+        if (prev !== null && z < prev) (back += prev - z), n++;
+        prev = z;
+      }
+      if (n >= 3) speeds.push(back / (n * dt));
+    }
+    if (speeds.length) speed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+  }
+  gltf.userData.sweeps[clipName] = speed;
+  return speed;
+}
+
 // Heads turn toward the camera (or whatever a Chog is told to look at) when it's near and in front.
 const LOOK_RANGE = 18;
 const LOOK_MAX = THREE.MathUtils.degToRad(55);
@@ -512,6 +548,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   let mixer = null;
   let model = null;
   const actions = {};
+  // The clip each move plays (a picked clip, or the model's own when it lacks one).
+  const clipOf = {};
   const tintables = [];
   // A model's grey and dissolve (see chogShader), shared by all its pieces.
   const fx = { uGrey: { value: 0 }, uFade: { value: 1 }, uCut: { value: new THREE.Vector2(0, 0) } };
@@ -585,8 +623,10 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         model.traverse((o) => o.isBone && (bones.push(o), snapQ.push(new THREE.Quaternion()), snapP.push(new THREE.Vector3())));
       }
       for (const [name, clipName] of Object.entries(CLIPS)) {
-        const clip = THREE.AnimationClip.findByName(gltf.animations, clipName);
-        if (clip) actions[name] = mixer.clipAction(clip);
+        const clip = THREE.AnimationClip.findByName(gltf.animations, clipName) ?? THREE.AnimationClip.findByName(gltf.animations, CLIP_FALLBACK[name]);
+        if (!clip) continue;
+        actions[name] = mixer.clipAction(clip);
+        clipOf[name] = clip.name;
       }
       root.add(model);
       // The head, and which way is its face in the head bone's own frame (the model faces +z).
@@ -699,17 +739,24 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       }
     },
     /**
-     * Metres a second its walk or run carries it at scale 1 (0 for a standee or a clip it lacks), kept to
-     * a natural pace: a robe that hides the legs, or a shuffling clip, measures too slow. pace() is how
-     * much faster to play the clip to match.
+     * Metres a second its walk or run carries it at scale 1 (0 for a standee or a clip it lacks). The picked
+     * clips (CLIP_RATE) move at exactly what their feet cover at their rate, so nothing slides. A model's
+     * own Tripo clips are kept to a natural pace instead: a robe that hides the legs, or a shuffling clip,
+     * measures too slow. paceFor() is how fast to play the clip to match.
      */
     speedOf(move) {
-      const v = gltfRef ? clipSpeed(gltfRef, CLIPS[move] ?? move) : 0;
+      const name = clipOf[move];
+      if (!gltfRef || !name) return 0;
+      if (CLIP_RATE[name]) return sweepSpeed(gltfRef, name) * CLIP_RATE[name];
+      const v = clipSpeed(gltfRef, name);
+      if (!v) return 0;
       const [lo, hi] = move === 'run' ? [1.4, 3] : [0.5, 1.2];
-      return v ? THREE.MathUtils.clamp(v, lo, hi) : 0;
+      return THREE.MathUtils.clamp(v, lo, hi);
     },
     paceFor(move) {
-      const v = gltfRef ? clipSpeed(gltfRef, CLIPS[move] ?? move) : 0;
+      const name = clipOf[move];
+      if (CLIP_RATE[name]) return CLIP_RATE[name];
+      const v = gltfRef && name ? clipSpeed(gltfRef, name) : 0;
       return v ? THREE.MathUtils.clamp(Math.sqrt(chog.speedOf(move) / v), 0.85, 1.35) : 1;
     },
     /** Play its current move faster or slower (to match how fast it is actually going). */

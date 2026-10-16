@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><title>Clip ground speed</title>
+<pre id="log">measuring</pre>
+<script type="module">
+// How fast each walk and run carries each cast model (A13): the two measures src/chog.js has used, side by
+// side, at rate 1 and scale 1. Run under `npx vite`: /tools/models/clipspeed.html?m=chog-409,plain&c=WalkCartoon,JogCartoon
+// window.__json: { model: { clip: { sweep, lowThird } } }.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { clipSpeed, sweepSpeed } from '/src/chog.js';
+const q = new URLSearchParams(location.search);
+const models = (q.get('m') || 'chog-409').split(',');
+const clips = (q.get('c') || 'WalkCartoon,JogCartoon').split(',');
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+const out = {};
+for (const m of models) {
+  const g = await loader.loadAsync(`/models/npcs/${m}.glb`);
+  out[m] = {};
+  for (const c of clips) {
+    if (!THREE.AnimationClip.findByName(g.animations, c)) continue;
+    out[m][c] = { sweep: +sweepSpeed(g, c).toFixed(3), lowThird: +clipSpeed(g, c).toFixed(3) };
+  }
+}
+document.getElementById('log').textContent = JSON.stringify(out, null, 1);
+window.__json = JSON.stringify(out);
+window.__done = 1;
+</script>
