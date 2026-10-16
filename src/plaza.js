@@ -126,6 +126,8 @@ export function buildPlaza() {
   // to a walk. Round the fountain: four pairs on the diagonals, a lamp between the two benches of a
   // pair, so the four walks in (from the lobby, the bridge, and either side) stay wide and clear.
   const benchSpots = [];
+  // Where each bench, planter and lamp post stands, so a walking Chog goes round them (src/travel.js).
+  const solid = { benches: [], round: [] };
   const addBench = (x, z, faceX, faceZ, y = 0) => {
     const b = bench(wood, brass);
     b.scale.setScalar(BENCH_SCALE);
@@ -134,6 +136,7 @@ export function buildPlaza() {
     b.rotation.y = Math.atan2(faceX - x, faceZ - z);
     props.add(b);
     benchSpots.push([x, z]);
+    solid.benches.push({ x, y, z, rot: b.rotation.y, half: 1.25 * BENCH_SCALE, r: 0.42 * BENCH_SCALE });
   };
   for (let k = 0; k < 4; k++) {
     for (const side of [-1, 1]) {
@@ -171,6 +174,7 @@ export function buildPlaza() {
     soil.position.set(x, 0, z);
     props.add(soil);
     planters.push([x, z, 0.9]);
+    solid.round.push({ x, z, r: 1.25 });
   }
 
   // Lamps around the fountain and along the walk from the lobby.
@@ -191,6 +195,7 @@ export function buildPlaza() {
     props.add(globe);
     glowSpots.push(new THREE.Vector3(x, 4.35, z));
     spots.push([x, z]);
+    solid.round.push({ x, z, r: 0.2 });
   }
   props.traverse((o) => {
     if (o.isMesh) {
@@ -202,6 +207,7 @@ export function buildPlaza() {
   group.add(props);
   const glows = createGlows(glowSpots);
   group.add(glows.points);
+  group.userData.solid = solid;
 
   return {
     group,

@@ -18,11 +18,11 @@ import { createGait, canGait, CAST_STYLE } from './gait.js';
 const BASE = import.meta.env.BASE_URL;
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const gltfs = new Map();
-// keep < 1: a lighter copy with that share of the triangles, for Chogs seen from a distance.
+// Each file is fetched and put on the GPU once. keep < 1 also gives it a lighter index (that share of the
+// triangles) for Chogs seen from a distance; their copies drop the finer maps (see makeChog).
 const loadGltf = (url, keep = 1) => {
-  const key = `${url}|${keep}`;
-  if (!gltfs.has(key)) gltfs.set(key, loader.loadAsync(BASE + url).then((g) => slim(g, keep < 1)).then((g) => (keep < 1 ? lighten(g, keep) : g)));
-  return gltfs.get(key);
+  if (!gltfs.has(url)) gltfs.set(url, loader.loadAsync(BASE + url).then(slim));
+  return keep < 1 ? gltfs.get(url).then((g) => lighten(g, keep)) : gltfs.get(url);
 };
 
 /*
@@ -35,6 +35,8 @@ async function lighten(gltf, keep) {
   gltf.scene.traverse((o) => {
     const g = o.geometry;
     if (!o.isMesh || !g.index || !(g.attributes.position.array instanceof Float32Array) || g.attributes.position.isInterleavedBufferAttribute) return;
+    if (g.userData.lightKeep === keep) return;
+    g.userData.lightKeep = keep;
     const src = g.index.array instanceof Uint32Array ? g.index.array : new Uint32Array(g.index.array);
     const target = Math.floor((src.length * keep) / 3) * 3;
     const [dst] = MeshoptSimplifier.simplify(src, g.attributes.position.array, 3, target, 0.02, []);
@@ -44,15 +46,16 @@ async function lighten(gltf, keep) {
 }
 
 /*
- * Fit a model for the laptop: its textures down to 1024 px. The light look (a Chog seen from a way off)
- * also drops the normal and roughness maps, which barely show at that distance and cost memory and fill;
- * the full look (your own Chog, the bar's) keeps them, for the metal of a crown or a pair of glasses.
- * Done once per file and look; every copy shares the result.
+ * Fit a model for the laptop: its textures down to 1024 px (a compressed texture is already sized for
+ * the GPU). Done once per file; every copy shares the result. The light look (a Chog seen from a way off)
+ * drops the normal and roughness maps on its own copy of the material (lightLook), which
+ * barely show at that distance and cost fill; the full look (your own Chog, the bar's) keeps them, for
+ * the metal of a crown or a pair of glasses.
  */
 const SLIM_PX = 1024;
 function shrink(tex) {
   const img = tex?.image;
-  if (!img || Math.max(img.width, img.height) <= SLIM_PX) return tex;
+  if (!img || tex.isCompressedTexture || Math.max(img.width, img.height) <= SLIM_PX) return tex;
   const c = document.createElement('canvas');
   const k = SLIM_PX / Math.max(img.width, img.height);
   c.width = Math.round(img.width * k);
@@ -64,7 +67,7 @@ function shrink(tex) {
   tex.dispose();
   return t;
 }
-function slim(gltf, light) {
+function slim(gltf) {
   const done = new Set();
   const shrunk = new Map();
   const once = (t) => {
@@ -77,18 +80,20 @@ function slim(gltf, light) {
     for (const m of [].concat(o.material)) {
       if (done.has(m)) continue;
       done.add(m);
-      m.map = once(m.map);
-      if (light) {
-        for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) m[key] = null;
-        if (m.isMeshStandardMaterial) {
-          m.roughness = 0.75;
-          m.metalness = 0;
-        }
-      } else for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) m[key] = once(m[key]);
+      for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) m[key] = once(m[key]);
       m.needsUpdate = true;
     }
   });
   return gltf;
+}
+
+// The light look, on a Chog's own copy of its material: no normal, roughness or metal maps.
+function lightLook(m) {
+  for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) m[key] = null;
+  if (m.isMeshStandardMaterial) {
+    m.roughness = 0.75;
+    m.metalness = 0;
+  }
 }
 
 /*
@@ -585,6 +590,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         if (!o.isMesh) return;
         o.castShadow = true;
         o.material = o.material.clone();
+        if (keep < 1) lightLook(o.material);
         tintables.push(o);
         if (modelUrl) {
           if (tint) o.material.color.multiply(tint);
@@ -593,7 +599,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         faceOn.set(o, on);
         chogShader(o.material, o.geometry, fx, face, on);
         // A lighter copy to show from afar: the same vertices, fewer triangles.
-        const lightIndex = o.geometry.userData.lightIndex;
+        const lightIndex = keep < 1 ? o.geometry.userData.lightIndex : null;
         if (lightIndex) {
           const lite = new THREE.BufferGeometry();
           for (const [k, a] of Object.entries(o.geometry.attributes)) lite.setAttribute(k, a);

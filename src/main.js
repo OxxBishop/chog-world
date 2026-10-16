@@ -193,8 +193,8 @@ const CAST_KINDS = [
   { model: 'models/npcs/plain.glb', keep: 0.3 },
   { model: 'models/npcs/plain.glb' },
   { model: 'models/npcs/dino.glb', keep: 0.3 },
-  // Its texture coordinates are floats (the rest are packed into shorts): a vertex layout of its own.
-  { model: 'models/npcs/sniffer.glb', keep: 0.3 },
+  // (The sniffer's texture coordinates are packed like the rest now (A, 10-16), so its shader is the
+  // light plain Chog's and its 1.2 MB file stays out of the first load.)
   // The singer is a Chog now (A): its own two-sided material with normal and roughness maps.
   { model: 'models/npcs/singer.glb' },
 ];

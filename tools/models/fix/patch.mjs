@@ -2,9 +2,11 @@
  * Patch a shipped cast model in place of its vertex order (no reorder, so its face sheet, clips and every
  * other fix stay as they are):
  *   node tools/models/fix/patch.mjs <in.glb> <out.glb> [--pos pos.f32] [--joints joints.f32 --weights weights.f32]
- *        [--base base.png] [--quality 92]
+ *        [--base base.png] [--quality 92] [--requantize 1]
  * --pos / --joints / --weights: Float32, the shipped file's vertex order (mane.py writes them). --base: a new
- * colour map (upres.py's 2048), stored as JPEG. Then compressed the way apply.mjs does it.
+ * colour map (upres.py's 2048), stored as JPEG. --requantize: store its normals, UVs and weights the way the
+ * rest of the cast does (the sniffer's UVs were floats: a vertex layout, so a shader, of its own on Intel).
+ * Then compressed the way apply.mjs does it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,7 +30,7 @@ const prim = doc.getRoot().listMeshes()[0].listPrimitives()[0];
 const f32 = (file) => new Float32Array(fs.readFileSync(file).buffer.slice(0));
 const n = prim.getAttribute('POSITION').getCount();
 
-if (opt.pos || opt.weights) {
+if (opt.pos || opt.weights || opt.requantize) {
   // Every attribute back to plain floats, so the re-quantising starts clean.
   for (const name of prim.listSemantics()) {
     const a = prim.getAttribute(name);
@@ -41,6 +43,9 @@ if (opt.pos || opt.weights) {
     prim.setAttribute(name, doc.createAccessor().setType(a.getType()).setArray(out).setBuffer(a.getBuffer()));
   }
   const buf = prim.getAttribute('POSITION').getBuffer();
+  // A UV a hair outside 0..1 (float rounding in the export) would keep them all floats: pull it in.
+  const uv = prim.getAttribute('TEXCOORD_0')?.getArray();
+  if (uv && uv.every((v) => v > -1e-3 && v < 1 + 1e-3)) for (let i = 0; i < uv.length; i++) uv[i] = Math.min(1, Math.max(0, uv[i]));
   if (opt.pos) {
     const p = f32(opt.pos);
     if (p.length !== n * 3) throw new Error(`--pos has ${p.length / 3} vertices, the model ${n}`);

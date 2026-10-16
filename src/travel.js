@@ -77,6 +77,14 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     { p: P(0, 40), r: 7.1 },
     { p: P(27, 30), r: 3.6 },
   ];
+  // The plaza's furniture (plaza.js): each bench a capsule along its seat, planters and lamp posts round.
+  const furniture = plaza.userData.solid ?? { benches: [], round: [] };
+  const benches = furniture.benches.map((f) => {
+    const c = plaza.localToWorld(new THREE.Vector3(f.x, f.y, f.z));
+    const along = new THREE.Vector3(Math.cos(f.rot), 0, -Math.sin(f.rot)).multiplyScalar(f.half - f.r);
+    return { a: c.clone().sub(along), b: c.clone().add(along), r: f.r, y: c.y };
+  });
+  for (const f of furniture.round) blocks.push({ p: P(f.x, f.z), r: f.r });
   // The Hub's doors (hub space to the world): where you walk in, and which way is out.
   const doors = hub.rooms.map((h) => {
     const e = h.entrance;
@@ -308,6 +316,15 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       const dx = to.x - b.p.x, dz = to.z - b.p.z;
       const d = Math.hypot(dx, dz);
       if (d < b.r + RADIUS) to.set(b.p.x + (dx / (d || 1)) * (b.r + RADIUS), to.y, b.p.z + (dz / (d || 1)) * (b.r + RADIUS));
+    }
+    for (const bn of benches) {
+      if (Math.abs(bn.y - to.y) > 2.5) continue;
+      const abx = bn.b.x - bn.a.x, abz = bn.b.z - bn.a.z;
+      const t = THREE.MathUtils.clamp(((to.x - bn.a.x) * abx + (to.z - bn.a.z) * abz) / (abx * abx + abz * abz), 0, 1);
+      const cx = bn.a.x + abx * t, cz = bn.a.z + abz * t;
+      const dx = to.x - cx, dz = to.z - cz;
+      const d = Math.hypot(dx, dz), r = bn.r + RADIUS;
+      if (d < r) to.set(cx + (dx / (d || 1)) * r, to.y, cz + (dz / (d || 1)) * r);
     }
     // The cast: a gentle shove round them rather than through.
     for (const c of world.npcRoots?.() ?? []) {
