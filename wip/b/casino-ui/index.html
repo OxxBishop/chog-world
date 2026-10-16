@@ -1,0 +1,500 @@
+<title>Casino Table Controls</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Figtree:wght@400;500;600;700&family=Pixelify+Sans:wght@500;700&family=Press+Start+2P&family=Lobster&family=VT323&display=swap">
+<style>
+/* Layout: one column of directions. Each shows the laptop at the roulette, then the phone at the roulette and at the slots, every control drawn live over a still of the real game. */
+:root {
+  --bg: #110c1c;
+  --panel: #1b1430;
+  --line: #2e2547;
+  --fg: #f3ecfa;
+  --muted: #b3a8c8;
+  --accent: #ffc94a;
+  --display: 'Fredoka', 'Trebuchet MS', system-ui, sans-serif;
+  --body: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --tag: 'Pixelify Sans', 'Courier New', monospace;
+  /* the game's own colours, for the mockups */
+  --c5: #e9e4f2; --c10: #ff6f61; --c25: #2fb3a3; --c50: #8a63ff; --c100: #1d2a44;
+  --gold: #ffd36b; --gold2: #b8862b; --ink: #12263a; --cream: #fff3dc;
+  color-scheme: dark;
+}
+html { background: var(--bg); }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 72px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 60px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.1; }
+h1 { font-size: clamp(34px, 6vw, 54px); font-weight: 700; }
+h2 { font-size: clamp(28px, 4.4vw, 40px); font-weight: 700; }
+h3 { font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+p { margin: 0; max-width: 68ch; }
+.lede { font-size: 18px; color: var(--muted); }
+header { display: grid; gap: 14px; }
+.ask { display: grid; gap: 10px; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+.ask b { color: var(--fg); }
+section.dir { display: grid; gap: 18px; padding-top: 28px; border-top: 1px solid var(--line); }
+.head { display: grid; gap: 8px; }
+.tag { font-family: var(--tag); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.rec { display: inline-flex; width: fit-content; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--bg); background: var(--accent); }
+.shots { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.shots .wide { grid-column: 1 / -1; }
+.shot { display: grid; gap: 6px; min-width: 0; }
+.shot figcaption { font-size: 13px; color: var(--muted); }
+.phones { display: grid; grid-template-columns: repeat(2, minmax(0, 300px)); gap: 14px; justify-content: start; grid-column: 1 / -1; }
+.spec { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px 28px; }
+.spec div { display: grid; gap: 4px; min-width: 0; }
+.spec p { color: var(--muted); font-size: 15px; }
+
+/* A frame: the game at its real size, scaled to fit. */
+.fit { position: relative; width: 100%; overflow: hidden; border-radius: 14px; background: #000; }
+.phones .fit { border-radius: 26px; }
+.frame { position: absolute; left: 0; top: 0; transform-origin: 0 0; background-size: cover; background-position: center; overflow: hidden; font-family: var(--body); color: #fff; }
+.frame.laptop { width: 1366px; height: 768px; }
+.frame.phone { width: 390px; height: 844px; }
+.frame::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(to top, rgba(10, 6, 20, 0.55), rgba(10, 6, 20, 0) 26%); }
+.frame > * { position: absolute; z-index: 1; }
+.mark { left: 18px; top: 14px; font: 700 22px var(--display); text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
+.phone .mark { font-size: 19px; }
+
+/* ---------- shared: a casino chip ---------- */
+.chip { --c: var(--c10); --t: #fff; position: relative; width: 64px; aspect-ratio: 1; border-radius: 50%; flex: none;
+  background: repeating-conic-gradient(from 8deg, #fff 0 14deg, var(--c) 14deg 60deg);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 10px 16px rgba(0, 0, 0, 0.35); }
+.chip::before { content: ''; position: absolute; inset: 9px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0) 60%), var(--c);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.9), inset 0 0 0 5px var(--c), inset 0 0 0 6px rgba(255, 255, 255, 0.45); }
+.chip b { position: absolute; inset: 0; display: grid; place-items: center; font: 700 19px var(--display); color: var(--t); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3); }
+.chip.v5 { --c: var(--c5); --t: var(--ink); } .chip.v10 { --c: var(--c10); } .chip.v25 { --c: var(--c25); } .chip.v50 { --c: var(--c50); } .chip.v100 { --c: var(--c100); }
+.chip.v5 { background: repeating-conic-gradient(from 8deg, #8a63ff 0 14deg, var(--c) 14deg 60deg); }
+
+/* ---------- A: chips in hand ---------- */
+.a-edges { left: 18px; top: 58px; display: grid; gap: 10px; }
+.a-who { display: flex; align-items: center; gap: 10px; }
+.a-who img { width: 44px; height: 44px; border-radius: 50%; box-shadow: 0 0 0 3px var(--gold), 0 4px 12px rgba(0, 0, 0, 0.4); }
+.a-who div { display: grid; line-height: 1.15; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6); }
+.a-who b { font: 600 17px var(--display); }
+.a-who span { font-size: 12px; opacity: 0.85; }
+.a-badges { display: flex; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.badge { position: relative; width: 58px; display: grid; justify-items: center; gap: 4px; }
+.badge i { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 40% 30%, #3a2c63, #1a1233 70%); box-shadow: 0 0 0 2.5px var(--gold), 0 6px 14px rgba(0, 0, 0, 0.45); color: var(--gold); }
+.badge svg { width: 26px; height: 26px; }
+.badge span { font-size: 10.5px; font-weight: 700; text-align: center; line-height: 1.1; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
+.badge em { position: absolute; top: -4px; right: 0; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #ff5fa0; font: 700 11px/18px var(--body); font-style: normal; text-align: center; box-shadow: 0 0 0 2px #1a1233; }
+.badge.used i { filter: saturate(0.2) brightness(0.7); }
+.badge.fire i { box-shadow: 0 0 0 2.5px #fff, 0 0 0 6px rgba(255, 211, 107, 0.55), 0 0 26px 6px rgba(255, 211, 107, 0.65); color: #fff; }
+.a-tip { left: 18px; width: 320px; padding: 12px 14px; border-radius: 14px; background: rgba(20, 13, 38, 0.92); box-shadow: 0 0 0 1.5px rgba(255, 211, 107, 0.6), 0 10px 30px rgba(0, 0, 0, 0.45); font-size: 13.5px; line-height: 1.4; }
+.a-tip b { display: block; font: 600 16px var(--display); color: var(--gold); margin-bottom: 2px; }
+.a-tip small { display: block; margin-top: 6px; color: #ffb3d2; font-weight: 700; }
+.a-bar { left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 22px; }
+.a-bank { display: grid; justify-items: end; line-height: 1; padding-bottom: 14px; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); }
+.a-bank small { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.8; }
+.a-bank b { font: 700 40px var(--display); color: var(--gold); font-variant-numeric: tabular-nums; }
+.a-bank span { margin-top: 6px; font-size: 13px; }
+.a-rack { display: flex; align-items: flex-end; gap: 12px; padding: 14px 18px 12px; border-radius: 26px; background: linear-gradient(#2a1e3f, #170f28); box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.06), inset 0 -8px 16px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(255, 211, 107, 0.35), 0 14px 30px rgba(0, 0, 0, 0.45); }
+.a-rack .chip.on { transform: translateY(-16px) scale(1.08); box-shadow: 0 0 0 3px #fff, 0 0 22px 4px rgba(255, 255, 255, 0.55), 0 18px 18px rgba(0, 0, 0, 0.4); }
+.a-act { display: flex; align-items: flex-end; gap: 12px; }
+.a-mini { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 40% 30%, #3a2c63, #1a1233 70%); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5), 0 6px 14px rgba(0, 0, 0, 0.4); font-size: 11px; font-weight: 700; }
+.a-mini svg { width: 22px; height: 22px; }
+.a-spin { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; font: 700 24px var(--display); letter-spacing: 0.06em; text-shadow: 0 2px 0 rgba(120, 20, 20, 0.5);
+  background: radial-gradient(circle at 38% 30%, #ffc2b8, #ff5a4e 45%, #c4302a 85%); box-shadow: 0 0 0 5px var(--gold), 0 0 0 8px #6b4a14, 0 8px 0 8px rgba(0, 0, 0, 0.3), 0 18px 30px rgba(0, 0, 0, 0.45); }
+.a-felt { left: 50%; bottom: 150px; transform: translateX(-50%); padding: 6px 14px; border-radius: 999px; background: rgba(20, 13, 38, 0.82); font-size: 14px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2); }
+.a-felt b { color: var(--gold); font-variant-numeric: tabular-nums; }
+.a-hint { left: 50%; bottom: 196px; transform: translateX(-50%); font-size: 13px; opacity: 0.85; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); white-space: nowrap; }
+.a-tokens { display: flex; gap: 8px; }
+.a-token { padding: 7px 12px; border-radius: 999px; background: rgba(20, 13, 38, 0.85); box-shadow: 0 0 0 1.5px var(--gold); font-size: 13px; font-weight: 700; color: var(--gold); white-space: nowrap; }
+/* A on a phone */
+.phone .a-edges { top: 52px; left: 12px; right: 12px; }
+.phone .a-who img { width: 34px; height: 34px; }
+.phone .a-who b { font-size: 15px; }
+.phone .a-badges { gap: 8px; }
+.phone .badge { width: 46px; }
+.phone .badge i { width: 42px; height: 42px; }
+.phone .badge svg { width: 22px; height: 22px; }
+.phone .badge span { display: none; }
+.phone .a-tip { left: 12px; right: 12px; width: auto; top: 176px; }
+.phone .a-bar { left: 12px; right: 12px; bottom: 18px; transform: none; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "bank spin" "rack rack"; gap: 12px 10px; align-items: end; }
+.phone .a-bank { grid-area: bank; justify-items: start; padding: 0; }
+.phone .a-bank b { font-size: 32px; }
+.phone .a-act { grid-area: spin; gap: 8px; }
+.phone .a-spin { width: 82px; height: 82px; font-size: 19px; }
+.phone .a-mini { width: 42px; height: 42px; }
+.phone .a-rack { grid-area: rack; justify-content: space-between; gap: 6px; padding: 12px 12px 10px; }
+.phone .chip { width: 54px; }
+.phone .chip b { font-size: 16px; }
+.phone .a-felt { bottom: 214px; }
+.phone .a-hint { bottom: 250px; }
+
+/* ---------- B: the table rail ---------- */
+.b-rail { left: -40px; right: -40px; bottom: -30px; height: 196px; border-radius: 50% 50% 0 0 / 70px 70px 0 0;
+  background: radial-gradient(circle at 50% 0, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 55%), radial-gradient(rgba(0, 0, 0, 0.35) 2px, transparent 2.5px) 0 0 / 34px 34px, linear-gradient(#6b1f2b, #3d0f18 70%);
+  box-shadow: inset 0 7px 0 #e8b84a, inset 0 10px 0 #7a5418, inset 0 20px 24px rgba(0, 0, 0, 0.4), 0 -6px 26px rgba(0, 0, 0, 0.35); }
+.b-row { left: 50%; bottom: 34px; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 30px; }
+.b-stacks { display: flex; align-items: flex-end; gap: 14px; }
+.stack { --c: var(--c10); position: relative; width: 58px; display: grid; justify-items: center; }
+.stack .cyl { width: 58px; height: var(--h, 40px); border-radius: 50% / 10px; background: repeating-linear-gradient(to top, var(--c) 0 4px, rgba(255, 255, 255, 0.9) 4px 5px, var(--c) 5px 7px); box-shadow: inset -10px 0 12px rgba(0, 0, 0, 0.35), inset 8px 0 10px rgba(255, 255, 255, 0.15), 0 8px 10px rgba(0, 0, 0, 0.45); }
+.stack .top { position: absolute; top: -10px; width: 58px; height: 20px; border-radius: 50%; background: repeating-conic-gradient(from 8deg, #fff 0 14deg, var(--c) 14deg 60deg); box-shadow: inset 0 0 0 5px var(--c), inset 0 0 0 6px rgba(255, 255, 255, 0.7); }
+.stack b { margin-top: 8px; font: 700 13px var(--display); color: #ffe6a8; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.stack.v5 { --c: var(--c5); } .stack.v10 { --c: var(--c10); } .stack.v25 { --c: var(--c25); } .stack.v50 { --c: var(--c50); } .stack.v100 { --c: var(--c100); }
+.stack.on { transform: translateY(-14px); filter: drop-shadow(0 0 10px rgba(255, 230, 168, 0.9)); }
+.b-plate { padding: 10px 22px 12px; border-radius: 10px; background: linear-gradient(#ffe39a, #d9a640 55%, #b88328); box-shadow: inset 0 1px 0 #fff6d6, inset 0 -2px 0 #8a5d16, 0 6px 14px rgba(0, 0, 0, 0.45); color: #4a2e08; text-align: center; line-height: 1; }
+.b-plate b { display: block; font: 700 34px var(--display); font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 rgba(255, 246, 214, 0.7); }
+.b-plate span { font-size: 11px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; }
+.b-bell { display: grid; justify-items: center; gap: 4px; }
+.b-bell i { position: relative; width: 112px; height: 74px; border-radius: 56px 56px 8px 8px; background: radial-gradient(circle at 35% 25%, #fff3c4, #f0c35a 30%, #b8862b 70%, #7a5418); box-shadow: 0 8px 0 #5a3c0e, 0 14px 22px rgba(0, 0, 0, 0.5); }
+.b-bell i::before { content: ''; position: absolute; left: 50%; top: -16px; width: 24px; height: 20px; transform: translateX(-50%); border-radius: 12px 12px 4px 4px; background: radial-gradient(circle at 35% 30%, #fff3c4, #d9a640 60%, #8a5d16); }
+.b-bell b { padding: 4px 14px; border-radius: 4px; background: #ff6f61; font: italic 400 22px 'Lobster', 'Brush Script MT', cursive; color: #fff; box-shadow: 0 3px 0 #a93b31; }
+.b-small { display: flex; gap: 10px; }
+.b-small span { padding: 6px 12px; border-radius: 6px; background: linear-gradient(#ffe39a, #c8952f); color: #4a2e08; font-size: 12px; font-weight: 700; box-shadow: inset 0 1px 0 #fff6d6, 0 3px 0 #6b4a14; }
+.b-cards { left: 18px; top: 60px; display: flex; gap: 10px; align-items: flex-start; }
+.tent { width: 104px; padding: 10px 8px 9px; border-radius: 4px; background: var(--cream); color: var(--ink); text-align: center; box-shadow: inset 0 0 0 2px #fff3dc, inset 0 0 0 4px #ff6f61, 0 10px 0 -4px #d8c9a6, 0 14px 18px rgba(0, 0, 0, 0.35); transform: perspective(300px) rotateX(10deg); }
+.tent b { display: block; font: 400 19px/1.05 'Lobster', 'Brush Script MT', cursive; color: #c7392d; }
+.tent span { display: block; margin-top: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #2fb3a3; }
+.tent.open { width: 230px; text-align: left; transform: perspective(300px) rotateX(4deg); }
+.tent.open p { margin-top: 6px; font-size: 12.5px; line-height: 1.35; color: #35505f; }
+.tent.open small { display: block; margin-top: 6px; font-size: 11px; font-weight: 700; color: #c7392d; }
+.tent.used { opacity: 0.6; }
+.b-felt { right: 22px; top: 60px; padding: 8px 14px; border-radius: 6px; background: var(--cream); color: var(--ink); font-size: 13px; font-weight: 700; box-shadow: inset 0 0 0 2px #ff6f61, 0 6px 14px rgba(0, 0, 0, 0.35); }
+.b-felt b { color: #c7392d; font-size: 16px; }
+/* B on a phone */
+.phone .b-rail { height: 176px; border-radius: 50% 50% 0 0 / 40px 40px 0 0; }
+.phone .b-row { left: 10px; right: 10px; transform: none; bottom: 24px; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "stacks bell" "plate bell"; gap: 10px; align-items: end; }
+.phone .b-stacks { grid-area: stacks; gap: 6px; }
+.phone .stack { width: 46px; }
+.phone .stack .cyl, .phone .stack .top { width: 46px; }
+.phone .stack b { font-size: 11px; margin-top: 6px; }
+.phone .b-plate { grid-area: plate; justify-self: start; padding: 6px 12px 8px; }
+.phone .b-plate b { font-size: 24px; display: inline; }
+.phone .b-plate span { margin-left: 6px; }
+.phone .b-bell { grid-area: bell; }
+.phone .b-bell i { width: 86px; height: 58px; }
+.phone .b-bell b { font-size: 18px; }
+.phone .b-small { display: none; }
+.phone .b-cards { left: 10px; right: 10px; top: 50px; gap: 6px; overflow: hidden; }
+.phone .tent { width: 86px; flex: none; padding: 8px 6px; }
+.phone .tent b { font-size: 16px; }
+.phone .tent.open { position: absolute; left: 0; top: 66px; width: auto; right: 0; }
+.phone .b-felt { right: 10px; top: auto; bottom: 186px; }
+
+/* ---------- C: arcade deck ---------- */
+.c-deck { left: 50%; bottom: 0; transform: translateX(-50%); width: 980px; height: 150px; clip-path: polygon(6% 0, 94% 0, 100% 100%, 0 100%);
+  background: radial-gradient(circle at 8% 30%, #9aa3b8 0 3px, transparent 4px), radial-gradient(circle at 92% 30%, #9aa3b8 0 3px, transparent 4px), repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 5px), linear-gradient(#2d2546, #160f26);
+  box-shadow: inset 0 3px 0 #ff4fa0; }
+.c-row { left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: center; gap: 26px; }
+.c-led { padding: 10px 14px 6px; border-radius: 8px; background: #05020c; box-shadow: inset 0 0 0 2px #2b2140, 0 0 0 3px #0a0614; font: 400 52px/0.9 'VT323', monospace; color: #3ef2ff; text-shadow: 0 0 8px #3ef2ff, 0 0 18px rgba(62, 242, 255, 0.6); font-variant-numeric: tabular-nums; }
+.c-led small { display: block; font-family: 'Press Start 2P', monospace; font-size: 8px; color: #8a7ab8; text-shadow: none; letter-spacing: 0.1em; margin-top: 6px; }
+.c-btns { display: flex; gap: 16px; }
+.abtn { display: grid; justify-items: center; gap: 8px; }
+.abtn i { --c: #ff4fa0; width: 60px; height: 60px; border-radius: 50%; background: radial-gradient(circle at 40% 32%, rgba(255, 255, 255, 0.75) 0 8%, rgba(255, 255, 255, 0) 30%), radial-gradient(circle, var(--c) 55%, color-mix(in srgb, var(--c) 55%, #000) 70%); box-shadow: 0 0 0 5px #c9cfdc, 0 0 0 7px #4a4f60, 0 7px 0 7px #0a0614, 0 0 22px rgba(0, 0, 0, 0.5); }
+.abtn.on i { box-shadow: 0 0 0 5px #fff, 0 0 0 7px #4a4f60, 0 7px 0 7px #0a0614, 0 0 26px 6px var(--c); }
+.abtn b { font: 400 10px 'Press Start 2P', monospace; color: #e8deff; }
+.abtn.v5 i { --c: #e9e4f2; } .abtn.v10 i { --c: #ff4f6a; } .abtn.v25 i { --c: #2fe0c4; } .abtn.v50 i { --c: #9a6bff; } .abtn.v100 i { --c: #ffd84a; }
+.c-spin { display: grid; justify-items: center; gap: 8px; }
+.c-spin i { width: 96px; height: 96px; border-radius: 50%; background: radial-gradient(circle at 40% 32%, rgba(255, 255, 255, 0.8) 0 8%, rgba(255, 255, 255, 0) 30%), radial-gradient(circle, #ff3d5a 55%, #8a0e22 72%); box-shadow: 0 0 0 7px #c9cfdc, 0 0 0 10px #4a4f60, 0 9px 0 10px #0a0614, 0 0 34px 8px rgba(255, 61, 90, 0.55); }
+.c-spin b { font: 400 13px 'Press Start 2P', monospace; color: #ff8aa0; text-shadow: 0 0 8px #ff3d5a; }
+.c-mini { display: grid; gap: 10px; }
+.c-mini span { padding: 7px 10px; border-radius: 4px; background: #2a1a5e; font: 400 8px 'Press Start 2P', monospace; color: #e8deff; box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.45), inset 2px 2px 0 rgba(255, 255, 255, 0.18), 0 0 0 2px #05020c; }
+.c-cards { left: 18px; top: 58px; display: flex; gap: 10px; }
+.pcard { width: 84px; height: 112px; padding: 8px 6px; border-radius: 6px; display: grid; grid-template-rows: auto 1fr auto; justify-items: center; background: linear-gradient(#2a1a5e, #140a30); box-shadow: inset 0 0 0 2px #05020c, inset 0 0 0 4px #b79cff, 0 8px 16px rgba(0, 0, 0, 0.45); text-align: center; }
+.pcard svg { width: 34px; height: 34px; margin-top: 4px; color: #ffd84a; }
+.pcard b { font: 400 7.5px/1.4 'Press Start 2P', monospace; color: #fff; align-self: center; }
+.pcard em { font: 400 7px 'Press Start 2P', monospace; font-style: normal; color: #3ef2ff; }
+.pcard.fire { background: linear-gradient(#ffd84a, #ff9f2a); box-shadow: inset 0 0 0 2px #05020c, inset 0 0 0 4px #fff, 0 0 24px 6px rgba(255, 216, 74, 0.7); transform: translateY(-6px) rotate(-2deg); }
+.pcard.fire svg, .pcard.fire b { color: #2a1406; }
+.pcard.fire em { color: #7a1a3a; }
+.pcard.used { filter: grayscale(0.8) brightness(0.6); }
+.c-pop { padding: 10px 12px; border-radius: 4px; background: #05020c; box-shadow: 0 0 0 2px #ffd84a; font: 400 9px/1.6 'Press Start 2P', monospace; color: #ffd84a; }
+.c-felt { right: 22px; top: 60px; padding: 8px 12px; border-radius: 4px; background: #05020c; box-shadow: 0 0 0 2px #3ef2ff; font: 400 9px 'Press Start 2P', monospace; color: #3ef2ff; }
+.c-felt b { color: #fff; }
+/* C on a phone */
+.phone .c-deck { width: 430px; height: 200px; clip-path: polygon(4% 0, 96% 0, 100% 100%, 0 100%); }
+.phone .c-row { left: 10px; right: 10px; transform: none; bottom: 16px; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "led spin" "btns btns"; gap: 14px 10px; align-items: center; }
+.phone .c-led { grid-area: led; justify-self: start; font-size: 38px; }
+.phone .c-spin { grid-area: spin; }
+.phone .c-spin i { width: 72px; height: 72px; }
+.phone .c-btns { grid-area: btns; justify-content: space-between; gap: 6px; }
+.phone .abtn i { width: 48px; height: 48px; }
+.phone .abtn b { font-size: 8px; }
+.phone .c-mini { display: none; }
+.phone .c-cards { left: 10px; right: 10px; top: 50px; gap: 6px; overflow: hidden; }
+.phone .pcard { width: 66px; height: 90px; flex: none; }
+.phone .pcard svg { width: 26px; height: 26px; }
+.phone .pcard b { font-size: 6px; }
+.phone .c-felt { right: 10px; top: auto; bottom: 228px; }
+
+@media (max-width: 640px) { .phones { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-crown" viewBox="0 0 24 24"><path fill="currentColor" d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path fill="currentColor" d="M12 5C6.5 5 2.7 9.4 1.5 12c1.2 2.6 5 7 10.5 7s9.3-4.4 10.5-7C21.3 9.4 17.5 5 12 5zm0 11.5A4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 0 1 0 9zm0-2.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></symbol>
+  <symbol id="i-tooth" viewBox="0 0 24 24"><path fill="currentColor" d="M7 3c-2.6 0-4 2.2-4 5 0 2.2 1 3.6 1.6 5.6.6 2 .7 6.4 2.4 7.3 1.6.8 2.2-3 3-5 .5-1.2 1.5-1.2 2 0 .8 2 1.4 5.8 3 5 1.7-.9 1.8-5.3 2.4-7.3C18 11.6 21 10.2 21 8c0-2.8-1.4-5-4-5-2 0-3 1-5 1S9 3 7 3z"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"/><circle cx="19" cy="19" r="2" fill="currentColor"/></symbol>
+  <symbol id="i-red" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2l8 10-8 10-8-10z"/></symbol>
+  <symbol id="i-zero" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 3.5c2.2 0 3.5 2.4 3.5 5.5S14.2 17.5 12 17.5 8.5 15.1 8.5 12 9.8 6.5 12 6.5zm0 2.3c-.9 0-1.3 1.4-1.3 3.2s.4 3.2 1.3 3.2 1.3-1.4 1.3-3.2-.4-3.2-1.3-3.2z"/></symbol>
+  <symbol id="i-laser" viewBox="0 0 24 24"><path fill="currentColor" d="M13 2L4 14h6l-1 8 9-12h-6z"/></symbol>
+  <symbol id="i-royal" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2l3 6 6 1-4.5 4.2 1 6.3L12 16.8 6.5 19.5l1-6.3L3 9l6-1z"/></symbol>
+  <symbol id="i-frog" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4a3 3 0 0 0-2.9 3.7C2.8 9 2 10.8 2 13c0 4.4 4.5 7 10 7s10-2.6 10-7c0-2.2-.8-4-2.1-5.3A3 3 0 1 0 15 6.6 12 12 0 0 0 12 6c-1 0-2 .2-3 .6A3 3 0 0 0 7 4zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm10 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM8 13c1.2 1.2 2.5 1.8 4 1.8s2.8-.6 4-1.8l1 1c-1.4 1.6-3.1 2.4-5 2.4S8.4 15.6 7 14z"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M9 7L4 12l5 5M4 12h10a6 6 0 0 1 0 12"/></symbol>
+  <symbol id="i-clear" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></symbol>
+</svg>
+
+<div class="wrap">
+  <header>
+    <h1>The casino's controls, rethought</h1>
+    <p class="lede">The panel was a form floating over the game. These are three ways to put the controls into the game itself, each drawn here over stills of the real casino at the roulette and the slots, on the laptop and a phone. In all three you bet by tapping the felt with a chip in hand, and your Chog's edges become short, glanceable things that light up when they fire, not a list to read.</p>
+    <div class="ask">
+      <h3>What I need from you</h3>
+      <p><b>Your pick:</b> A, B or C (or parts of each). These are drawn mockups over the real game, so the look is exact but nothing moves yet. Once you pick, I build that one in the game and show it to you running.</p>
+    </div>
+  </header>
+
+  <!-- ===================== A ===================== -->
+  <section class="dir">
+    <div class="head">
+      <span class="tag">Direction A</span>
+      <span class="rec">My recommendation</span>
+      <h2>Chips in hand</h2>
+      <p>No panel. A rack of real chips along the bottom: pick one (it lifts) and tap the felt to drop it there. The round SPIN button sits beside the rack, your chips are a gold count, and Undo and Clear are two small round keys. Your Chog's edges are a row of gold badges under its portrait, each with a count of what's left today. One glows when it fires, and tapping a badge shows what it does.</p>
+    </div>
+    <div class="shots">
+      <figure class="shot wide"><div class="fit"><div class="frame laptop" data-plate="laptop-roulette">
+        <div class="mark">Chog World</div>
+        <div class="a-edges">
+          <div class="a-who"><img src="img/chog-1517.webp" alt=""><div><b>Chog #1517</b><span>6 edges at the roulette</span></div></div>
+          <ul class="a-badges">
+            <li class="badge"><i><svg><use href="#i-crown"/></svg></i><span>Legendary</span></li>
+            <li class="badge fire"><i><svg><use href="#i-eye"/></svg></i><span>Second sight</span><em>1</em></li>
+            <li class="badge"><i><svg><use href="#i-tooth"/></svg></i><span>Gold tooth</span><em>1</em></li>
+            <li class="badge"><i><svg><use href="#i-spark"/></svg></i><span>Aura</span></li>
+            <li class="badge used"><i><svg><use href="#i-red"/></svg></i><span>Red</span></li>
+            <li class="badge"><i><svg><use href="#i-zero"/></svg></i><span>Lucky 0</span><em>1</em></li>
+          </ul>
+        </div>
+        <div class="a-tip" style="top:62px;left:452px"><b>Second sight</b>After a losing spin, spin again with the same bets, free.<small>1 left today. Ready now.</small></div>
+        <div class="a-hint">Pick a chip, then tap the felt. Hold a bet to take a chip back.</div>
+        <div class="a-felt">On the felt <b>30</b></div>
+        <div class="a-bar">
+          <div class="a-bank"><small>Your chips</small><b>1,500</b></div>
+          <div class="a-rack"><div class="chip v5"><b>5</b></div><div class="chip v10 on"><b>10</b></div><div class="chip v25"><b>25</b></div><div class="chip v50"><b>50</b></div><div class="chip v100"><b>100</b></div></div>
+          <div class="a-act"><div class="a-mini" title="Undo"><svg><use href="#i-undo"/></svg></div><div class="a-mini" title="Clear"><svg><use href="#i-clear"/></svg></div><div class="a-spin">SPIN</div></div>
+        </div>
+      </div></div><figcaption>Laptop, at the roulette. Second sight glowing: it just saved a losing spin.</figcaption></figure>
+      <div class="phones">
+        <figure class="shot"><div class="fit"><div class="frame phone" data-plate="phone-roulette">
+          <div class="mark">Chog World</div>
+          <div class="a-edges">
+            <div class="a-who"><img src="img/chog-1517.webp" alt=""><div><b>Chog #1517</b><span>6 edges at the roulette</span></div></div>
+            <ul class="a-badges">
+              <li class="badge"><i><svg><use href="#i-crown"/></svg></i><span>Legendary</span></li>
+              <li class="badge fire"><i><svg><use href="#i-eye"/></svg></i><span>Second sight</span><em>1</em></li>
+              <li class="badge"><i><svg><use href="#i-tooth"/></svg></i><span>Gold tooth</span><em>1</em></li>
+              <li class="badge"><i><svg><use href="#i-spark"/></svg></i><span>Aura</span></li>
+              <li class="badge used"><i><svg><use href="#i-red"/></svg></i><span>Red</span></li>
+              <li class="badge"><i><svg><use href="#i-zero"/></svg></i><span>Lucky 0</span><em>1</em></li>
+            </ul>
+          </div>
+          <div class="a-felt">On the felt <b>30</b></div>
+          <div class="a-bar">
+            <div class="a-bank"><small>Your chips</small><b>1,500</b></div>
+            <div class="a-act"><div class="a-mini"><svg><use href="#i-undo"/></svg></div><div class="a-spin">SPIN</div></div>
+            <div class="a-rack"><div class="chip v5"><b>5</b></div><div class="chip v10 on"><b>10</b></div><div class="chip v25"><b>25</b></div><div class="chip v50"><b>50</b></div><div class="chip v100"><b>100</b></div></div>
+          </div>
+        </div></div><figcaption>Phone, roulette.</figcaption></figure>
+        <figure class="shot"><div class="fit"><div class="frame phone" data-plate="phone-slots">
+          <div class="mark">Chog World</div>
+          <div class="a-edges">
+            <div class="a-who"><img src="img/chog-1517.webp" alt=""><div><b>Chog #1517</b><span>5 edges at the slots</span></div></div>
+            <ul class="a-badges">
+              <li class="badge"><i><svg><use href="#i-crown"/></svg></i><span>Legendary</span><em>3</em></li>
+              <li class="badge"><i><svg><use href="#i-laser"/></svg></i><span>Laser wild</span><em>2</em></li>
+              <li class="badge"><i><svg><use href="#i-royal"/></svg></i><span>Royal</span></li>
+              <li class="badge"><i><svg><use href="#i-frog"/></svg></i><span>Fwog</span><em>2</em></li>
+              <li class="badge"><i><svg><use href="#i-spark"/></svg></i><span>Aura</span></li>
+            </ul>
+          </div>
+          <div class="a-bar">
+            <div class="a-bank"><small>Bet 10 a spin</small><b>1,500</b></div>
+            <div class="a-act"><div class="a-spin">SPIN</div></div>
+            <div class="a-rack"><div class="chip v5"><b>5</b></div><div class="chip v10 on"><b>10</b></div><div class="chip v25"><b>25</b></div><div class="chip v50"><b>50</b></div><div class="chip v100"><b>100</b></div></div>
+          </div>
+          <div class="a-tokens" style="left:12px;bottom:212px"><span class="a-token">Free spin ×3</span><span class="a-token">Wild spin ×2</span></div>
+        </div></div><figcaption>Phone, slots: the chip you hold is the bet.</figcaption></figure>
+      </div>
+    </div>
+    <div class="spec">
+      <div><h3>Why I'd pick it</h3><p>It gets the controls out of the way of the table and the reels, and it's how a casino feels: chips in your hand, a button to press. The badges tell you your edges at a glance, and you see them work.</p></div>
+      <div><h3>Risk</h3><p>Tapping the felt needs a clear marker for where a chip will land, so I'd add a soft glow on the spot under your finger. With six badges a row is about as long as it can get on a phone.</p></div>
+    </div>
+  </section>
+
+  <!-- ===================== B ===================== -->
+  <section class="dir">
+    <div class="head">
+      <span class="tag">Direction B</span>
+      <h2>The table rail</h2>
+      <p>You're seated at the table. The bottom of the screen is the table's padded leather rail with its brass edge, the Starlite's 1958 made solid. Your chips stand in stacks on the rail and you tap a stack to pick it up. Your total is on a brass plate, and SPIN is a brass bell. Your edges are little folded place cards, the kind on a lounge table, and one opens to tell you what it does.</p>
+    </div>
+    <div class="shots">
+      <figure class="shot wide"><div class="fit"><div class="frame laptop" data-plate="laptop-roulette">
+        <div class="mark">Chog World</div>
+        <div class="b-cards">
+          <div class="tent"><b>Legendary</b><span>Tier</span></div>
+          <div class="tent open"><b>Second sight</b><span>Wizard Hat</span><p>After a losing spin, spin again with the same bets, free.</p><small>1 left today. Ready now.</small></div>
+          <div class="tent"><b>Gold tooth</b><span>1 today</span></div>
+          <div class="tent used"><b>Red</b><span>Used</span></div>
+          <div class="tent"><b>Lucky 0</b><span>1 today</span></div>
+        </div>
+        <div class="b-felt">On the felt <b>30</b></div>
+        <div class="b-rail"></div>
+        <div class="b-row">
+          <div class="b-stacks">
+            <div class="stack v5" style="--h:30px"><div class="cyl"></div><div class="top"></div><b>5</b></div>
+            <div class="stack v10 on" style="--h:44px"><div class="cyl"></div><div class="top"></div><b>10</b></div>
+            <div class="stack v25" style="--h:36px"><div class="cyl"></div><div class="top"></div><b>25</b></div>
+            <div class="stack v50" style="--h:26px"><div class="cyl"></div><div class="top"></div><b>50</b></div>
+            <div class="stack v100" style="--h:18px"><div class="cyl"></div><div class="top"></div><b>100</b></div>
+          </div>
+          <div class="b-plate"><b>1,500</b><span>Chips</span></div>
+          <div class="b-small"><span>Undo</span><span>Clear</span><span>Rebet</span></div>
+          <div class="b-bell"><i></i><b>Spin</b></div>
+        </div>
+      </div></div><figcaption>Laptop, at the roulette.</figcaption></figure>
+      <div class="phones">
+        <figure class="shot"><div class="fit"><div class="frame phone" data-plate="phone-roulette">
+          <div class="mark">Chog World</div>
+          <div class="b-cards">
+            <div class="tent"><b>Legendary</b><span>Tier</span></div>
+            <div class="tent"><b>Second sight</b><span>Ready</span></div>
+            <div class="tent"><b>Gold tooth</b><span>1 today</span></div>
+            <div class="tent used"><b>Red</b><span>Used</span></div>
+          </div>
+          <div class="b-felt">On the felt <b>30</b></div>
+          <div class="b-rail"></div>
+          <div class="b-row">
+            <div class="b-stacks">
+              <div class="stack v5" style="--h:26px"><div class="cyl"></div><div class="top"></div><b>5</b></div>
+              <div class="stack v10 on" style="--h:38px"><div class="cyl"></div><div class="top"></div><b>10</b></div>
+              <div class="stack v25" style="--h:30px"><div class="cyl"></div><div class="top"></div><b>25</b></div>
+              <div class="stack v50" style="--h:22px"><div class="cyl"></div><div class="top"></div><b>50</b></div>
+              <div class="stack v100" style="--h:16px"><div class="cyl"></div><div class="top"></div><b>100</b></div>
+            </div>
+            <div class="b-plate"><b>1,500</b><span>Chips</span></div>
+            <div class="b-bell"><i></i><b>Spin</b></div>
+          </div>
+        </div></div><figcaption>Phone, roulette.</figcaption></figure>
+        <figure class="shot"><div class="fit"><div class="frame phone" data-plate="phone-slots">
+          <div class="mark">Chog World</div>
+          <div class="b-cards">
+            <div class="tent"><b>Laser wild</b><span>2 today</span></div>
+            <div class="tent"><b>Royal</b><span>Always</span></div>
+            <div class="tent"><b>Fwog</b><span>2 nudges</span></div>
+            <div class="tent"><b>Aura</b><span>Always</span></div>
+          </div>
+          <div class="b-rail"></div>
+          <div class="b-row">
+            <div class="b-stacks">
+              <div class="stack v5" style="--h:26px"><div class="cyl"></div><div class="top"></div><b>5</b></div>
+              <div class="stack v10 on" style="--h:38px"><div class="cyl"></div><div class="top"></div><b>10</b></div>
+              <div class="stack v25" style="--h:30px"><div class="cyl"></div><div class="top"></div><b>25</b></div>
+              <div class="stack v50" style="--h:22px"><div class="cyl"></div><div class="top"></div><b>50</b></div>
+              <div class="stack v100" style="--h:16px"><div class="cyl"></div><div class="top"></div><b>100</b></div>
+            </div>
+            <div class="b-plate"><b>1,500</b><span>Bet 10</span></div>
+            <div class="b-bell"><i></i><b>Spin</b></div>
+          </div>
+        </div></div><figcaption>Phone, slots.</figcaption></figure>
+      </div>
+    </div>
+    <div class="spec">
+      <div><h3>Feel</h3><p>The most in keeping with the Starlite Lounge you picked. Warm, physical and a little grand: the stacks shrink as you bet, and SPIN is a bell you press.</p></div>
+      <div><h3>Risk</h3><p>The rail is the biggest of the three and covers the most of the view at the bottom. On a phone the place cards only fit four across, so the rest scroll sideways.</p></div>
+    </div>
+  </section>
+
+  <!-- ===================== C ===================== -->
+  <section class="dir">
+    <div class="head">
+      <span class="tag">Direction C</span>
+      <h2>Arcade deck</h2>
+      <p>The controls are an arcade cabinet's control deck: a dark metal panel with chunky lit buttons for each chip, a big red SPIN button and an LED counter for your chips. Your edges are power-up cards along the top, and one flips gold when it fires. Same pixel look as the loading screen.</p>
+    </div>
+    <div class="shots">
+      <figure class="shot wide"><div class="fit"><div class="frame laptop" data-plate="laptop-roulette">
+        <div class="mark">Chog World</div>
+        <div class="c-cards">
+          <div class="pcard"><svg><use href="#i-crown"/></svg><b>LEGEND-<br>ARY</b><em>DAILY</em></div>
+          <div class="pcard fire"><svg><use href="#i-eye"/></svg><b>SECOND<br>SIGHT</b><em>READY!</em></div>
+          <div class="pcard"><svg><use href="#i-tooth"/></svg><b>GOLD<br>TOOTH</b><em>x1</em></div>
+          <div class="pcard"><svg><use href="#i-spark"/></svg><b>AURA</b><em>ON</em></div>
+          <div class="pcard used"><svg><use href="#i-red"/></svg><b>RED</b><em>USED</em></div>
+          <div class="pcard"><svg><use href="#i-zero"/></svg><b>LUCKY 0</b><em>x1</em></div>
+        </div>
+        <div class="c-pop" style="left:604px;top:70px">SECOND SIGHT: SPIN AGAIN FREE<br>WITH THE SAME BETS. 1 LEFT.</div>
+        <div class="c-felt">ON THE FELT <b>30</b></div>
+        <div class="c-deck"></div>
+        <div class="c-row">
+          <div class="c-led">1500<small>CHIPS</small></div>
+          <div class="c-btns">
+            <div class="abtn v5"><i></i><b>5</b></div><div class="abtn v10 on"><i></i><b>10</b></div><div class="abtn v25"><i></i><b>25</b></div><div class="abtn v50"><i></i><b>50</b></div><div class="abtn v100"><i></i><b>100</b></div>
+          </div>
+          <div class="c-mini"><span>UNDO</span><span>CLEAR</span></div>
+          <div class="c-spin"><i></i><b>SPIN</b></div>
+        </div>
+      </div></div><figcaption>Laptop, at the roulette.</figcaption></figure>
+      <div class="phones">
+        <figure class="shot"><div class="fit"><div class="frame phone" data-plate="phone-roulette">
+          <div class="mark">Chog World</div>
+          <div class="c-cards">
+            <div class="pcard"><svg><use href="#i-crown"/></svg><b>LEGEND-<br>ARY</b><em>DAILY</em></div>
+            <div class="pcard fire"><svg><use href="#i-eye"/></svg><b>SECOND<br>SIGHT</b><em>READY!</em></div>
+            <div class="pcard"><svg><use href="#i-tooth"/></svg><b>GOLD<br>TOOTH</b><em>x1</em></div>
+            <div class="pcard"><svg><use href="#i-spark"/></svg><b>AURA</b><em>ON</em></div>
+            <div class="pcard used"><svg><use href="#i-red"/></svg><b>RED</b><em>USED</em></div>
+          </div>
+          <div class="c-felt">ON THE FELT <b>30</b></div>
+          <div class="c-deck"></div>
+          <div class="c-row">
+            <div class="c-led">1500<small>CHIPS</small></div>
+            <div class="c-spin"><i></i><b>SPIN</b></div>
+            <div class="c-btns"><div class="abtn v5"><i></i><b>5</b></div><div class="abtn v10 on"><i></i><b>10</b></div><div class="abtn v25"><i></i><b>25</b></div><div class="abtn v50"><i></i><b>50</b></div><div class="abtn v100"><i></i><b>100</b></div></div>
+          </div>
+        </div></div><figcaption>Phone, roulette.</figcaption></figure>
+        <figure class="shot"><div class="fit"><div class="frame phone" data-plate="phone-slots">
+          <div class="mark">Chog World</div>
+          <div class="c-cards">
+            <div class="pcard"><svg><use href="#i-laser"/></svg><b>LASER<br>WILD</b><em>x2</em></div>
+            <div class="pcard"><svg><use href="#i-royal"/></svg><b>ROYAL</b><em>ON</em></div>
+            <div class="pcard"><svg><use href="#i-frog"/></svg><b>FWOG</b><em>x2</em></div>
+            <div class="pcard"><svg><use href="#i-spark"/></svg><b>AURA</b><em>ON</em></div>
+          </div>
+          <div class="c-deck"></div>
+          <div class="c-row">
+            <div class="c-led">1500<small>BET 10</small></div>
+            <div class="c-spin"><i></i><b>SPIN</b></div>
+            <div class="c-btns"><div class="abtn v5"><i></i><b>5</b></div><div class="abtn v10 on"><i></i><b>10</b></div><div class="abtn v25"><i></i><b>25</b></div><div class="abtn v50"><i></i><b>50</b></div><div class="abtn v100"><i></i><b>100</b></div></div>
+          </div>
+        </div></div><figcaption>Phone, slots.</figcaption></figure>
+      </div>
+    </div>
+    <div class="spec">
+      <div><h3>Feel</h3><p>The most game-like and the loudest. The big buttons are easy to hit on a phone, and the cards make your edges feel like power-ups you've collected.</p></div>
+      <div><h3>Risk</h3><p>An arcade sits a little apart from a 1958 lounge, so the room and the controls would pull two ways. The pixel font is small on a phone for anything longer than a word.</p></div>
+    </div>
+  </section>
+</div>
+
+<script>
+// Each frame is the game at its real size (1366 x 768, or 390 x 844), scaled to fit its column.
+const plates = { 'laptop-roulette': 'img/plate-laptop-roulette.jpg', 'phone-roulette': 'img/plate-phone-roulette.jpg', 'phone-slots': 'img/plate-phone-slots.jpg' };
+for (const f of document.querySelectorAll('.frame')) f.style.backgroundImage = `url(${plates[f.dataset.plate]})`;
+function fit() {
+  for (const w of document.querySelectorAll('.fit')) {
+    const f = w.firstElementChild;
+    const W = f.offsetWidth, H = f.offsetHeight;
+    const k = w.clientWidth / W;
+    f.style.transform = `scale(${k})`;
+    w.style.height = `${H * k}px`;
+  }
+}
+fit();
+addEventListener('resize', fit);
+if ('ResizeObserver' in window) new ResizeObserver(fit).observe(document.body);
+</script>
