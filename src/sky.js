@@ -297,7 +297,10 @@ export class Sky {
       }),
     );
     this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = -1;
+    // Drawn after everything solid, at the far plane (xyww): the GPU skips every pixel the islands
+    // already cover, so the sky's shader runs only where sky shows. First, it shaded the whole screen,
+    // 12.5 ms a frame on the HD 520 (A, 10-16).
+    this.mesh.renderOrder = 1000;
     scene.add(this.mesh);
 
     // The sky also lights the world: re-baked into an environment map when the hour moves.
