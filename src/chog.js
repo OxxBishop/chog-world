@@ -380,6 +380,11 @@ const _hq = new THREE.Quaternion();
 const _pq = new THREE.Quaternion();
 const _dq = new THREE.Quaternion();
 const _iq = new THREE.Quaternion();
+const _sh = new THREE.Vector3();
+const _el = new THREE.Vector3();
+const _wr = new THREE.Vector3();
+const _aim = new THREE.Vector3();
+const _side = new THREE.Vector3();
 
 // A model has fewer moves than a standee: these borrow the nearest it has.
 const STAND_IN = { sniff: 'talk', sing: 'cheer', wake: 'wave', sleepy: 'idle', sad: 'idle' };
@@ -660,6 +665,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   const faceOn = new Map();
   const lods = [];
   let gaze = null;
+  // The right arm, for holding the hand (and what it holds) out toward something.
+  let arm = null;
   let handFix = [];
   let gltfRef = null;
   let gait = null;
@@ -732,6 +739,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         const rel = model.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(head.getWorldQuaternion(new THREE.Quaternion()));
         gaze = { head, fwd: new THREE.Vector3(0, 0, 1).applyQuaternion(rel.invert()), dir: new THREE.Vector3(0, 0, 1), w: 0, target: null, base: new THREE.Quaternion(), applied: false };
       }
+      const up = model.getObjectByName('UpperArmR'), fore = model.getObjectByName('ForeArmR'), hand = model.getObjectByName('HandR');
+      if (up && fore && hand) arm = { up, fore, hand, held: hand.getObjectByName('Mic'), at: new THREE.Vector3(), target: null, left: 0, w: 0 };
       // Straighten a hand that came out bent back at the wrist.
       gltf.userData.handBends ??= handBends(gltf);
       handFix = gltf.userData.handBends.filter((h) => h.degrees > HAND_FIX_ABOVE).map((h) => ({ bone: model.getObjectByName(h.bone), fix: h.fix, base: new THREE.Quaternion(), applied: false })).filter((h) => h.bone);
@@ -878,6 +887,12 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     lookAt(target) {
       if (gaze) gaze.target = target;
     },
+    /** Hold the right hand out toward something (a point, or an object's face) for this many seconds, with what it holds. */
+    reach(target, seconds = 2) {
+      if (!arm) return;
+      arm.target = target;
+      arm.left = seconds;
+    },
     // Fade the Chog out (1 is solid, 0 gone), for walking off. A model pops in and out with a little
     // grow and shrink instead (fading its materials would rebuild their shaders).
     setFade(k) {
@@ -938,6 +953,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
           bones.forEach((b, i) => (b.quaternion.slerpQuaternions(snapQ[i], b.quaternion.clone(), k), b.position.lerpVectors(snapP[i], b.position.clone(), k)));
         }
         for (const h of handFix) h.base.copy(h.bone.quaternion), h.bone.quaternion.multiply(h.fix), (h.applied = true);
+        reachUpdate(dt);
         faceUpdate(dt);
         if (camera) {
           lookUpdate(dt, camera);
@@ -1030,6 +1046,58 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     _hq.premultiply(_iq);
     L.head.parent.getWorldQuaternion(_pq);
     L.head.quaternion.copy(_pq.invert().multiply(_hq));
+  }
+
+  // Over the clip's pose: the upper arm out toward the target (the elbow a little out and down), the forearm
+  // at it, and what the hand holds pointed at it (a mic's head). The clips set these bones every frame, so
+  // nothing needs undoing.
+  function swing(bone, from, to, w) {
+    _dq.setFromUnitVectors(from, to);
+    _iq.identity().slerp(_dq, w);
+    bone.getWorldQuaternion(_hq).premultiply(_iq);
+    bone.parent.getWorldQuaternion(_pq);
+    bone.quaternion.copy(_pq.invert().multiply(_hq));
+    bone.updateWorldMatrix(false, true);
+  }
+  function reachUpdate(dt) {
+    const A = arm;
+    if (!A) return;
+    A.left -= dt;
+    const want = A.left > 0 && A.target ? 1 : 0;
+    A.w += (want - A.w) * (1 - Math.exp(-dt * (want ? 5 : 3.5)));
+    if (A.w < 0.01) return;
+    const w = THREE.MathUtils.smoothstep(A.w, 0, 1);
+    A.up.updateWorldMatrix(true, true);
+    A.up.getWorldPosition(_sh);
+    if (want) {
+      if (A.target.isObject3D) {
+        A.target.getWorldPosition(A.at);
+        A.at.y += CHOG_HEIGHT * 0.7 * A.target.getWorldScale(_lim).y;
+      } else A.at.copy(A.target);
+    }
+    // Which way is ahead, and the arm's side, flat.
+    root.getWorldQuaternion(_rq);
+    _bf.set(0, 0, 1).applyQuaternion(_rq).setY(0).normalize();
+    root.getWorldPosition(_side);
+    _side.subVectors(_sh, _side).setY(0).normalize();
+    // Toward the target, flat and kept in front: the arm is held out and up, about head height, whether the
+    // target is up or down (only what the hand holds tips toward it).
+    _aim.subVectors(A.at, _sh).setY(0).normalize();
+    const ang = _aim.angleTo(_bf);
+    if (ang > 1.2) _aim.lerpVectors(_bf, _aim, 1.2 / ang).normalize();
+    A.fore.getWorldPosition(_el);
+    swing(A.up, _cur.subVectors(_el, _sh).normalize(), _to.copy(_aim).addScaledVector(_side, 0.18).add(_hp.set(0, 0.22, 0)).normalize(), w);
+    A.fore.getWorldPosition(_el);
+    A.hand.getWorldPosition(_wr);
+    swing(A.fore, _cur.subVectors(_wr, _el).normalize(), _to.copy(_aim).add(_hp.set(0, 0.5, 0)).normalize(), w);
+    if (A.held) {
+      A.hand.getWorldPosition(_wr);
+      A.held.getWorldQuaternion(_hq);
+      _cur.set(0, 1, 0).applyQuaternion(_hq);
+      _to.subVectors(A.at, _wr).normalize();
+      _to.y += 0.25;
+      swing(A.hand, _cur, _to.normalize(), w * 0.85);
+    }
   }
 
   chog.play('idle');

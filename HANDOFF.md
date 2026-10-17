@@ -27,6 +27,18 @@ are real but free.
 
 ## Log
 
+### 2026-10-17 · A · The singer notices you (Lyra)
+- **The user's ask:** "make the singer react when you walk up too", per her approved persona. Walk into the crowd
+  in front of the stage (within 10 m, in front only): Lyra turns to you, holds the mic out at your Chog (the arm
+  out and up, the mic's head tipped at you, over whatever she is singing), "This next one's for you!" in a
+  bubble, then starts the song again from the top and keeps her eyes on you through it. Once per visit: she
+  does it again only after you have gone 16 m off and come back. Behind the stage she ignores you.
+- `src/chog.js`: `reach(target, seconds)`, the right arm (and what the hand holds) held out toward something,
+  over the clip's pose. `src/npcs.js`: `own()` takes steps, name, radius, front-only and re-arm options; the
+  singer's stage disc stays put while she turns. The cast's bubble now steps aside from the compass and the
+  map (on a phone the map sat over the stage).
+- See it: walk your Chog to the crowd at the stage. Stage effects get `singing` from the singer's own move now.
+
 ### 2026-10-16 · A · The singer rebuilt on the plain Chog's body
 - **The user's ask:** the old Tripo singer was the weakest model in the cast. `public/models/npcs/singer.glb` is
   now the plain Chog (its clean 2048 texture, rig, face sheet and the cast's clips) standing on the old stage

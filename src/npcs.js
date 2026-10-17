@@ -346,6 +346,17 @@ const REACT = {
   // Puff: wipes its eyes, then a big two-armed wave.
   37: [['idle', 1.0, 'sad'], ['cheer', 1.6, 'happy']],
 };
+// Lyra, the singer: spots you joining the crowd, holds the mic out to you and dedicates the next song
+// (the song starts again from the top). A step's move null keeps what it was doing; its sixth item 'reach'
+// holds the right hand out at you.
+const LYRA = {
+  name: 'Lyra',
+  steps: [[null, 0.5, 'surprised'], ['sing', 3.2, 'excited', "This next one's for you!", 1, 'reach']],
+  // From where the crowd stands, in front of the stage only, and again only once you have left and come back.
+  near: 10,
+  ahead: 0.2,
+  rearm: 16,
+};
 
 /**
  * The sets, each built the first time the camera comes near (or at once with standees: show every
@@ -371,23 +382,25 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   document.body.append(bubble);
   // f: the Chog's own routine, which waits while it reacts. steer: whether that routine sets which way it
   // faces (a stroller does; one standing in the crowd keeps the way it faced). resume: back to its routine.
-  function own(c, f, { steer = false, resume = () => c.play('idle') } = {}) {
-    const steps = REACT[c.root.userData.chogId];
+  // The rest (for one not in REACT): steps and name; near, how close you come (metres); ahead, only from in
+  // front of the way it stands (the least cosine); rearm, not again until you have been this far off.
+  function own(c, f, { steer = false, resume = () => c.play('idle'), steps = REACT[c.root.userData.chogId], name = CAST_NAMES[c.root.userData.chogId], near = NOTICE, ahead = -2, rearm = 0 } = {}) {
     if (!steps) return f;
-    const n = { c, steps, steer, resume, step: -1, left: 0, cool: 4 + Math.random() * 4, back: 0, yaw0: 0, yaw: 0 };
+    const n = { c, steps, name, near, ahead, rearm, armed: true, steer, resume, step: -1, left: 0, cool: 4 + Math.random() * 4, back: 0, yaw0: 0, yaw: 0, me: null };
     noticers.push(n);
     return (...args) => (n.step >= 0 ? undefined : f(...args));
   }
   function startStep(n) {
-    const [move, secs, face, line, pace] = n.steps[n.step];
+    const [move, secs, face, line, pace, extra] = n.steps[n.step];
     n.left = secs;
-    n.c.play(move);
-    n.c.setPace(pace ?? 1);
+    if (move) n.c.play(move), n.c.setPace(pace ?? 1);
     n.c.express(face, secs + 0.4);
     if (move === 'talk') n.c.talk(secs);
+    else if (line) n.c.talk(Math.min(secs, 0.25 + line.length * 0.06));
+    if (extra === 'reach') n.c.reach(n.me, secs);
     if (line) {
       bubble.innerHTML = `<span class="who"></span>`;
-      bubble.firstChild.textContent = CAST_NAMES[n.c.root.userData.chogId] ?? '';
+      bubble.firstChild.textContent = n.name ?? '';
       bubble.append(line);
       bubble.hidden = false;
       bubble.style.opacity = '0';
@@ -401,9 +414,31 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     n.line = false;
     n.step = -1;
     n.cool = NOTICE_AGAIN;
+    n.armed = !n.rearm;
     n.back = 0.8;
     n.yaw = n.c.root.rotation.y;
     n.resume();
+  }
+  // The bubble over a head, kept clear of the compass and the map up top (on a phone the map sits over the
+  // stage): it steps aside, its tail still at the head, or below if there is no room beside.
+  let hud = null;
+  function placeClear(x, y) {
+    placeBubble(bubble, x, y);
+    if (!hud?.length) hud = [...document.querySelectorAll('.tv-compass, .tv-map')];
+    const half = bubble.offsetWidth / 2, h = bubble.offsetHeight;
+    let cx = Math.min(Math.max(x, half + 8), window.innerWidth - half - 8);
+    let moved = false;
+    for (const el of hud) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || y - h > r.bottom + 4 || y < r.top || cx + half < r.left - 4 || cx - half > r.right + 4) continue;
+      moved = true;
+      if (r.left - half - 6 >= half + 8 && x < r.right) cx = r.left - half - 6;
+      else if (r.right + half + 6 <= window.innerWidth - half - 8) cx = r.right + half + 6;
+      else y = r.bottom + h + 6;
+    }
+    if (!moved) return;
+    bubble.style.setProperty('--tail', `${Math.max(-half + 18, Math.min(half - 18, x - cx))}px`);
+    bubble.style.transform = `translate(-50%, -100%) translate(${cx}px, ${y}px)`;
   }
   function notice(n, dt, me, camera) {
     const c = n.c;
@@ -418,9 +453,20 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       if (n.cool > 0 || !me || !c.root.visible || c.root.userData.away) return;
       c.root.getWorldPosition(_a);
       me.getWorldPosition(_b);
-      if (_a.distanceTo(_b) > NOTICE || Math.abs(_a.y - _b.y) > 3) return;
+      const far = _a.distanceTo(_b);
+      if (!n.armed) {
+        n.armed = far > n.rearm;
+        return;
+      }
+      if (far > n.near || Math.abs(_a.y - _b.y) > 3) return;
+      if (n.ahead > -1) {
+        c.root.parent.worldToLocal(_b);
+        _b.sub(c.root.position).setY(0).normalize();
+        if (_b.x * Math.sin(c.root.rotation.y) + _b.z * Math.cos(c.root.rotation.y) < n.ahead) return;
+      }
       n.step = 0;
       n.yaw0 = c.root.rotation.y;
+      n.me = me;
       c.lookAt(me);
       startStep(n);
     }
@@ -435,7 +481,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       _a.project(camera);
       const shown = _a.z < 1 && Math.abs(_a.x) < 1.2 && Math.abs(_a.y) < 1.2;
       bubble.style.opacity = shown ? '1' : '0';
-      if (shown) placeBubble(bubble, ((_a.x + 1) / 2) * window.innerWidth, ((1 - _a.y) / 2) * window.innerHeight);
+      if (shown) placeClear(((_a.x + 1) / 2) * window.innerWidth, ((1 - _a.y) / 2) * window.innerHeight);
     }
     if ((n.left -= dt) > 0) return;
     if (++n.step < n.steps.length) startStep(n);
@@ -469,11 +515,12 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     async () => {
       const chogs = [];
       const ticks = [];
-      // The singer, not turning (the stage and stand are part of it).
+      // The singer, on its stage disc (in the same file: when the singer turns to you, the disc stays put).
       const singer = await singerNpc(s.glb);
       singer.root.rotation.y = facing;
       square.add(singer.root);
       chogs.push(singer);
+      const disc = singer.root.getObjectByName('Stage');
       // Its fairy lights, spotlight and notes.
       const lights = stageLights(facing);
       square.add(lights.group);
@@ -482,12 +529,15 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       let left = SET[0][1];
       singer.play(SET[0][0]);
       let songTime = 0;
+      // Who the song playing now is for (it looks at them through it).
+      let forYou = false;
       if (stageFx?.createStageFx) {
         const fx = stageFx.createStageFx({ facing, quality });
         square.add(fx.group);
-        ticks.push((dt) => fx.update(dt, { singing: SET[part][0] === 'sing', songTime, part: SET[part][0], env: lastEnv, renderer: lastRenderer }));
+        ticks.push((dt) => fx.update(dt, { singing: singer.state === 'sing', songTime, part: SET[part][0], env: lastEnv, renderer: lastRenderer }));
       }
-      ticks.push((dt) => {
+      ticks.push(() => disc && (disc.rotation.y = facing - singer.root.rotation.y));
+      ticks.push(own(singer, (dt) => {
         left -= dt;
         songTime += dt;
         if (left > 0) return;
@@ -495,7 +545,19 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         part = (part + 1) % SET.length;
         left = SET[part][1];
         singer.play(SET[part][0]);
-      });
+        if (forYou) singer.lookAt(null), (forYou = false);
+      }, {
+        ...LYRA,
+        // The dedicated song, from the top.
+        resume: () => {
+          part = 0;
+          left = SET[0][1];
+          songTime = 0;
+          singer.play(SET[0][0]);
+          const n = noticers.find((x) => x.c === singer);
+          if (n?.me) singer.lookAt(n.me), (forYou = true);
+        },
+      }));
       // The crowd, in an arc in front of the stage, watching and cheering.
       const plain = quality === 'low' ? 3 : 5;
       const who = [
