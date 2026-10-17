@@ -53,3 +53,11 @@ Since 10-16 (A13, A14):
   10-16 in git) through `bake.html`, measured from straightened arms, with extra lift for the shorter arm:
   `spec=Sing:singer:Sing:0:0.5:::UpperArmR@x@-44;ForeArmR@x@-42;UpperArmR@y@35`. Then `ktx2.mjs`. Its face sheet
   is the plain Chog's (`faces.json` "singer").
+- **The user's notes of 10-17** (`cleanup.py`): `node dump.mjs <shipped.glb> <work>/<name>`, then
+  `ktx extract --transcode rgba8 <work>/<name>/img<base>.jpg <work>/<name>/base.png` (the colour map out of
+  its KTX2), then `python cleanup.py <work>/<name> <work>/<name>/base.png <out> <tasks>`: `hands` (the pink
+  over the whole hand: plain, singer, chog-1151, chog-66), `back` and `cords` (chog-52: its shirt's back
+  cleaned; its hat cords cut where they met the sleeve, the stick on the head). For cords, `patch.mjs <glb>
+  <tmp> --joints <out>/joints.f32 --weights <out>/weights.f32 --index <out>/index.u32` first. Last,
+  `ktx2.mjs <glb> <shipped.glb> --base <out>/base.png` (the body's colour map only; a stage keeps its own).
+  Checks: `tools/models/pose.html` (the world's own Chogs in a move, from any side) and `headturn.html`.

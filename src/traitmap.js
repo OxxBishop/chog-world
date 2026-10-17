@@ -72,8 +72,9 @@ export const ATTACH = { head: 'Head', body: 'Spine', accessory: 'HandR' };
 // the Quaternius library (tools/models/bake.html). A model without them (the dino) keeps Tripo's Walk and Run.
 export const CLIPS = { idle: 'Idle', walk: 'WalkCartoon', run: 'JogCartoon', wake: 'WakeUp', wave: 'Wave', talk: 'Talk', sing: 'Sing', sniff: 'Sniff', cheer: 'Cheer', sad: 'Sad' };
 export const CLIP_FALLBACK = { walk: 'Walk', run: 'Run' };
-// How fast each picked clip plays, as on the walks page the user picked from: quick steps on short legs.
-export const CLIP_RATE = { WalkCartoon: 1.7, JogCartoon: 1.3 };
+// How fast each picked clip plays: quick steps on short legs (faster since 10-17, the user: "walking speed
+// is way too slow").
+export const CLIP_RATE = { WalkCartoon: 2.2, JogCartoon: 2.0 };
 
 // Chogs with a rigged model of their own (C's cast, public/models/npcs/chog-<id>.glb). Any other Chog
 // wears the plain body (plain.glb), shaded by its Skin trait so they don't all look alike.

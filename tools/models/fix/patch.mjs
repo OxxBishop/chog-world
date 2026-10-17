@@ -3,7 +3,7 @@
  * other fix stay as they are):
  *   node tools/models/fix/patch.mjs <in.glb> <out.glb> [--pos pos.f32] [--joints joints.f32 --weights weights.f32]
  *        [--base base.png] [--quality 92] [--requantize 1]
- * --pos / --joints / --weights: Float32, the shipped file's vertex order (mane.py writes them). --base: a new
+ * --index: Uint32 triangles to keep (cleanup.py cords). --pos / --joints / --weights: Float32, the shipped file's vertex order (mane.py writes them). --base: a new
  * colour map (upres.py's 2048), stored as JPEG. --requantize: store its normals, UVs and weights the way the
  * rest of the cast does (the sniffer's UVs were floats: a vertex layout, so a shader, of its own on Intel).
  * Then compressed the way apply.mjs does it.
@@ -30,7 +30,7 @@ const prim = doc.getRoot().listMeshes()[0].listPrimitives()[0];
 const f32 = (file) => new Float32Array(fs.readFileSync(file).buffer.slice(0));
 const n = prim.getAttribute('POSITION').getCount();
 
-if (opt.pos || opt.weights || opt.requantize) {
+if (opt.pos || opt.weights || opt.requantize || opt.index) {
   // Every attribute back to plain floats, so the re-quantising starts clean.
   for (const name of prim.listSemantics()) {
     const a = prim.getAttribute(name);
@@ -56,6 +56,10 @@ if (opt.pos || opt.weights || opt.requantize) {
     if (w.length !== n * 4) throw new Error(`--weights has ${w.length / 4} vertices, the model ${n}`);
     prim.setAttribute('WEIGHTS_0', doc.createAccessor().setType('VEC4').setArray(w).setBuffer(buf));
     prim.setAttribute('JOINTS_0', doc.createAccessor().setType('VEC4').setArray(Uint8Array.from(j)).setBuffer(buf));
+  }
+  if (opt.index) {
+    const ix = new Uint32Array(fs.readFileSync(opt.index).buffer.slice(0));
+    prim.setIndices(doc.createAccessor().setType('SCALAR').setArray(ix).setBuffer(buf));
   }
   await doc.transform(quantize({ pattern: /^(NORMAL|TEXCOORD_\d+|WEIGHTS_\d+)$/, quantizeNormal: 8, quantizeTexcoord: 12 }));
 }

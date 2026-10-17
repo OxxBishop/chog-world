@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { makeChog, CHOG_HEIGHT } from './chog.js';
 import { placeBubble } from './chat.js';
+import { surfaceAt } from './travel.js';
 import { chogInfo } from './chogdata.js';
 import { HOODS, roadDistance, nearDome } from './layout.js';
-import { heightAt, islandAt } from './terrain.js';
+import { islandAt } from './terrain.js';
 import { angleLerp } from './util.js';
 
 /*
@@ -29,8 +30,8 @@ export const NPC_SLOTS = {
   crowd: { plain: M('plain'), named: [{ id: 132, glb: M('chog-132') }, { id: 37, glb: M('chog-37') }] },
   // Strolling round the fountain, the opposite ways.
   strollers: [
-    { id: 66, glb: M('chog-66'), speed: 1.7, dir: 1, phase: 0 },
-    { id: 409, glb: M('chog-409'), speed: 1.3, dir: -1, phase: 2.6 },
+    { id: 66, glb: M('chog-66'), speed: 1.7, dir: 1, phase: 0, r: 13.2 },
+    { id: 409, glb: M('chog-409'), speed: 1.3, dir: -1, phase: 2.6, r: 15.4 },
   ],
   // By the lobby door, in the Monad look.
   doorman: { id: 1151, glb: M('chog-1151'), plaza: [-5.2, 23.2] },
@@ -40,7 +41,6 @@ export const NPC_SLOTS = {
 };
 
 const FOUNTAIN = new THREE.Vector3(0, 0, 40);
-const STROLL_R = 15;
 // Sets load once the camera is this close (one at a time, the nearest first), and are drawn and
 // animated once it is closer still.
 const LOAD = 300;
@@ -312,51 +312,36 @@ function openSpot(hood, from, step = 0.35) {
       const x = hood.x + Math.cos(a) * r, z = hood.z + Math.sin(a) * r;
       const hit = islandAt(x, z);
       if (!hit || hit.k > 0.85 || roadDistance(x, z) < 5 || nearDome(x, z, 4)) continue;
-      return new THREE.Vector3(x, heightAt(x, z), z);
+      return new THREE.Vector3(x, surfaceAt(x, z), z);
     }
   }
-  return new THREE.Vector3(hood.x, heightAt(hood.x, hood.z), hood.z);
+  return new THREE.Vector3(hood.x, surfaceAt(hood.x, hood.z), hood.z);
 }
 
 /*
- * The cast notices you (A13): when the Chog you walk as comes near, each stops, turns to you and reacts as
- * its approved persona says, then carries on, and not again for a while. Steps: [move, seconds, face,
- * a line in a bubble, how fast the move plays].
+ * The cast notices you (A13; the user, 10-17: "just to the camera as they notice the visitor's presence",
+ * "different lines for different characters tailored to their personality"). When you come near, each named
+ * Chog turns to the camera, waves and says a line of its own in a bubble, then carries on; again only once
+ * you have gone off and come back. A line is never the one it said last.
  */
-const CAST_NAMES = { 1151: 'Monty', 409: 'King Pom', 66: 'Quackers', 68: 'Cosmo', 124: 'Snooze', 52: 'Toasty', 56: 'Patrol', 132: 'Peel', 37: 'Puff' };
 const NOTICE = 7.5;
-const NOTICE_AGAIN = 30;
-const REACT = {
-  // Monty: spots you from across the plaza and waves.
-  1151: [['wave', 2.6, 'excited', null, 1.15]],
-  // King Pom: stops, lifts its chin and waits for a bow; then gives in and waves back.
-  409: [['idle', 1.8, 'surprised'], ['wave', 2.2, 'happy']],
-  // Quackers: strikes a pose, as if you were there for a photo.
-  66: [['cheer', 1.4, 'excited'], ['idle', 1.2, 'happy']],
-  // Cosmo: waves, then reports you.
-  68: [['wave', 2.0, 'happy'], ['talk', 2.8, 'curious', 'New lifeform spotted. Friendly.']],
-  // Snooze: opens one eye, a slow wave.
-  124: [['idle', 1.0, 'sleepy'], ['wave', 2.6, 'sleepy', null, 0.6]],
-  // Toasty: starts a story whether you asked or not.
-  52: [['talk', 3.2, 'happy']],
-  // Patrol: stiffens as if on duty, then a small, shy wave.
-  56: [['idle', 0.9, 'surprised'], ['wave', 1.8, 'happy', null, 0.8]],
-  // Peel: a big come-here wave.
-  132: [['wave', 2.4, 'excited', null, 1.35]],
-  // Puff: wipes its eyes, then a big two-armed wave.
-  37: [['idle', 1.0, 'sad'], ['cheer', 1.6, 'happy']],
+const NOTICE_AGAIN = 20;
+const CAST = {
+  1151: { name: 'Monty', face: 'excited', pace: 1.15, lines: ['Welcome to Chog Hub! The lobby is right behind me.', 'Hey! Fastest chain, friendliest door.', 'Good to see you. Purple suits this place, right?', 'Monad never sleeps, and neither do I.'] },
+  409: { name: 'King Pom', face: 'happy', pace: 0.85, lines: ['Ah, a visitor. You may approach.', 'Bow if you like. I am not fussy. I am a little fussy.', 'The plaza is mine, but you may borrow it.', 'Mind the crown. It is heavier than it looks.'] },
+  68: { name: 'Cosmo', face: 'curious', pace: 1, lines: ['New lifeform spotted. Friendly. Logging it.', 'Coordinates noted. You are right where you should be.', 'I mapped this island twice. You are my favourite landmark.', 'Hello from orbit. Well, from the walkway.'] },
+  124: { name: 'Snooze', face: 'sleepy', pace: 0.6, lines: ['Mmh? Oh, hi. Welcome...', 'Just resting my eyes. Nice to meet you.', 'You look lovely today. Sorry, I am so sleepy.'] },
+  132: { name: 'Peel', face: 'excited', pace: 1.35, lines: ['You are a-peeling already!', 'Let us go bananas!', 'This crowd is ripe for a party!', 'Careful, I hear it is a long slip from here.'] },
+  37: { name: 'Puff', face: 'happy', pace: 1.1, lines: ['This song gets me every time.', 'Oh, hi! Do not mind me, happy tears.', 'You came! Group hug later?'] },
+  56: { name: 'Patrol', face: 'happy', pace: 0.85, lines: ['Afternoon. Please enjoy the plaza responsibly.', 'All clear here. Have a lovely day.', 'Pardon me. Just keeping an eye out.'] },
+  66: { name: 'Quackers', face: 'excited', pace: 1.2, lines: ['Love the look. Mine is better, but love it.', 'Duck float? Iconic. Thanks for noticing.', 'Strike a pose with me. Quick!'] },
+  52: { name: 'Toasty', face: 'happy', pace: 1, lines: ['Did I ever tell you about the coldest night on these islands?', 'Brr. Sit down, I have a story for you.', 'You look warm. Stand a little closer, friend.'] },
 };
-// Lyra, the singer: spots you joining the crowd, holds the mic out to you and dedicates the next song
-// (the song starts again from the top). A step's move null keeps what it was doing; its sixth item 'reach'
-// holds the right hand out at you.
-const LYRA = {
-  name: 'Lyra',
-  steps: [[null, 0.5, 'surprised'], ['sing', 3.2, 'excited', "This next one's for you!", 1, 'reach']],
-  // From where the crowd stands, in front of the stage only, and again only once you have left and come back.
-  near: 10,
-  ahead: 0.2,
-  rearm: 16,
-};
+// Lyra, the singer: spots you joining the crowd, holds the mic out to you and dedicates the next song (it
+// starts again from the top). From in front of the stage only.
+const LYRA = { name: 'Lyra', face: 'excited', lines: ["This next one's for you!", 'Hey you! This one is yours.', 'Glad you made it. Here we go!'], near: 10, ahead: 0.2, rearm: 16, move: 'sing', reach: true };
+// At most this many lines show at once; the next waits its turn.
+const VOICES = 2;
 
 /**
  * The sets, each built the first time the camera comes near (or at once with standees: show every
@@ -376,60 +361,77 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   const noticers = [];
   const _a = new THREE.Vector3();
   const _b = new THREE.Vector3();
-  const bubble = document.createElement('div');
-  bubble.className = 'chog-bubble bar-bubble';
-  bubble.hidden = true;
-  document.body.append(bubble);
+  let speaking = 0;
+  let lastCamera = null;
+  // Your Chog (while you walk one), for the strollers to wait for.
+  let lastMe = null;
   // f: the Chog's own routine, which waits while it reacts. steer: whether that routine sets which way it
   // faces (a stroller does; one standing in the crowd keeps the way it faced). resume: back to its routine.
-  // The rest (for one not in REACT): steps and name; near, how close you come (metres); ahead, only from in
-  // front of the way it stands (the least cosine); rearm, not again until you have been this far off.
-  function own(c, f, { steer = false, resume = () => c.play('idle'), steps = REACT[c.root.userData.chogId], name = CAST_NAMES[c.root.userData.chogId], near = NOTICE, ahead = -2, rearm = 0 } = {}) {
-    if (!steps) return f;
-    const n = { c, steps, name, near, ahead, rearm, armed: true, steer, resume, step: -1, left: 0, cool: 4 + Math.random() * 4, back: 0, yaw0: 0, yaw: 0, me: null };
+  // who: its CAST entry (name, face, pace, lines; near, how close you come; ahead, only from in front of the
+  // way it stands, the least cosine; rearm, how far off you go before it notices you again; move, reach).
+  function own(c, f, { steer = false, resume = () => c.play('idle'), who = CAST[c.root.userData.chogId] } = {}) {
+    if (!who) return f;
+    const near = who.near ?? NOTICE;
+    const n = { c, who, steer, resume, near, ahead: who.ahead ?? -2, rearm: who.rearm ?? near + 6, armed: true, on: false, wait: 0, left: 0, cool: 1 + Math.random(), back: 0, yaw0: 0, yaw: 0, said: -1, bubble: null };
     noticers.push(n);
-    return (...args) => (n.step >= 0 ? undefined : f(...args));
+    return (...args) => (n.on ? undefined : f(...args));
   }
-  function startStep(n) {
-    const [move, secs, face, line, pace, extra] = n.steps[n.step];
-    n.left = secs;
-    if (move) n.c.play(move), n.c.setPace(pace ?? 1);
-    n.c.express(face, secs + 0.4);
-    if (move === 'talk') n.c.talk(secs);
-    else if (line) n.c.talk(Math.min(secs, 0.25 + line.length * 0.06));
-    if (extra === 'reach') n.c.reach(n.me, secs);
-    if (line) {
-      bubble.innerHTML = `<span class="who"></span>`;
-      bubble.firstChild.textContent = n.name ?? '';
-      bubble.append(line);
-      bubble.hidden = false;
-      bubble.style.opacity = '0';
-      n.line = true;
-    }
+  function bubbleFor(n) {
+    if (n.bubble) return n.bubble;
+    const el = document.createElement('div');
+    el.className = 'chog-bubble bar-bubble';
+    el.hidden = true;
+    el.innerHTML = '<span class="who"></span><span class="line"></span>';
+    el.firstChild.textContent = n.who.name;
+    document.body.append(el);
+    return (n.bubble = el);
+  }
+  // Turn to the camera, wave (the singer: her mic held out) and say a line.
+  function react(n) {
+    const { c, who } = n;
+    const pool = who.lines;
+    let i = Math.floor(Math.random() * pool.length);
+    if (pool.length > 1 && i === n.said) i = (i + 1) % pool.length;
+    n.said = i;
+    const line = pool[i];
+    n.left = THREE.MathUtils.clamp(1.4 + line.length * 0.05, 2.6, 4.4);
+    c.play(who.move ?? 'wave');
+    c.setPace(who.pace ?? 1);
+    c.express(who.face, n.left + 0.4);
+    c.talk(Math.min(n.left - 0.4, 0.3 + line.length * 0.055));
+    c.lookAt(null);
+    if (who.reach && lastCamera) c.reach(lastCamera, n.left);
+    const el = bubbleFor(n);
+    el.lastChild.textContent = line;
+    el.hidden = false;
+    el.style.opacity = '0';
+    speaking++;
   }
   function endReaction(n) {
     n.c.lookAt(null);
     n.c.setPace(1);
-    if (n.line) bubble.hidden = true;
-    n.line = false;
-    n.step = -1;
+    if (n.bubble) n.bubble.hidden = true;
+    speaking = Math.max(0, speaking - 1);
+    n.on = false;
     n.cool = NOTICE_AGAIN;
-    n.armed = !n.rearm;
+    n.armed = false;
     n.back = 0.8;
     n.yaw = n.c.root.rotation.y;
     n.resume();
   }
-  // The bubble over a head, kept clear of the compass and the map up top (on a phone the map sits over the
+  // A bubble over a head, kept clear of the compass and the map up top (on a phone the map sits over the
   // stage): it steps aside, its tail still at the head, or below if there is no room beside.
   let hud = null;
-  function placeClear(x, y) {
-    placeBubble(bubble, x, y);
+  function placeClear(el, x, y) {
+    // Never off the top of the screen (a Chog right by the camera has its head up there).
+    y = Math.max(y, el.offsetHeight + 10);
+    placeBubble(el, x, y);
     if (!hud?.length) hud = [...document.querySelectorAll('.tv-compass, .tv-map')];
-    const half = bubble.offsetWidth / 2, h = bubble.offsetHeight;
+    const half = el.offsetWidth / 2, h = el.offsetHeight;
     let cx = Math.min(Math.max(x, half + 8), window.innerWidth - half - 8);
     let moved = false;
-    for (const el of hud) {
-      const r = el.getBoundingClientRect();
+    for (const box of hud) {
+      const r = box.getBoundingClientRect();
       if (!r.width || y - h > r.bottom + 4 || y < r.top || cx + half < r.left - 4 || cx - half > r.right + 4) continue;
       moved = true;
       if (r.left - half - 6 >= half + 8 && x < r.right) cx = r.left - half - 6;
@@ -437,55 +439,61 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       else y = r.bottom + h + 6;
     }
     if (!moved) return;
-    bubble.style.setProperty('--tail', `${Math.max(-half + 18, Math.min(half - 18, x - cx))}px`);
-    bubble.style.transform = `translate(-50%, -100%) translate(${cx}px, ${y}px)`;
+    el.style.setProperty('--tail', `${Math.max(-half + 18, Math.min(half - 18, x - cx))}px`);
+    el.style.transform = `translate(-50%, -100%) translate(${cx}px, ${y}px)`;
   }
   function notice(n, dt, me, camera) {
     const c = n.c;
     n.cool -= dt;
-    if (n.step < 0) {
+    if (!n.on) {
       // Back from the reaction: turn the way its routine wants (a stroller's path, or the way it stood).
       if (n.back > 0) {
         n.back -= dt;
         n.yaw = angleLerp(n.yaw, n.steer ? c.root.rotation.y : n.yaw0, 1 - Math.exp(-dt * 6));
         c.root.rotation.y = n.yaw;
       }
-      if (n.cool > 0 || !me || !c.root.visible || c.root.userData.away) return;
+      if (!me || !c.root.visible || c.root.userData.away) return;
       c.root.getWorldPosition(_a);
       me.getWorldPosition(_b);
       const far = _a.distanceTo(_b);
       if (!n.armed) {
-        n.armed = far > n.rearm;
+        n.armed = far > n.rearm && n.cool <= 0;
         return;
       }
-      if (far > n.near || Math.abs(_a.y - _b.y) > 3) return;
+      if (n.cool > 0 || far > n.near || Math.abs(_a.y - _b.y) > 3) {
+        n.wait = 0;
+        return;
+      }
       if (n.ahead > -1) {
         c.root.parent.worldToLocal(_b);
         _b.sub(c.root.position).setY(0).normalize();
         if (_b.x * Math.sin(c.root.rotation.y) + _b.z * Math.cos(c.root.rotation.y) < n.ahead) return;
       }
-      n.step = 0;
+      // Noticed: a beat later (so a few who see you at once don't all move as one), and only while a voice
+      // is free.
+      if (!n.wait) n.wait = 0.15 + Math.random() * 0.7;
+      if ((n.wait -= dt) > 0 || speaking >= VOICES) return;
+      n.wait = 0;
+      n.on = true;
       n.yaw0 = c.root.rotation.y;
-      n.me = me;
-      c.lookAt(me);
-      startStep(n);
+      react(n);
     }
-    // Turn to you, about its own middle.
-    if (me && c.root.parent) {
-      c.root.parent.worldToLocal(me.getWorldPosition(_b));
+    // Turn to the camera, about its own middle.
+    if (camera && c.root.parent) {
+      c.root.parent.worldToLocal(_b.copy(camera.position));
       const want = Math.atan2(_b.x - c.root.position.x, _b.z - c.root.position.z);
       c.root.rotation.y = angleLerp(c.root.rotation.y, want, 1 - Math.exp(-dt * 5));
     }
-    if (n.line) {
+    const el = n.bubble;
+    if (el && !el.hidden && camera) {
       c.root.localToWorld(_a.set(0, CHOG_HEIGHT + 0.7, 0));
       _a.project(camera);
       const shown = _a.z < 1 && Math.abs(_a.x) < 1.2 && Math.abs(_a.y) < 1.2;
-      bubble.style.opacity = shown ? '1' : '0';
-      if (shown) placeClear(((_a.x + 1) / 2) * window.innerWidth, ((1 - _a.y) / 2) * window.innerHeight);
+      el.style.opacity = shown ? '1' : '0';
+      if (shown) placeClear(el, ((_a.x + 1) / 2) * window.innerWidth, ((1 - _a.y) / 2) * window.innerHeight);
     }
     if ((n.left -= dt) > 0) return;
-    if (++n.step < n.steps.length) startStep(n);
-    else endReaction(n);
+    endReaction(n);
   }
 
   // A set: where it is (for the distance check), and how to build it.
@@ -547,15 +555,15 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         singer.play(SET[part][0]);
         if (forYou) singer.lookAt(null), (forYou = false);
       }, {
-        ...LYRA,
+        who: LYRA,
         // The dedicated song, from the top.
         resume: () => {
           part = 0;
           left = SET[0][1];
           songTime = 0;
           singer.play(SET[0][0]);
-          const n = noticers.find((x) => x.c === singer);
-          if (n?.me) singer.lookAt(n.me), (forYou = true);
+          singer.lookAt(null);
+          forYou = true;
         },
       }));
       // The crowd, in an arc in front of the stage, watching and cheering.
@@ -584,7 +592,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         if (quality === 'low') c.root.traverse((o) => o.isMesh && (o.castShadow = false));
         square.add(c.root);
         chogs.push(c);
-        ticks.push(own(c, idler(c, ['cheer', 'cheer', 'wave'], [3, 9])));
+        ticks.push(own(c, idler(c, ['cheer'], [6, 14])));
       });
       // Strolling round the fountain, now and then stopping to wave.
       for (const w of NPC_SLOTS.strollers) {
@@ -597,7 +605,8 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         const legs = c.paceFor('walk');
         let angle = w.phase;
         let pause = 0;
-        let next = 8 + Math.random() * 10;
+        let next = 14 + Math.random() * 10;
+        let held = false;
         c.play('walk');
         c.setPace(legs);
         ticks.push(own(c, (dt) => {
@@ -608,15 +617,27 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
           }
           next -= dt;
           if (next <= 0) {
-            pause = 3.2;
-            next = 12 + Math.random() * 12;
-            c.play(Math.random() < 0.6 ? 'wave' : 'idle');
+            // A moment's stop to look round.
+            pause = 2.6;
+            next = 16 + Math.random() * 12;
+            c.play('idle');
             return;
           }
-          angle += (dt * pace * w.dir) / STROLL_R;
-          c.root.position.set(FOUNTAIN.x + Math.sin(angle) * STROLL_R, 0, FOUNTAIN.z + Math.cos(angle) * STROLL_R);
+          // Someone in the way (you): it waits rather than walk through.
+          const ahead = angle + (dt * pace * w.dir) / w.r + (2.4 * w.dir) / w.r;
+          wp.set(FOUNTAIN.x + Math.sin(ahead) * w.r, 0, FOUNTAIN.z + Math.cos(ahead) * w.r);
+          plaza.localToWorld(wp);
+          const blocked = lastMe && lastMe.getWorldPosition(_b).setY(wp.y).distanceTo(wp) < 2.6;
+          if (blocked !== held) {
+            held = blocked;
+            if (held) c.play('idle');
+            else c.play('walk'), c.setPace(legs);
+          }
+          if (held) return;
+          angle += (dt * pace * w.dir) / w.r;
+          c.root.position.set(FOUNTAIN.x + Math.sin(angle) * w.r, 0, FOUNTAIN.z + Math.cos(angle) * w.r);
           c.root.rotation.y = angle + (w.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-        }, { steer: true, resume: () => (pause > 0 ? c.play('idle') : (c.play('walk'), c.setPace(legs))) }));
+        }, { steer: true, resume: () => (pause > 0 || held ? c.play('idle') : (c.play('walk'), c.setPace(legs))) }));
       }
       // By the lobby door, greeting whoever comes up the walk.
       const d = NPC_SLOTS.doorman;
@@ -626,7 +647,8 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       doorman.root.rotation.y = Math.atan2(FOUNTAIN.x - d.plaza[0], FOUNTAIN.z - d.plaza[1]);
       plaza.add(doorman.root);
       chogs.push(doorman);
-      ticks.push(own(doorman, idler(doorman, ['wave', 'talk'], [7, 13])));
+      doorman.play('idle');
+      ticks.push(own(doorman, () => {}));
       await prewarm?.(plaza);
       return { group: square, chogs, tick: (tt, dt) => ticks.forEach((f) => f(dt)), extra: [...chogs.slice(-NPC_SLOTS.strollers.length - 1).map((c) => c.root)] };
     },
@@ -709,7 +731,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         runAngle += (dt * speed * dir) / R;
         dino.setPace(mode === 'rest' ? 1 : THREE.MathUtils.clamp(speed / top, 0.35, 1.15));
         const p = lapAt(runAngle, hood2);
-        dino.root.position.set(p.x, heightAt(p.x, p.z), p.z);
+        dino.root.position.set(p.x, surfaceAt(p.x, p.z), p.z);
         // Facing the way it's going; a turn back takes about half a second.
         const heading = Math.atan2(-Math.sin(runAngle), Math.cos(runAngle)) + (dir < 0 ? Math.PI : 0);
         yaw = angleLerp(yaw, heading, 1 - Math.exp(-dt * 7));
@@ -750,7 +772,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       astro.root.scale.setScalar(OUTDOOR);
       stroll.add(astro.root);
       const start = lapAt(walkAngle, hood1);
-      astro.root.position.set(start.x, heightAt(start.x, start.z), start.z);
+      astro.root.position.set(start.x, surfaceAt(start.x, start.z), start.z);
       astro.play('walk');
       const pace = (astro.speedOf('walk') || 1) * OUTDOOR;
       astro.setPace(astro.paceFor('walk'));
@@ -767,14 +789,14 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
             return;
           }
           if ((next -= dt) <= 0) {
-            pause = 3;
-            next = 14 + Math.random() * 10;
-            astro.play('wave');
+            pause = 2.6;
+            next = 18 + Math.random() * 10;
+            astro.play('idle');
             return;
           }
           walkAngle += (dt * pace * Math.sign(w.speed)) / hood1.loopR;
           const p = lapAt(walkAngle, hood1);
-          astro.root.position.set(p.x, heightAt(p.x, p.z), p.z);
+          astro.root.position.set(p.x, surfaceAt(p.x, p.z), p.z);
           astro.root.rotation.y = Math.atan2(Math.sin(walkAngle), -Math.cos(walkAngle));
         }, { steer: true, resume: () => (pause > 0 ? astro.play('idle') : (astro.play('walk'), astro.setPace(astro.paceFor('walk')))) }),
       };
@@ -847,7 +869,9 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         a.tick?.(t, dt);
         for (const c of a.chogs) c.update(dt, camera);
       }
-      for (const n of noticers) if (n.c.root.parent && (n.step >= 0 || n.back > 0 || me)) notice(n, dt, me, camera);
+      lastCamera = camera;
+      lastMe = me;
+      for (const n of noticers) if (n.c.root.parent && (n.on || n.back > 0 || me)) notice(n, dt, me, camera);
     },
   };
 }

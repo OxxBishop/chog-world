@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { makeChog, CHOG_HEIGHT } from './chog.js';
 import { chogInfo } from './chogdata.js';
 import { modelFor } from './traitmap.js';
-import { ISLANDS, HOODS, DOMES, DOME_R, DOWNTOWN, ROADS, TERRACES, PORTAL_SPOTS } from './layout.js';
+import { ISLANDS, HOODS, DOMES, DOME_R, DOWNTOWN, ROADS, TERRACES, PORTAL_SPOTS, roadDistance } from './layout.js';
 import { heightAt, islandAt, cameraFloor, rimPoint } from './terrain.js';
 import { RoomBox } from './camera.js';
 
@@ -26,10 +26,35 @@ const teleportFx = Object.values(import.meta.glob('./fx/teleport.js', { eager: t
 
 // Outdoors everything is built 1.7 x life size (plaza.js, npcs.js); so is the Chog you walk.
 const SCALE = 1.7;
+// The plaza's paving (roads.js): a flat disc a little over the land at the middle of downtown.
+let plazaY = null;
+
+/**
+ * The ground you see at (x, z), which a Chog stands on: the plaza's paving, a walk's paving and its curbs
+ * (roads.js lays them a few cm over the land), or the land (the user, 10-17: Chogs sank into the ground).
+ */
+export function surfaceAt(x, z) {
+  const h = heightAt(x, z);
+  plazaY ??= heightAt(DOWNTOWN.x, DOWNTOWN.z) + 0.09;
+  if (Math.hypot(x - DOWNTOWN.x, z - DOWNTOWN.z) < DOWNTOWN.r) return Math.max(h, plazaY);
+  const r = roadDistance(x, z);
+  return h + (r < -0.22 ? 0.065 : r < 0.22 ? 0.14 : 0);
+}
 // Walking and running go at the speed the Chog's feet cover in its walk and jog (the user's picks, 10-16,
 // at their true pace), about 1 and 1.6 m/s; these are for a Chog without them.
 const WALK = 1;
 const RUN = 1.6;
+// How fast you go (m/s; the user, 10-17: "walking speed is way too slow"): a Chog's own pace (its feet,
+// with the longer stride and quicker steps of src/chog.js) kept within these, so every Chog walks and runs
+// like it means it. Its steps speed up to match, up to STEP_MAX times their own rate.
+const WALK_BAND = [1.9, 2.6];
+const RUN_BAND = [4.2, 5.4];
+const STEP_MAX = 1.35;
+// The joystick: full walking speed at the ring's edge (its radius in px); running only once the thumb
+// is pulled on past it, and back to walking a little inside that (the user: a small drag ran).
+const STICK = 58;
+const RUN_PAST = 1.45;
+const RUN_UNTIL = 1.25;
 const ACCEL = 9;
 const TURN = 11;
 const RADIUS = 0.9;
@@ -88,6 +113,14 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     return { a: c.clone().sub(along), b: c.clone().add(along), r: f.r, y: c.y };
   });
   for (const f of furniture.round) blocks.push({ p: P(f.x, f.z), r: f.r });
+  // Trees, rocks, bushes and tall flowers (island.js), in 8 m cells for a quick look round you.
+  const OB = 8;
+  const obstacles = new Map();
+  for (const o of island.obstacles ?? []) {
+    const k = `${Math.floor(o.x / OB)},${Math.floor(o.z / OB)}`;
+    if (!obstacles.has(k)) obstacles.set(k, []);
+    obstacles.get(k).push(o);
+  }
   // The Hub's doors (hub space to the world): where you walk in, and which way is out.
   const doors = hub.rooms.map((h) => {
     const e = h.entrance;
@@ -106,7 +139,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       return { id: `hood${h.id}`, name: NAMES[h.id], sub: MARKS[h.landmark] ?? 'Domes', at: new THREE.Vector3(spot.x, 0, spot.z), look: new THREE.Vector3(h.x, 0, h.z) };
     }),
   ];
-  for (const p of portals) p.at.y = heightAt(p.at.x, p.at.z);
+  for (const p of portals) p.at.y = surfaceAt(p.at.x, p.at.z);
   // Things to steer by, on the compass and the map.
   const landmarks = [
     { name: 'Chog Hub', at: hub.group.getWorldPosition(new THREE.Vector3()), kind: 'hub' },
@@ -169,7 +202,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
 
   // ---------- input ----------
   const keys = new Set();
-  const stick = { id: null, x0: 0, y0: 0, x: 0, y: 0 };
+  const stick = { id: null, x0: 0, y0: 0, x: 0, y: 0, run: false };
   const looks = new Map();
   let pinch = null;
   const block = () => !state.on || state.busy;
@@ -199,9 +232,10 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       stick.x = e.clientX;
       stick.y = e.clientY;
       const dx = stick.x - stick.x0, dy = stick.y - stick.y0;
-      const r = Math.min(1, Math.hypot(dx, dy) / 56);
+      const r = Math.min(1, Math.hypot(dx, dy) / STICK);
       const a = Math.atan2(dy, dx);
-      hud.knob.style.transform = `translate(${Math.cos(a) * r * 56}px, ${Math.sin(a) * r * 56}px)`;
+      // Pulled past the ring to run: the knob sits on the edge, a little bigger.
+      hud.knob.style.transform = `translate(${Math.cos(a) * r * STICK}px, ${Math.sin(a) * r * STICK}px) scale(${stick.run ? 1.18 : 1})`;
       return;
     }
     const p = looks.get(e.pointerId);
@@ -273,11 +307,12 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       const dx = stick.x - stick.x0, dy = stick.y - stick.y0;
       const d = Math.hypot(dx, dy);
       if (d > 6) {
-        const k = Math.min(1, d / 56);
+        const k = Math.min(1, d / STICK);
         x = (dx / d) * k;
         y = (-dy / d) * k;
-        run = k > 0.92;
-      }
+        stick.run = d > STICK * (stick.run ? RUN_UNTIL : RUN_PAST);
+        run = stick.run;
+      } else stick.run = false;
     }
     return { x, y, run };
   }
@@ -301,7 +336,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       options.push({ y: br.deckY(THREE.MathUtils.clamp(along / br.len, 0, 1)) + 0.15, on: 'bridge' });
     }
     const hit = islandAt(x, z);
-    if (hit && hit.k < 0.955) options.push({ y: heightAt(x, z), on: 'land' });
+    if (hit && hit.k < 0.955) options.push({ y: surfaceAt(x, z), on: 'land' });
     if (!options.length) return null;
     return options.reduce((a, b) => (Math.abs(a.y - nearY) <= Math.abs(b.y - nearY) ? a : b));
   }
@@ -337,6 +372,18 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       const dx = to.x - cx, dz = to.z - cz;
       const d = Math.hypot(dx, dz), r = bn.r + RADIUS;
       if (d < r) to.set(cx + (dx / (d || 1)) * r, to.y, cz + (dz / (d || 1)) * r);
+    }
+    // Trees, rocks, bushes, tall flowers.
+    const cx = Math.floor(to.x / OB), cz = Math.floor(to.z / OB);
+    for (let i = -1; i <= 1; i++) {
+      for (let j = -1; j <= 1; j++) {
+        for (const o of obstacles.get(`${cx + i},${cz + j}`) ?? []) {
+          if (Math.abs(o.y - to.y) > 3) continue;
+          const dx = to.x - o.x, dz = to.z - o.z;
+          const d = Math.hypot(dx, dz), r = o.r + RADIUS * 0.8;
+          if (d < r) to.set(o.x + (dx / (d || 1)) * r, to.y, o.z + (dz / (d || 1)) * r);
+        }
+      }
     }
     // The cast: a gentle shove round them rather than through.
     for (const c of world.npcRoots?.() ?? []) {
@@ -442,8 +489,10 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const right = _w.set(-fwd.z, 0, fwd.x);
     const want = new THREE.Vector3().addScaledVector(fwd, w.y).addScaledVector(right, w.x);
     const mag = Math.min(1, want.length());
-    const walkV = (chog?.speedOf?.('walk') || WALK / SCALE) * SCALE;
-    const runV = Math.max(walkV, (chog?.speedOf?.('run') || RUN / SCALE) * SCALE);
+    const walkFeet = (chog?.speedOf?.('walk') || WALK / SCALE) * SCALE;
+    const runFeet = Math.max(walkFeet, (chog?.speedOf?.('run') || RUN / SCALE) * SCALE);
+    const walkV = THREE.MathUtils.clamp(walkFeet, ...WALK_BAND);
+    const runV = THREE.MathUtils.clamp(runFeet, ...RUN_BAND);
     const top = w.run ? runV : walkV;
     const target = mag > 0.01 ? want.normalize().multiplyScalar(top * Math.max(mag, 0.35)) : want.set(0, 0, 0);
     state.vel.lerp(target, 1 - Math.exp(-dt * ACCEL));
@@ -475,7 +524,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     }
     chog.root.position.copy(state.pos);
     chog.root.rotation.y = state.yaw;
-    animate(chog, speed, walkV, runV);
+    animate(chog, speed, walkV, runV, walkFeet, runFeet);
     if (!state.own) chog.update(dt, camera);
 
     // The camera swings round behind you as you go (unless you've just turned it yourself).
@@ -505,14 +554,18 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
 
   // Idle, walk or run, its legs keeping pace with how fast it's actually going (the clip's own rate at its
   // full speed, slower while it speeds up or slows down).
-  function animate(chog, speed, walkV, runV) {
-    let move = speed < 0.12 * walkV ? 'idle' : speed < (walkV + runV) / 2 ? 'walk' : 'run';
+  function animate(chog, speed, walkV, runV, walkFeet = walkV, runFeet = runV) {
+    // A little either side of each change, so a speed near one never flickers between two moves.
+    const was = state.move;
+    const still = was === 'idle' || !was ? 0.16 : 0.08;
+    const brisk = (walkV + runV) / 2 * (was === 'run' ? 0.9 : 1.05);
+    let move = speed < still * walkV ? 'idle' : speed < brisk ? 'walk' : 'run';
     if (move !== state.move) {
       state.move = move;
       chog.play(move);
     }
-    if (move === 'walk') chog.setPace((chog.paceFor?.('walk') ?? 1) * THREE.MathUtils.clamp(speed / walkV, 0.55, 1.1));
-    else if (move === 'run') chog.setPace((chog.paceFor?.('run') ?? 1) * THREE.MathUtils.clamp(speed / runV, 0.7, 1.1));
+    if (move === 'walk') chog.setPace((chog.paceFor?.('walk') ?? 1) * THREE.MathUtils.clamp(speed / walkFeet, 0.55, STEP_MAX));
+    else if (move === 'run') chog.setPace((chog.paceFor?.('run') ?? 1) * THREE.MathUtils.clamp(speed / runFeet, 0.7, STEP_MAX));
     else chog.setPace(1);
   }
 

@@ -1,0 +1,74 @@
+<!doctype html><meta charset="utf-8"><title>Head turn</title>
+<style>body{margin:0;background:#2a2633}canvas{display:block}</style>
+<script type="module">
+// What a head turn does to each cast model's skin (A, the user 10-17: "when the chog turns their entire
+// chin/jaw turns with them"). Rows: models; columns: at rest, the head turned (yaw), and the same two coloured
+// by how much of each vertex the Head bone holds (red all, blue none). Run under vite:
+// /tools/models/headturn.html?m=chog-132,plain&yaw=40&pitch=0&v=front|side|threeq
+import * as THREE from 'three';
+import { withKtx2 } from '/src/chog.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'meshoptimizer';
+const q = new URLSearchParams(location.search);
+const models = (q.get('m') || 'chog-132').split(',');
+const yaw = THREE.MathUtils.degToRad(+(q.get('yaw') ?? 40)), pitch = THREE.MathUtils.degToRad(+(q.get('pitch') ?? 0));
+const S = +(q.get('size') || 230);
+const views = (q.get('v') || 'threeq').split(',');
+const cols = 4 * views.length;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(S * cols, S * models.length);
+renderer.setScissorTest(true);
+document.body.append(renderer.domElement);
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+withKtx2(loader, renderer);
+const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+const islands = q.get('islands') ? await (await fetch(q.get('islands'))).json() : null;
+if (islands) console.log(Object.keys(islands).map((k, i) => `${i}:${k}`).join(' '));
+for (let r = 0; r < models.length; r++) {
+  const g = await loader.loadAsync(`/models/npcs/${models[r]}.glb`);
+  for (const [vi, view] of views.entries()) {
+    for (let c = 0; c < 4; c++) {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(c < 2 ? '#d9d4e4' : '#222');
+      scene.add(new THREE.HemisphereLight('#fff', '#666', 2.2));
+      const sun = new THREE.DirectionalLight('#fff', 1.6);
+      sun.position.set(2, 4, 3);
+      scene.add(sun);
+      const model = (await loader.loadAsync(q.get('file') || `/models/npcs/${models[r]}.glb`)).scene;
+      scene.add(model);
+      let mesh = null;
+      model.traverse((o) => o.isSkinnedMesh && (mesh = o));
+      if (c >= 2) {
+        const geo = mesh.geometry, n = geo.attributes.position.count;
+        const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
+        const H = mesh.skeleton.bones.findIndex((b) => b.name === (q.get('bone') || 'Head'));
+        const col = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          let w = 0;
+          for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === H) w += sw.getComponent(i, k);
+          col.set([w, 0.15, 1 - w], i * 3);
+        }
+        if (islands) {
+          col.fill(0.25);
+          Object.values(islands).forEach((ix, k) => { const c = new THREE.Color().setHSL((k * 0.137) % 1, 0.9, 0.55); for (const i of ix) col.set([c.r, c.g, c.b], i * 3); });
+        }
+        geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        mesh.material = new THREE.MeshLambertMaterial({ vertexColors: true });
+      }
+      const head = model.getObjectByName('Head');
+      if (c % 2 === 1) head.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')));
+      model.updateMatrixWorld(true);
+      const a = { front: 0, side: Math.PI / 2, threeq: Math.PI / 4, low: Math.PI / 5, back: Math.PI, bthreeq: Math.PI * 0.75 }[view] ?? 0;
+      const look = new THREE.Vector3(0, view === 'low' ? 0.85 : +(q.get('ly') || 1.0), 0);
+      const dist = 6.2 / +(q.get('zoom') || 1);
+      cam.position.set(Math.sin(a) * dist, view === 'low' ? 0.5 : +(q.get('cy') || 1.5), Math.cos(a) * dist);
+      cam.lookAt(look);
+      const x = (vi * 4 + c) * S, y = (models.length - 1 - r) * S;
+      renderer.setViewport(x, y, S, S);
+      renderer.setScissor(x, y, S, S);
+      renderer.render(scene, cam);
+    }
+  }
+}
+window.__done = true;
+</script>

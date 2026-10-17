@@ -27,6 +27,44 @@ are real but free.
 
 ## Log
 
+### 2026-10-17 · A · The user's test-run notes: moving, waving, the singer, Toasty, the picker
+- **Speed and the joystick** (`src/travel.js`): every Chog walks at 1.9 to 2.6 m/s and runs at 4.2 to 5.4
+  (its own pace kept in those bands; before, true foot speed left most at about 1 m/s walking). Its legs take
+  longer strides (`STRIDE` in `src/chog.js`) and quicker steps (`CLIP_RATE` 2.2 and 2.0), so feet barely
+  slide. The joystick: the ring's edge (58 px) is full walking speed; running only once the thumb is pulled
+  on past it (1.45x), the knob a little bigger while running. Idle, walk and run switch with a margin, so no
+  flicker near a threshold.
+- **The run's dive** (`src/chog.js` strideUpdate): the jog leant the chest 30 to 45 degrees forward and swung
+  the head; walking and running now keep part of the spine-to-head motion (`TORSO`).
+- **Sinking**: the plaza's paving and the walks sit a few cm over the land (roads.js), and Chogs stood on
+  the land. `surfaceAt()` (exported from travel.js) is the ground you see; npcs.js uses it too. A clip that
+  dropped the hips too far lifts the model by that much (`groundUpdate`, never lowered).
+- **T-poses**: a quick change of mind (idle, walk, idle) restarted a fade from nothing, so the weights summed
+  under one and the bind pose (the T-pose) showed through. Moves now crossfade with weights that always add
+  to one (`fadeUpdate`). A 90 s watch over the cast and fast stop-starts found none.
+- **Arms** (the user: "arms don't have elbow joints", "their side goes into their body upon wave"): upper
+  arms lift at most 30 degrees over level, elbows bend at most 28 degrees, and the wave is its own: the right
+  arm out and up from the shoulder, swinging, the hand rocking (`waveUpdate`).
+- **The head on the move**: your Chog no longer turns its head to the camera while walking or running.
+- **Collisions**: island.js lists every tree, rock, bush and tall flower it places (`obstacles`, a small
+  edit there); travel.js keeps your Chog out of them. The two strollers walk on two rings now (13.2 and
+  15.4 m from the fountain) so they pass side by side, and wait when you stand in their way.
+- **Noticing** (the user: wave "to the camera as they notice the visitor's presence", "different lines ...
+  tailored to their personality"): each named Chog turns to the camera, waves and says one of its own lines
+  in its own bubble (`CAST` in npcs.js, 3 or 4 lines each), at most two talking at once, once per visit
+  (again after you have been 6 m further off). No more random waves: the crowd cheers the singer, the
+  strollers stop to look round, the doorman stands. Bubbles stay on screen and clear of the compass and map.
+- **The singer**: sings with her talk's body (the left hand gestures, nothing frozen) and the mic at her
+  mouth, held from under her chin (`micUpdate`, a two-bone reach to a mouth found from her face sheet). Her
+  walk-up lines vary.
+- **Models** (`tools/models/fix/cleanup.py`, README there): the pink covers the whole hand on the plain
+  Chog, the singer, Monty and Quackers; Toasty's hat cords no longer stretch down his back (cut at the
+  shoulder, the stick hangs from the ear flap) and his shirt's back is clean red with its flame hem.
+- **The picker's portraits** (the user: "why're they all facing down"): re-shot from eye level, each in a
+  pose and face of its own (`tools/models/portraits.html`).
+- Left: tiny brown flecks at Toasty's elbows where the cord met the sleeve (only up close). B: the casino's
+  "free chips only" sign; the user asked what it is.
+
 ### 2026-10-17 · A · The singer notices you (Lyra)
 - **The user's ask:** "make the singer react when you walk up too", per her approved persona. Walk into the crowd
   in front of the stage (within 10 m, in front only): Lyra turns to you, holds the mic out at your Chog (the arm

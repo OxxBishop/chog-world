@@ -30,7 +30,7 @@ const doc = await io.read(src);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ktx2-'));
 
 async function encode(tex, { srgb, mode, png }) {
-  if (!tex || tex.getMimeType() === 'image/ktx2') return;
+  if (!tex || (tex.getMimeType() === 'image/ktx2' && !png)) return;
   const input = path.join(tmp, `${tex.getName() || 'tex'}-${Math.random().toString(36).slice(2)}.png`);
   fs.writeFileSync(input, png ? fs.readFileSync(png) : await sharp(Buffer.from(tex.getImage())).png().toBuffer());
   const out = input.replace(/\.png$/, '.ktx2');
@@ -40,8 +40,9 @@ async function encode(tex, { srgb, mode, png }) {
   execFileSync(TOKTX, [...args, out, input], { stdio: 'pipe' });
   tex.setImage(new Uint8Array(fs.readFileSync(out))).setMimeType('image/ktx2').setURI('');
 }
-for (const mat of doc.getRoot().listMaterials()) {
-  await encode(mat.getBaseColorTexture(), { srgb: true, mode: 'etc1s', png: opt.base });
+for (const [i, mat] of doc.getRoot().listMaterials().entries()) {
+  // --base is the body's (the first material's): the singer's stage keeps its own.
+  await encode(mat.getBaseColorTexture(), { srgb: true, mode: 'etc1s', png: i === 0 ? opt.base : undefined });
   await encode(mat.getNormalTexture(), { srgb: false, mode: opt.normal ?? 'etc1s' });
   await encode(mat.getMetallicRoughnessTexture(), { srgb: false, mode: 'etc1s' });
   await encode(mat.getEmissiveTexture(), { srgb: true, mode: 'etc1s' });

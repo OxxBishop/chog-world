@@ -236,6 +236,66 @@ function faceFor(url) {
 }
 
 /*
+ * A model's soles, once per file: a few vertices that follow each foot (the lowest, and the front, back and
+ * sides of that flat), so the world can keep its feet out of the ground whatever a clip does with the hips.
+ */
+function soleVertices(gltf) {
+  let mesh = null;
+  gltf.scene.traverse((o) => o.isSkinnedMesh && (!mesh || o.geometry.attributes.position.count > mesh.geometry.attributes.position.count) && (mesh = o));
+  if (!mesh) return [];
+  gltf.scene.updateMatrixWorld(true);
+  const pos = mesh.geometry.attributes.position, si = mesh.geometry.attributes.skinIndex, sw = mesh.geometry.attributes.skinWeight;
+  const names = mesh.skeleton.bones.map((b) => b.name);
+  const out = [];
+  const v = new THREE.Vector3();
+  for (const foot of ['FootL', 'FootR'].map((n) => names.indexOf(n)).filter((i) => i >= 0)) {
+    const near = [];
+    let lo = Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      let w = 0;
+      for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === foot) w += sw.getComponent(i, k);
+      if (w < 0.6) continue;
+      v.fromBufferAttribute(pos, i).applyMatrix4(mesh.bindMatrix);
+      near.push([i, v.x, v.y, v.z]);
+      lo = Math.min(lo, v.y);
+    }
+    const flat = near.filter((n) => n[2] < lo + 0.03);
+    if (!flat.length) continue;
+    const pick = (f) => flat.reduce((a, b) => (f(b) > f(a) ? b : a))[0];
+    out.push(...new Set([pick((n) => -n[2]), pick((n) => n[3]), pick((n) => -n[3]), pick((n) => n[1]), pick((n) => -n[1])]));
+  }
+  return out;
+}
+
+/*
+ * The mouth, in the Head bone's frame, from where the mouth sits on the model's face sheet: the front-most
+ * head vertices there (for a mic to be held to it).
+ */
+function mouthOf(gltf, f) {
+  let mesh = null;
+  gltf.scene.traverse((o) => o.isSkinnedMesh && (!mesh || o.geometry.attributes.position.count > mesh.geometry.attributes.position.count) && (mesh = o));
+  if (!mesh || !(f.head >= 0)) return null;
+  gltf.scene.updateMatrixWorld(true);
+  const g = mesh.geometry, pos = g.attributes.position, nrm = g.attributes.normal, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+  const m = new THREE.Matrix4().fromArray(f.matrix), dir = new THREE.Vector3().fromArray(f.dir);
+  const v = new THREE.Vector3(), n = new THREE.Vector3(), sum = new THREE.Vector3();
+  let count = 0;
+  for (let tol = 0.02; tol < 0.1 && !count; tol *= 1.6) {
+    for (let i = 0; i < pos.count; i++) {
+      let w = 0;
+      for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === f.head) w += sw.getComponent(i, k);
+      if (w < 0.8 || n.fromBufferAttribute(nrm, i).dot(dir) < 0.5) continue;
+      v.fromBufferAttribute(pos, i).applyMatrix4(m);
+      if (Math.abs(v.x - MOUTH_ON_SHEET[0]) > tol || Math.abs(v.y - MOUTH_ON_SHEET[1]) > tol) continue;
+      sum.add(v.fromBufferAttribute(pos, i));
+      count++;
+    }
+  }
+  if (!count) return null;
+  return sum.divideScalar(count).applyMatrix4(mesh.bindMatrix).applyMatrix4(mesh.skeleton.boneInverses[f.head]);
+}
+
+/*
  * Some models came out of auto-rigging with a hand bent back at the wrist (the bartender's left). For each
  * hand: how far it bends away from the line of its forearm in the bind pose, and the turn of its bone
  * that straightens it. handBends(gltf) -> [{ bone, degrees, fix }].
@@ -356,6 +416,28 @@ export function sweepSpeed(gltf, clipName) {
 // Heads turn toward the camera (or whatever a Chog is told to look at) when it's near and in front.
 const LOOK_RANGE = 18;
 const LOOK_MAX = THREE.MathUtils.degToRad(55);
+// Upper arms lift no higher than this over level: above it Tripo's shoulders fold into the body (the user,
+// 10-17: "their side goes into their body upon wave"). A hand still goes up, by the elbow.
+const ARM_LIFT_MAX = THREE.MathUtils.degToRad(+(new URLSearchParams(globalThis.location?.search ?? '').get('armlift') ?? 30));
+// Chog arms are short tubes with no elbow to speak of (the user, 10-17): a forearm bends no further than
+// this from the line of its upper arm.
+const ELBOW_MAX = THREE.MathUtils.degToRad(28);
+// How much further the legs swing than the clip has them, walking and running (strideUpdate; the user, 10-17:
+// "walking speed is way too slow": a Chog's legs are short for its height).
+const STRIDE = { walk: 1.35, run: 1.3 };
+// How much of the clip's body motion (spine to head) is kept, walking and running.
+const TORSO = { walk: 0.6, run: 0.4 };
+// The wave (waveUpdate): the right arm out and up from the shoulder, swinging, the hand rocking.
+const WAVE = { lift: 0.5, swing: 0.2, forward: 0.45, hz: 1.6, rock: 0.4 };
+// Moves melt into each other over this long, their weights always adding up to one: a sum under one blends
+// toward the bind pose, the T-pose a quick change of mind used to flash (the user, 10-17).
+const FADE = 0.3;
+// The mic's head this far in front of the lips while singing (model units).
+const MIC_GAP = 0.085;
+// The mic's head along its own axis from its grip (tools/models/fix/singer_rebuild.mjs: 0.14 x 1.5).
+const MIC_HEAD = 0.21;
+// Where the mouth sits on a face sheet (tools/faces: a front capture, the mouth a little under the eyes).
+const MOUTH_ON_SHEET = [0.5, 0.39];
 // Up close a Chog is its full model; past this it's the lighter copy (for Chogs loaded with keep < 1).
 const LOD_NEAR = 24;
 // Bodies move by src/gait.js (walks, rest, gestures) for every Chog in the standard rig but the singer,
@@ -385,6 +467,15 @@ const _el = new THREE.Vector3();
 const _wr = new THREE.Vector3();
 const _aim = new THREE.Vector3();
 const _side = new THREE.Vector3();
+const _mo = new THREE.Vector3();
+const _gl = new THREE.Vector3();
+const _ax = new THREE.Vector3();
+const _off = new THREE.Vector3();
+const _tg = new THREE.Vector3();
+const _e2 = new THREE.Vector3();
+const _pole = new THREE.Vector3();
+const _qh = new THREE.Quaternion();
+const _qt = new THREE.Quaternion();
 
 // A model has fewer moves than a standee: these borrow the nearest it has.
 const STAND_IN = { sniff: 'talk', sing: 'cheer', wake: 'wave', sleepy: 'idle', sad: 'idle' };
@@ -667,6 +758,16 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   let gaze = null;
   // The right arm, for holding the hand (and what it holds) out toward something.
   let arm = null;
+  // Both upper arms, kept from lifting too high (ARM_LIFT_MAX).
+  let lifts = [];
+  // Thighs and shins, spine to head, with their rest turns and how far each swings from it right now
+  // (STRIDE, TORSO).
+  const legs = [];
+  // The soles (soleVertices) on its biggest skinned mesh.
+  let soles = [];
+  let skin = null;
+  // How much of each move it shows (FADE).
+  const fades = new Map();
   let handFix = [];
   let gltfRef = null;
   let gait = null;
@@ -683,6 +784,11 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       const gltf = await loadGltf(base, keep);
       gltfRef = gltf;
       model = cloneSkinned(gltf.scene);
+      // The legs and the body at rest (the bind pose), for the stride and the steadier body (strideUpdate).
+      for (const [n, k] of [['ThighL', STRIDE], ['ShinL', STRIDE], ['ThighR', STRIDE], ['ShinR', STRIDE], ['Spine', TORSO], ['Chest', TORSO], ['Neck', TORSO], ['Head', TORSO]]) {
+        const b = model.getObjectByName(n);
+        if (b) legs.push({ b, k, rest: b.quaternion.clone(), d: new THREE.Quaternion(), now: 1 });
+      }
       model.traverse((o) => {
         if (!o.isMesh) return;
         o.castShadow = true;
@@ -740,7 +846,11 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         gaze = { head, fwd: new THREE.Vector3(0, 0, 1).applyQuaternion(rel.invert()), dir: new THREE.Vector3(0, 0, 1), w: 0, target: null, base: new THREE.Quaternion(), applied: false };
       }
       const up = model.getObjectByName('UpperArmR'), fore = model.getObjectByName('ForeArmR'), hand = model.getObjectByName('HandR');
-      if (up && fore && hand) arm = { up, fore, hand, held: hand.getObjectByName('Mic'), at: new THREE.Vector3(), target: null, left: 0, w: 0 };
+      if (up && fore && hand) arm = { up, fore, hand, held: hand.getObjectByName('Mic'), at: new THREE.Vector3(), target: null, left: 0, w: 0, mouth: null, mw: 0, ww: 0, wt: 0 };
+      lifts = ['L', 'R'].map((s) => ({ up: model.getObjectByName(`UpperArm${s}`), fore: model.getObjectByName(`ForeArm${s}`) })).filter((l) => l.up && l.fore);
+      gltf.userData.soles ??= soleVertices(gltf);
+      soles = gltf.userData.soles;
+      model.traverse((o) => o.isSkinnedMesh && (!skin || o.geometry.attributes.position.count > skin.geometry.attributes.position.count) && (skin = o));
       // Straighten a hand that came out bent back at the wrist.
       gltf.userData.handBends ??= handBends(gltf);
       handFix = gltf.userData.handBends.filter((h) => h.degrees > HAND_FIX_ABOVE).map((h) => ({ bone: model.getObjectByName(h.bone), fix: h.fix, base: new THREE.Quaternion(), applied: false })).filter((h) => h.bone);
@@ -752,6 +862,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
           face.uFaceM.value.fromArray(f.matrix);
           face.uFaceDir.value.fromArray(f.dir);
           face.uFaceHead.value = f.head;
+          if (arm?.held) arm.mouth = gltf.userData.mouth ??= mouthOf(gltf, f);
           for (const [o, on] of faceOn) if (o.name === f.mesh) on.value = 1;
         });
       }
@@ -813,10 +924,15 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       if (name === state) return;
       state = name;
       stateT = 0;
-      const next = actions[name] ?? actions[STAND_IN[name]] ?? (name === 'sleep' ? null : actions.idle);
+      // Holding a mic, it sings with its talk's body and the mic held to its mouth (micUpdate).
+      const pick = name === 'sing' && arm?.held && actions.talk ? 'talk' : name;
+      const next = actions[pick] ?? actions[STAND_IN[name]] ?? (name === 'sleep' ? null : actions.idle);
       if (next && next !== current) {
-        next.reset().fadeIn(0.3).play();
-        current?.fadeOut(0.3);
+        // A move coming back before it had faded away carries on from where it was; one from nothing starts
+        // at its top. The weights are set each frame (fadeUpdate).
+        if (!(fades.get(next) > 0.02)) next.reset();
+        next.play();
+        if (!fades.has(next)) fades.set(next, 0);
         current = next;
       }
     },
@@ -853,7 +969,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     speedOf(move) {
       const name = clipOf[move];
       if (!gltfRef || !name) return 0;
-      if (CLIP_RATE[name]) return sweepSpeed(gltfRef, name) * CLIP_RATE[name];
+      if (CLIP_RATE[name]) return sweepSpeed(gltfRef, name) * CLIP_RATE[name] * (STRIDE[move] ?? 1);
       const v = clipSpeed(gltfRef, name);
       if (!v) return 0;
       const [lo, hi] = move === 'run' ? [1.4, 3] : [0.5, 1.2];
@@ -946,14 +1062,22 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
             gait.update(gaitAcc, GAIT_MOVES[state] ?? 'idle');
             gaitAcc = 0;
           }
-        } else mixer.update(dt);
+        } else {
+          fadeUpdate(dt);
+          mixer.update(dt);
+        }
         if (blendLeft > 0) {
           blendLeft = Math.max(0, blendLeft - dt);
           const k = THREE.MathUtils.smoothstep(1 - blendLeft / BLEND, 0, 1);
           bones.forEach((b, i) => (b.quaternion.slerpQuaternions(snapQ[i], b.quaternion.clone(), k), b.position.lerpVectors(snapP[i], b.position.clone(), k)));
         }
         for (const h of handFix) h.base.copy(h.bone.quaternion), h.bone.quaternion.multiply(h.fix), (h.applied = true);
+        strideUpdate(dt);
+        armClamp();
+        waveUpdate(dt);
+        micUpdate(dt);
         reachUpdate(dt);
+        groundUpdate(dt, camera);
         faceUpdate(dt);
         if (camera) {
           lookUpdate(dt, camera);
@@ -1027,11 +1151,12 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       root.getWorldQuaternion(_rq);
       _bf.set(0, 0, 1).applyQuaternion(_rq).normalize();
       _to.normalize();
-      if (dist < LOOK_RANGE * root.getWorldScale(_lim).y && _to.dot(_bf) > -0.2) want = state === 'walk' || state === 'run' ? 0.35 : 1;
+      // Not at the camera on the move (the user, 10-17: the head swung round on its own as it turned).
+      if (dist < LOOK_RANGE * root.getWorldScale(_lim).y && _to.dot(_bf) > -0.2) want = state === 'walk' || state === 'run' ? (L.target ? 0.35 : 0) : 1;
       // Within reach: no more than LOOK_MAX from straight ahead, and not far up or down.
       const ang = _to.angleTo(_bf);
       if (ang > LOOK_MAX) _to.lerpVectors(_bf, _to, LOOK_MAX / ang).normalize();
-      _to.y = THREE.MathUtils.clamp(_to.y, -0.4, 0.45);
+      _to.y = THREE.MathUtils.clamp(_to.y, -0.4, L.target ? 0.45 : 0.25);
       _to.normalize();
       L.dir.lerp(_to, 1 - Math.exp(-dt * 6)).normalize();
     }
@@ -1048,6 +1173,165 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     L.head.quaternion.copy(_pq.invert().multiply(_hq));
   }
 
+  // Walking and running, each leg swings further from rest than the clip has it: a longer stride for short
+  // legs, so a Chog covers ground without its feet sliding (speedOf counts it).
+  // The body steadier: the jog leant the chest far forward and swung the big head side to side (the user,
+  // 10-17: they looked as if diving), so the spine to the head keep only part of the clip's motion.
+  function strideUpdate(dt) {
+    const blend = 1 - Math.exp(-dt * 8);
+    for (const L of legs) {
+      L.now += ((L.k[state] ?? 1) - L.now) * blend;
+      if (Math.abs(L.now - 1) < 0.01) continue;
+      L.d.copy(L.rest).invert().multiply(L.b.quaternion);
+      _qh.identity().slerp(L.d, L.now);
+      L.b.quaternion.copy(L.rest).multiply(_qh);
+    }
+  }
+  // The moves' weights: the current one up, the rest down, over FADE, scaled to add up to one.
+  function fadeUpdate(dt) {
+    let sum = 0;
+    for (const [a, w] of fades) {
+      const nw = a === current ? Math.min(1, w + dt / FADE) : Math.max(0, w - dt / FADE);
+      if (nw <= 0 && a !== current) {
+        a.stop();
+        fades.delete(a);
+        continue;
+      }
+      fades.set(a, nw);
+      sum += nw;
+    }
+    for (const [a, w] of fades) a.setEffectiveWeight(sum > 0 ? w / sum : 1);
+  }
+  // Upper arms brought down to ARM_LIFT_MAX over level, about their own level line, the forearm with them;
+  // then each forearm straightened to within ELBOW_MAX of its upper arm.
+  function armClamp() {
+    for (const L of lifts) {
+      L.up.updateWorldMatrix(true, true);
+      L.up.getWorldPosition(_sh);
+      L.fore.getWorldPosition(_el);
+      _cur.subVectors(_el, _sh).normalize();
+      if (_cur.y > Math.sin(ARM_LIFT_MAX)) {
+        _to.copy(_cur).setY(0);
+        if (_to.lengthSq() < 1e-4) _to.subVectors(_sh, root.getWorldPosition(_side)).setY(0);
+        _to.normalize().multiplyScalar(Math.cos(ARM_LIFT_MAX));
+        _to.y = Math.sin(ARM_LIFT_MAX);
+        swing(L.up, _cur, _to, 1);
+        L.up.getWorldPosition(_sh);
+        L.fore.getWorldPosition(_el);
+        _cur.subVectors(_el, _sh).normalize();
+      }
+      L.hand ??= L.fore.children.find((c) => c.isBone) ?? null;
+      if (!L.hand) continue;
+      L.hand.getWorldPosition(_wr);
+      _aim.subVectors(_wr, _el).normalize();
+      const bend = _aim.angleTo(_cur);
+      if (bend > ELBOW_MAX) swing(L.fore, _aim, _to.copy(_cur).lerp(_aim, ELBOW_MAX / bend).normalize(), 1);
+    }
+  }
+  // The wave, with a Chog's short arms: the right arm out to the side and up, nearly straight, swinging from
+  // the shoulder, the hand rocking at the wrist (over whatever the clip's body does).
+  function waveUpdate(dt) {
+    const A = arm;
+    if (!A) return;
+    A.ww = (A.ww ?? 0) + ((state === 'wave' ? 1 : 0) - (A.ww ?? 0)) * (1 - Math.exp(-dt * 7));
+    if (A.ww < 0.01) {
+      A.wt = 0;
+      return;
+    }
+    A.wt += dt;
+    const w = THREE.MathUtils.smoothstep(A.ww, 0, 1);
+    const ph = A.wt * WAVE.hz * Math.PI * 2;
+    A.up.updateWorldMatrix(true, true);
+    A.up.getWorldPosition(_sh);
+    root.getWorldQuaternion(_rq);
+    _bf.set(0, 0, 1).applyQuaternion(_rq).setY(0).normalize();
+    root.getWorldPosition(_side);
+    _side.subVectors(_sh, _side).setY(0).normalize();
+    const lift = WAVE.lift + WAVE.swing * Math.sin(ph);
+    _to.copy(_side).multiplyScalar(Math.cos(WAVE.forward)).addScaledVector(_bf, Math.sin(WAVE.forward)).normalize().multiplyScalar(Math.cos(lift));
+    _to.y = Math.sin(lift);
+    A.fore.getWorldPosition(_el);
+    swing(A.up, _cur.subVectors(_el, _sh).normalize(), _to, w);
+    A.fore.getWorldPosition(_el);
+    A.hand.getWorldPosition(_wr);
+    _aim.copy(_to);
+    _aim.y += 0.25;
+    swing(A.fore, _cur.subVectors(_wr, _el).normalize(), _aim.normalize(), w);
+    // The hand rocks about the way it faces (forward), a beat behind the arm.
+    _qh.setFromAxisAngle(_bf, -WAVE.rock * Math.sin(ph - 0.9) * w);
+    A.hand.getWorldQuaternion(_qt).premultiply(_qh);
+    A.hand.parent.getWorldQuaternion(_pq);
+    A.hand.quaternion.copy(_pq.invert().multiply(_qt));
+    A.hand.updateWorldMatrix(false, true);
+  }
+  // Singing with a mic (the singer, 10-17): the right hand brings it to the mouth, its head just in front of
+  // the lips and its handle down and out, the arm bent below (two bones, the elbow down and out to the side).
+  function micUpdate(dt) {
+    const A = arm;
+    if (!A?.held || !A.mouth || !gaze) return;
+    A.mw += ((state === 'sing' ? 1 : 0) - A.mw) * (1 - Math.exp(-dt * 6));
+    if (A.mw < 0.01) return;
+    const w = THREE.MathUtils.smoothstep(A.mw, 0, 1);
+    const s = root.getWorldScale(_lim).y;
+    A.up.updateWorldMatrix(true, true);
+    gaze.head.updateWorldMatrix(true, false);
+    _mo.copy(A.mouth).applyMatrix4(gaze.head.matrixWorld);
+    root.getWorldQuaternion(_rq);
+    _bf.set(0, 0, 1).applyQuaternion(_rq).setY(0).normalize();
+    // Where its head goes: just in front of the lips. Its grip: below that, so the mic stands up a little
+    // forward of upright, but no further than the arm reaches (a Chog's arms are short and its face far
+    // forward of its shoulders: then the mic leans out from under the chin to the lips).
+    _gl.copy(_mo).addScaledVector(_bf, MIC_GAP * s);
+    _gl.y -= 0.02 * s;
+    A.up.getWorldPosition(_sh);
+    A.fore.getWorldPosition(_el);
+    A.hand.getWorldPosition(_wr);
+    A.held.getWorldPosition(_e2);
+    const a = _sh.distanceTo(_el), b = _el.distanceTo(_wr), grip = _wr.distanceTo(_e2);
+    _ax.set(0, 0.85, 0).addScaledVector(_bf, 0.5).normalize();
+    _tg.copy(_gl).addScaledVector(_ax, -MIC_HEAD * s);
+    _aim.subVectors(_tg, _sh);
+    const reach = (a + b + grip) * 0.97;
+    if (_aim.length() > reach) _tg.copy(_sh).addScaledVector(_aim.normalize(), reach);
+    _ax.subVectors(_gl, _tg).normalize();
+    // The hand's turn that points the mic that way, and where the wrist goes for its grip to land there.
+    A.held.getWorldQuaternion(_qh);
+    _cur.set(0, 1, 0).applyQuaternion(_qh);
+    _dq.setFromUnitVectors(_cur, _ax);
+    _off.subVectors(_e2, _wr).applyQuaternion(_dq);
+    _tg.sub(_off);
+    A.hand.getWorldQuaternion(_qt).premultiply(_dq);
+    // Two bones to reach it.
+    _aim.subVectors(_tg, _sh);
+    const d = THREE.MathUtils.clamp(_aim.length(), Math.abs(a - b) + 1e-4, (a + b) * 0.999);
+    _aim.normalize();
+    const cosA = THREE.MathUtils.clamp((a * a + d * d - b * b) / (2 * a * d), -1, 1);
+    root.getWorldPosition(_side);
+    _side.subVectors(_sh, _side).setY(0).normalize();
+    _pole.set(0, -1, 0).addScaledVector(_side, 0.8).addScaledVector(_bf, -0.15);
+    _pole.addScaledVector(_aim, -_pole.dot(_aim)).normalize();
+    _e2.copy(_sh).addScaledVector(_aim, a * cosA).addScaledVector(_pole, a * Math.sqrt(1 - cosA * cosA));
+    swing(A.up, _cur.subVectors(_el, _sh).normalize(), _to.subVectors(_e2, _sh).normalize(), w);
+    A.fore.getWorldPosition(_el);
+    A.hand.getWorldPosition(_wr);
+    swing(A.fore, _cur.subVectors(_wr, _el).normalize(), _to.subVectors(_tg, _el).normalize(), w);
+    A.hand.getWorldQuaternion(_qh).slerp(_qt, w);
+    A.hand.parent.getWorldQuaternion(_pq);
+    A.hand.quaternion.copy(_pq.invert().multiply(_qh));
+    A.hand.updateWorldMatrix(false, true);
+  }
+  // Its feet out of the ground: a clip that drops the hips further than the legs bend would sink the soles,
+  // so the whole model rises by that much (never lowered: a jump stays a jump).
+  function groundUpdate(dt, camera) {
+    if (!soles.length || !skin) return;
+    root.getWorldPosition(centre);
+    if (camera && centre.distanceTo(camera.position) > 80) return;
+    model.updateMatrixWorld(true);
+    let lo = Infinity;
+    for (const i of soles) lo = Math.min(lo, skin.getVertexPosition(i, _tg).applyMatrix4(skin.matrixWorld).y);
+    const raw = (lo - centre.y) / root.getWorldScale(_lim).y - model.position.y;
+    model.position.y += (Math.max(0, -raw) - model.position.y) * Math.min(1, dt * 20);
+  }
   // Over the clip's pose: the upper arm out toward the target (the elbow a little out and down), the forearm
   // at it, and what the hand holds pointed at it (a mic's head). The clips set these bones every frame, so
   // nothing needs undoing.
@@ -1070,7 +1354,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     A.up.updateWorldMatrix(true, true);
     A.up.getWorldPosition(_sh);
     if (want) {
-      if (A.target.isObject3D) {
+      if (A.target.isCamera) A.target.getWorldPosition(A.at);
+      else if (A.target.isObject3D) {
         A.target.getWorldPosition(A.at);
         A.at.y += CHOG_HEIGHT * 0.7 * A.target.getWorldScale(_lim).y;
       } else A.at.copy(A.target);
@@ -1100,6 +1385,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     }
   }
 
+  // For the model tools (tools/models/pose.html): its arm, mouth and soles.
+  if (import.meta.env?.DEV) chog.debug = () => ({ arm, soles, skin, model, gaze });
   chog.play('idle');
   mixer?.update(0);
   gait?.update(0, 'idle');

@@ -255,6 +255,24 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   props.build(scene, { shadows: true, chunk: 64 });
   const lowMeshes = low.build(scene, { shadows: false, chunk: 40 });
   const bloomMeshes = bloom.build(scene, { shadows: false, chunk: 70 });
+  // What a walking Chog goes round (src/travel.js; A, the user 10-17: Chogs walked through flowers and
+  // things): each tree by its trunk, rocks, bushes and the taller flowers by their footprint. Grass and low
+  // plants it walks through.
+  const obstacles = [];
+  const reach = (box) => Math.max(...[box.min.x, box.max.x].flatMap((bx) => [box.min.z, box.max.z].map((bz) => Math.hypot(bx, bz))));
+  for (const t of forest.trees) {
+    const s = t.m.getMaxScaleOnAxis();
+    obstacles.push({ x: t.x, y: t.m.elements[13], z: t.z, r: THREE.MathUtils.clamp(reach(info(t.name).box) * 0.16, 0.35, 1.1) * s });
+  }
+  for (const [set, tallest, share] of [[props, 0.55, 0.7], [low, 1.0, 0.45], [bloom, 0.85, 0.4]]) {
+    for (const [name, all] of set.items) {
+      const c = info(name);
+      for (const m of all) {
+        const s = m.getMaxScaleOnAxis();
+        if (c.height * s >= tallest) obstacles.push({ x: m.elements[12], y: m.elements[13], z: m.elements[14], r: c.radius * s * share });
+      }
+    }
+  }
   terrain.shade(shadeSpots);
 
   // Small plants only draw near the camera.
@@ -300,6 +318,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   }
 
   return {
+    obstacles,
     domes,
     solids,
     bridges: bridges.paths,

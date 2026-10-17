@@ -1,0 +1,67 @@
+<!doctype html><meta charset="utf-8"><title>Poses</title>
+<style>body{margin:0;background:#2a2633}canvas{display:block}</style>
+<script type="module">
+// Cast models as the world draws them (src/chog.js, its face and overlays), in a move at a few moments, from
+// a few sides. Rows: models x views; columns: moments. Run under vite:
+// /tools/models/pose.html?m=plain,chog-132&move=wave&t=0.3,0.6,0.9&v=front,threeq,side&size=220&zoom=1&focus=0.5
+// reach=1 holds the right hand out toward the camera's side.
+import * as THREE from 'three';
+import { makeChog, setChogRenderer, CHOG_HEIGHT } from '/src/chog.js';
+const q = new URLSearchParams(location.search);
+const models = (q.get('m') || 'plain').split(',');
+const move = q.get('move') || 'idle';
+const ts = (q.get('t') || '0.2,0.6,1.0,1.4').split(',').map(Number);
+const views = (q.get('v') || 'front').split(',');
+const S = +(q.get('size') || 220), zoom = +(q.get('zoom') || 1), focus = +(q.get('focus') ?? 0.5);
+const rows = models.length * views.length;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(S * ts.length, S * rows);
+renderer.setScissorTest(true);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.append(renderer.domElement);
+setChogRenderer(renderer);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#d9d4e4');
+scene.add(new THREE.HemisphereLight('#ffffff', '#8a80a0', 2.0));
+const sun = new THREE.DirectionalLight('#fff4e0', 2.2);
+sun.position.set(3, 6, 4);
+scene.add(sun);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(3, 48), new THREE.MeshLambertMaterial({ color: '#bdb3cf' }));
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+const cam = new THREE.PerspectiveCamera(30, 1, 0.05, 60);
+const chogs = [];
+for (const m of models) {
+  const c = await makeChog({ model: `models/npcs/${m}.glb` });
+  chogs.push(c);
+}
+await new Promise((r) => setTimeout(r, 1500));
+const H = CHOG_HEIGHT;
+for (let mi = 0; mi < models.length; mi++) {
+  const c = chogs[mi];
+  scene.add(c.root);
+  for (let ti = 0; ti < ts.length; ti++) {
+    // Each moment from the start of the move: idle a moment first, then the move.
+    c.play('idle');
+    for (let k = 0; k < 30; k++) c.update(1 / 30, null);
+    c.play(move);
+    if (q.get('reach')) c.reach(new THREE.Vector3(-3, H * 0.6, 5), 99);
+    const steps = Math.round(ts[ti] * 60);
+    for (let k = 0; k < steps; k++) c.update(1 / 60, null);
+    c.root.updateMatrixWorld(true);
+    for (let vi = 0; vi < views.length; vi++) {
+      const a = { front: 0, threeq: Math.PI / 4, side: Math.PI / 2, back: Math.PI, lthreeq: -Math.PI / 4, lside: -Math.PI / 2, lback: -Math.PI * 0.75, rback: Math.PI * 0.75 }[views[vi]] ?? +views[vi];
+      const look = new THREE.Vector3(0, H * focus, 0);
+      cam.position.set(Math.sin(a), 0.25, Math.cos(a)).normalize().multiplyScalar((H * 2.3) / zoom).add(look);
+      cam.lookAt(look);
+      const r = mi * views.length + vi;
+      const x = ti * S, y = (rows - 1 - r) * S;
+      renderer.setViewport(x, y, S, S);
+      renderer.setScissor(x, y, S, S);
+      renderer.render(scene, cam);
+    }
+  }
+  scene.remove(c.root);
+}
+window.__done = true;
+</script>
