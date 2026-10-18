@@ -9,10 +9,26 @@ Tasks:
          flame orange or skin, the classes smoothed, and painted in the shirt's own clean colours from its front,
          keeping a little of the shading.
   cords  Toasty's hat cords (see cords()); writes joints.f32, weights.f32 and index.u32 for patch.mjs.
-  head   every head held by its head bone more firmly (the user, 10-17: "any head movements literally deforms
-         their lower face"): the Head weight w becomes smoothstep(0.12, 0.5, w), the rest shared among the
-         other bones as before, so the blend into the neck moves down under the chin. Continuous in w, so no
-         seam opens.
+  head   every head held wholly by its head bone down to where it meets the body (the user, 10-17: "any head
+         movements literally deforms their lower face"; 10-18, King Pom: "his mouth is also still deformed").
+         Tripo's weights let the head go soft from the eyes down, with a dip around the mouth, so a turn or
+         a nod bent the mouth. Around the neck, in 16 slices, the head's lowest reach (where it holds at least
+         half; in front, no higher than the chin on its face sheet) is found; above it the head holds every
+         vertex it already had a share of, blended over
+         the 10 cm under that line (out of sight under the chin and the collar); below it, the head's share
+         fades out over 25 cm, so a turn moves the neck, not the chest. Vertices the head had no share of
+         (collars, shoulders) are left alone.
+  robe   King Pom's cloak held by his hips, not his thighs (the user, 10-18: "his legs also keeps passing
+         through the hem of his cloak"): the thighs swung each half of it with them, so the back split down
+         the middle and the hem flapped. The hem still sways with the knees a little, the front panels most.
+  shoulders  each arm's share pushed to all or nothing (King Pom: Tripo left his sleeves only 0.7 to 0.97 his
+         arms' and the cloak's sides up to 0.3, so with his arms down the sleeves were drawn out into
+         streaks and the cloak pulled, "the red coloring on the hand of that cloak is also scuffed"):
+         smoothstep(0.3, 0.75) of it, the hand-over a narrow band at the cape's edge.
+  sleeves  where the body hands over to each arm (after shoulders), the fur's brush strokes painted into clean
+         shapes: red sleeve or white fur, no thin streaks of one in the other to be drawn out long when the
+         arm comes down. With <out dir>/stretch.bin (tools/models/stretchmoves.html, measured on the model
+         built with these weights), where it stretches all the arm holds more than a little of is sleeve red.
   sides  the body's sides below each armpit held by the body, not the arm (the user, 10-17: "when waving the
          characters still have their sides sunk": Tripo's weights let a raised arm drag the side in). The arm's
          share fades out of a vertex the further inboard of the shoulder joint and the further under it it is.
@@ -241,16 +257,78 @@ def reweigh(m, joints, weights, vs, give):
         weights[vs, k] = give[names[k]] if k < len(names) else 0
 
 
+def smooth01(t):
+    t = np.clip(t, 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+def head_reach(m, hw, thr=0.5, k=16):
+    """The head's lowest reach around the neck: per slice of angle about the head bone's upright, the 1st
+    percentile height of vertices it holds at least thr of (arms aside); interpolated for every vertex."""
+    hp = m.joint_pos('Head')
+    x, y, z = m.pos.T
+    arm = m.bone_weight([b for b in m.bones if 'Arm' in b or 'Hand' in b])
+    ang = np.arctan2(x - hp[0], z - hp[2])
+    pos = (ang + np.pi) / (2 * np.pi) * k - 0.5
+    sec = np.floor(pos + 0.5).astype(int) % k
+    b = np.full(k, np.nan)
+    for i in range(k):
+        ys = y[(hw >= thr) & (arm < 0.3) & (sec == i)]
+        if len(ys) > 5:
+            b[i] = np.percentile(ys, 1)
+    if np.isnan(b).all():
+        return None
+    # Empty slices from their neighbours, then a light smoothing round the ring.
+    idx = np.arange(k)
+    good = ~np.isnan(b)
+    b = np.interp(idx, idx[good], b[good], period=k)
+    b = 0.25 * np.roll(b, 1) + 0.5 * b + 0.25 * np.roll(b, -1)
+    i0 = np.floor(pos).astype(int)
+    f = pos - i0
+    return b[i0 % k] * (1 - f) + b[(i0 + 1) % k] * f, b
+
+
+def faces_entry(m):
+    import json
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'public', 'faces', 'faces.json')
+    return json.load(open(path)).get(os.path.basename(os.path.normpath(m.d)))
+
+
 def head_firm(m, joints, weights):
     H = m.bones.index('Head')
     w = weights.copy()
     hw = np.where(joints == H, w, 0).sum(1)
-    t = np.clip((hw - 0.12) / (0.5 - 0.12), 0, 1)
-    nw = t * t * (3 - 2 * t)
+    reach, ring = head_reach(m, hw)
+    y = m.pos[:, 1]
+    # Tripo's weights go soft over the lower face but spill onto a chest or a collar too, so the line is
+    # where the head holds at least half; in front it goes no higher than the chin (a fifth of the way up the
+    # face on its face sheet), so the whole face is the head's.
+    face = faces_entry(m)
+    if face is not None:
+        M = np.array(face['matrix']).reshape(4, 4).T
+        chin = (np.linalg.inv(M) @ np.array([0.5, 0.22, 0, 1]))[1]
+        hp = m.joint_pos('Head')
+        front = smooth01((np.cos(np.arctan2(m.pos[:, 0] - hp[0], m.pos[:, 2] - hp[2])) - 0.3) / 0.4)
+        reach = reach + (np.minimum(reach, chin) - reach) * front
+        print(f'  head: chin at {chin:.2f}')
+    # 1 from 7 cm over the line, 0 from 3 cm under it; only where the head already had a share (from 0.02,
+    # all of it from 0.15), so a collar beside the neck stays with the body.
+    lift = smooth01((y - (reach - 0.03)) / 0.1) * smooth01((hw - 0.02) / 0.13)
+    # Under the line the head lets go over 25 cm, so a turn moves the neck and not the chest (Tripo spilled
+    # some head onto Cosmo's suit and Toasty's shirt).
+    base = hw * smooth01((y - (reach - 0.28)) / 0.25)
+    nw = base + (1 - base) * lift
+    print('  head: lowest reach round the neck ' + ' '.join(f'{v:.2f}' for v in ring))
     rest = 1 - hw
     for k in range(4):
         is_h = joints[:, k] == H
         weights[:, k] = np.where(is_h, nw, np.where(rest > 1e-6, w[:, k] / np.maximum(rest, 1e-6) * (1 - nw), 0))
+    # A vertex the head held wholly that it now lets go of a little: the rest to the neck.
+    alone = (rest <= 1e-6) & (nw < 0.999) & ('Neck' in m.bones)
+    for vi in np.nonzero(alone)[0]:
+        k = int(np.argmin(np.where(joints[vi] == H, 2, weights[vi])))
+        joints[vi, k] = m.bones.index('Neck')
+        weights[vi, k] = 1 - nw[vi]
     # A vertex the head held a little but had no slot for it: give it the smallest slot.
     lack = (nw > 1e-3) & ~(joints == H).any(1)
     if lack.any():
@@ -264,6 +342,144 @@ def head_firm(m, joints, weights):
             weights[rows[sel], j] = weights[rows[sel], j] / np.maximum(other[sel], 1e-6) * (1 - nw[lack][sel])
     weights /= np.maximum(weights.sum(1, keepdims=True), 1e-6)
     print(f'  head: {int(((nw > 0.999) & (hw < 0.999)).sum())} vertices now wholly the head\'s, {int(((nw > 0) & (nw < 0.999)).sum())} in the blend')
+
+
+def set_mix(joints, weights, vi, mix):
+    """Vertex vi held by the bones in mix ({bone index: weight}), its four biggest, adding up to one."""
+    top = sorted(((b, w) for b, w in mix.items() if w > 1e-6), key=lambda kv: -kv[1])[:4]
+    tot = sum(w for _, w in top) or 1
+    for kk in range(4):
+        joints[vi, kk], weights[vi, kk] = (top[kk][0], top[kk][1] / tot) if kk < len(top) else (0, 0)
+
+
+def robe(m, joints, weights, share=0.15):
+    x, y, z = m.pos.T
+    side = {s: [m.bones.index(b) for b in (f'Thigh{s}', f'Shin{s}', f'Foot{s}') if b in m.bones] for s in 'LR'}
+    allleg = side['L'] + side['R']
+    lw = np.where(np.isin(joints, allleg), weights, 0).sum(1)
+    # The legs themselves: within a thigh's girth of its upright.
+    dist = np.min([np.hypot(x - m.joint_pos(f'Thigh{s}')[0], z - m.joint_pos(f'Thigh{s}')[2]) for s in 'LR'], 0)
+    cloth = (lw > 1e-4) & (dist > 0.11)
+    # The knees' pull: most on the front panels, a little behind (so the back sways, never splits), most at
+    # the hem, none from 30 cm up; each side its own knee, blended across the middle.
+    a = share * (0.4 + 0.6 * smooth01((z + 0.1) / 0.35)) * (1 - smooth01((y - 0.02) / 0.28))
+    lx = m.joint_pos('ThighL')[0]
+    sl = smooth01((x * np.sign(lx) + 0.12) / 0.24)
+    tl, tr = m.bones.index('ThighL'), m.bones.index('ThighR')
+    hips = m.bones.index('Hips')
+    for vi in np.nonzero(cloth)[0]:
+        mix = {}
+        for kk in range(4):
+            j, wv = int(joints[vi, kk]), float(weights[vi, kk])
+            if j not in allleg:
+                mix[j] = mix.get(j, 0) + wv
+        rest = sum(mix.values())
+        mix = {j: wv / rest * (1 - a[vi]) for j, wv in mix.items()} if rest > 1e-6 else {hips: 1 - a[vi]}
+        mix[tl] = mix.get(tl, 0) + a[vi] * sl[vi]
+        mix[tr] = mix.get(tr, 0) + a[vi] * (1 - sl[vi])
+        set_mix(joints, weights, vi, mix)
+    print(f'  robe: {int(cloth.sum())} vertices of cloth now the hips\', {int((a[cloth] > 0.01).sum())} of them swaying with a knee a little')
+
+
+def sleeves(m, img, joints, weights, stretch=None):
+    """
+    stretch: per triangle, how far it stretches in the world's moves (tools/models/stretchmoves.html), if
+    measured: where the hand-over stretches past 1.3x, all the arm holds more than a little of is sleeve red.
+    """
+    n = img.shape[0]
+    h, s, v = hsv(img)
+    hue = h * 360
+    red = ((hue < 16) | (hue > 338)) & (s > 0.5) & (v > 0.3)
+    fur = (s < 0.42) & (v > 0.6)
+    L = lum(img)
+    total = 0
+    for side in 'LR':
+        arm = [m.bones.index(b) for b in (f'UpperArm{side}', f'ForeArm{side}', f'Hand{side}') if b in m.bones]
+        f = np.where(np.isin(joints, arm), weights, 0).sum(1)
+        band = (f > 0.03) & (f < 0.97)
+        keep = band[m.index].any(1)
+        mask = tri_mask(m, keep, n)
+        cls = np.zeros(img.shape[:2], np.uint8)
+        cls[mask & red] = 1
+        cls[mask & fur] = 2
+        # Anything else (shadow in a fold, a stray tint) joins the colour around it, if it's only a few
+        # texels in; bigger patches of other colours aren't the fur's and are left alone.
+        dist, (iy, ix) = ndimage.distance_transform_edt(cls == 0, return_indices=True)
+        other = mask & (cls == 0)
+        mask &= (cls > 0) | (dist <= 3)
+        other &= mask
+        cls[other] = cls[iy[other], ix[other]]
+        # Thin strokes go to the colour around them.
+        # (A share of the piece of skin itself, so the edges of a piece don't read as fur.)
+        soft = ndimage.gaussian_filter((cls == 1).astype(np.float32), 4.0) / np.maximum(ndimage.gaussian_filter(mask.astype(np.float32), 4.0), 1e-3)
+        clean = np.where(soft > 0.5, 1, 2).astype(np.uint8) * mask
+        if stretch is not None:
+            # Where it stretches, everything the arm holds more than a little of is sleeve red: the fur
+            # then ends along a line of the blend, which stays a smooth curve however the arm turns, and
+            # what is drawn out past it is one flat red, so nothing streaks.
+            tris = np.nonzero(keep & (stretch > 1.3))[0]
+            tid, fv = raster(m.uv * n, m.index[tris], values=f[:, None].astype(np.float32), size=n)
+            on = (tid >= 0) & mask & (fv[..., 0] >= 0.04)
+            clean[on] = 1
+        change = mask & (clean != cls)
+        new = img.copy()
+        for k in (1, 2):
+            src = mask & (cls == k) & (clean == k)
+            if not src.any():
+                continue
+            col = np.median(img[src], 0)
+            sel = change & (clean == k)
+            shade = np.clip(L[sel] / max(np.median(L[src]), 1e-3), 0.85, 1.1) ** 0.35
+            new[sel] = np.clip(col[None] * shade[:, None], 0, 1)
+        a = ndimage.gaussian_filter(change.astype(np.float32), 1.0)
+        a = np.clip(a * 1.6, 0, 1) * mask
+        img = img * (1 - a[..., None]) + new * a[..., None]
+        total += int(change.sum())
+        print(f'  sleeves: {side} {int(change.sum())} texels of {int(mask.sum())} in the hand-over repainted')
+    return img, total
+
+
+def welded(m):
+    """Neighbours across the mesh, seams closed: (vertex -> welded id, sparse adjacency over welded ids)."""
+    from scipy.sparse import coo_matrix
+    key = np.round(m.pos / 1e-5).astype(np.int64)
+    _, wid = np.unique(key, axis=0, return_inverse=True)
+    wid = wid.ravel()
+    t = wid[m.index]
+    r = np.concatenate([t[:, 0], t[:, 1], t[:, 2], t[:, 1], t[:, 2], t[:, 0]])
+    c = np.concatenate([t[:, 1], t[:, 2], t[:, 0], t[:, 0], t[:, 1], t[:, 2]])
+    n = wid.max() + 1
+    A = coo_matrix((np.ones(len(r)), (r, c)), shape=(n, n)).tocsr()
+    A.data[:] = 1
+    return wid, A
+
+
+def shoulders(m, joints, weights, lo=0.3, hi=0.75):
+    for s in 'LR':
+        arm = [m.bones.index(b) for b in (f'UpperArm{s}', f'ForeArm{s}', f'Hand{s}') if b in m.bones]
+        f = np.where(np.isin(joints, arm), weights, 0).sum(1)
+        # The arm's share pushed to all or nothing: the sleeve (Tripo left it 0.7 to 0.97 the arm's) wholly
+        # the arm's, the cloak's side under it (0.03 to 0.3) wholly the body's, the hand-over between.
+        g = smooth01((f - lo) / (hi - lo))
+        changed = np.nonzero(np.abs(g - f) > 1e-3)[0]
+        upper = m.bones.index(f'UpperArm{s}')
+        body = m.bones.index('Chest') if 'Chest' in m.bones else m.bones.index('Spine')
+        for vi in changed:
+            mix = {}
+            for kk in range(4):
+                j, wv = int(joints[vi, kk]), float(weights[vi, kk])
+                if wv <= 0:
+                    continue
+                if j in arm:
+                    mix[j] = mix.get(j, 0) + (wv * g[vi] / f[vi] if f[vi] > 1e-6 else 0)
+                else:
+                    mix[j] = mix.get(j, 0) + (wv * (1 - g[vi]) / (1 - f[vi]) if f[vi] < 1 - 1e-6 else 0)
+            if f[vi] <= 1e-6:
+                mix[upper] = mix.get(upper, 0) + g[vi]
+            if f[vi] >= 1 - 1e-6:
+                mix[body] = mix.get(body, 0) + 1 - g[vi]
+            set_mix(joints, weights, vi, mix)
+        print(f'  shoulders: {s} {len(changed)} vertices re-blended')
 
 
 def sides(m, joints, weights):
@@ -417,6 +633,16 @@ def main():
         elif t == 'hips':
             hips(m, joints, weights)
             skin_changed = True
+        elif t == 'robe':
+            robe(m, joints, weights)
+            skin_changed = True
+        elif t == 'shoulders':
+            shoulders(m, joints, weights)
+            skin_changed = True
+        elif t == 'sleeves':
+            sp = os.path.join(out_dir, 'stretch.bin')
+            img, c = sleeves(m, img, joints, weights, np.fromfile(sp, np.float32) if os.path.exists(sp) else None)
+            painted |= c > 0
         elif t == 'duck':
             img, c = duck_float(m, img, joints, weights)
             skin_changed = True
@@ -431,6 +657,8 @@ def main():
             img, c = blush(m, img, faces[name])
             painted |= c > 0
     if skin_changed:
+        weights = np.clip(weights, 0, 1)
+        weights /= np.maximum(weights.sum(1, keepdims=True), 1e-6)
         joints.astype(np.float32).tofile(os.path.join(out_dir, 'joints.f32'))
         weights.astype(np.float32).tofile(os.path.join(out_dir, 'weights.f32'))
     if painted:

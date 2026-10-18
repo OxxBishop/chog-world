@@ -1,0 +1,51 @@
+<!doctype html><meta charset="utf-8"><title>Stretch</title>
+<pre id="log"></pre>
+<script type="module">
+// How far each triangle of a model stretches in the world's moves (src/chog.js with its overlays): the
+// longest edge's length over its length at rest, the most over every pose asked for. Run under vite:
+// /tools/models/stretchmoves.html?m=chog-409&poses=idle:0.5,idle:1.5,run:0.6,run:0.8,walk:0.7
+// window.__out: base64 Float32Array, one value per triangle of the biggest skinned mesh (index order).
+import * as THREE from 'three';
+import { makeChog, setChogRenderer } from '/src/chog.js';
+const q = new URLSearchParams(location.search);
+const m = q.get('m') || 'plain';
+const poses = (q.get('poses') || 'idle:0.5,run:0.6,run:0.8').split(',').map((p) => p.split(':'));
+setChogRenderer(new THREE.WebGLRenderer());
+const c = await makeChog({ model: `models/npcs/${m}.glb` });
+await new Promise((r) => setTimeout(r, 300));
+const skin = c.debug().skin;
+const g = skin.geometry, pos = g.attributes.position, index = g.index.array, n = pos.count, nt = index.length / 3;
+const rest = new Float32Array(n * 3);
+for (let i = 0; i < n; i++) rest.set([pos.getX(i), pos.getY(i), pos.getZ(i)], i * 3);
+const worst = new Float32Array(nt);
+const now = new Float32Array(n * 3);
+const v = new THREE.Vector3();
+const len = (a, i, j) => Math.hypot(a[i * 3] - a[j * 3], a[i * 3 + 1] - a[j * 3 + 1], a[i * 3 + 2] - a[j * 3 + 2]);
+for (const [mv, t] of poses) {
+  c.play('idle');
+  for (let k = 0; k < 40; k++) c.update(1 / 60, null);
+  c.play(mv);
+  for (let k = 0; k < Math.round(+t * 60); k++) c.update(1 / 60, null);
+  c.debug().model.updateMatrixWorld(true);
+  skin.skeleton.update();
+  for (let i = 0; i < n; i++) {
+    skin.getVertexPosition(i, v);
+    now.set([v.x, v.y, v.z], i * 3);
+  }
+  for (let t3 = 0; t3 < nt; t3++) {
+    const a = index[t3 * 3], b = index[t3 * 3 + 1], d = index[t3 * 3 + 2];
+    let s = 0;
+    for (const [i, j] of [[a, b], [b, d], [d, a]]) {
+      const l0 = len(rest, i, j);
+      if (l0 > 1e-6) s = Math.max(s, len(now, i, j) / l0);
+    }
+    worst[t3] = Math.max(worst[t3], s);
+  }
+}
+const bytes = new Uint8Array(worst.buffer);
+let bin = '';
+for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+window.__out = btoa(bin);
+document.getElementById('log').textContent = `${m}: ${nt} triangles, ${worst.filter((s) => s > 1.5).length} stretched past 1.5x`;
+window.__done = true;
+</script>

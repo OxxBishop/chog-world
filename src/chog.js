@@ -378,18 +378,88 @@ export function clipSpeed(gltf, clipName) {
   return speed;
 }
 
+// Turn a bone so the world direction from points along to, by w (0 to 1).
+function swing(bone, from, to, w) {
+  _dq.setFromUnitVectors(from, to);
+  _iq.identity().slerp(_dq, w);
+  bone.getWorldQuaternion(_hq).premultiply(_iq);
+  bone.parent.getWorldQuaternion(_pq);
+  bone.quaternion.copy(_pq.invert().multiply(_hq));
+  bone.updateWorldMatrix(false, true);
+}
+
+// A model's legs as legLimit needs them: the hips' turn at rest (to measure in the body's frame), and each
+// leg's thigh and shin with the shin's turn at rest. Taken in the bind pose.
+function legRig(model) {
+  const hips = model.getObjectByName('Hips');
+  if (!hips) return null;
+  model.updateMatrixWorld(true);
+  const bind = model.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(hips.getWorldQuaternion(new THREE.Quaternion())).invert();
+  const legs = [];
+  for (const s of 'LR') {
+    const thigh = model.getObjectByName('Thigh' + s), shin = model.getObjectByName('Shin' + s);
+    if (thigh && shin) legs.push({ thigh, shin, rest: shin.quaternion.clone() });
+  }
+  return legs.length ? { hips, bind, legs } : null;
+}
+const softCap = (a, cap, soft) => (a <= cap - soft ? a : cap - soft + soft * Math.tanh((a - cap + soft) / soft));
+// Each thigh brought within LEG_LIMIT forward and back of straight down, and each knee within its bend, by w.
+function legLimit(rig, w) {
+  if (!rig || w < 0.01) return;
+  const D = THREE.MathUtils.DEG2RAD, soft = LEG_LIMIT.soft * D;
+  rig.hips.updateWorldMatrix(true, true);
+  const body = rig.hips.getWorldQuaternion(_lq).multiply(rig.bind);
+  const toBody = _lq2.copy(body).invert();
+  for (const L of rig.legs) {
+    L.thigh.getWorldPosition(_la);
+    L.shin.getWorldPosition(_lb);
+    const d = _lb.sub(_la).applyQuaternion(toBody);
+    const r = Math.hypot(d.y, d.z);
+    if (r > 1e-6) {
+      const a = Math.atan2(d.z, -d.y);
+      const lim = a >= 0 ? softCap(a, LEG_LIMIT.flex * D, soft) : -softCap(-a, LEG_LIMIT.ext * D, soft);
+      const to = a + (lim - a) * w;
+      if (Math.abs(to - a) > 1e-4) {
+        _lc.set(d.x, -r * Math.cos(to), r * Math.sin(to)).applyQuaternion(body).normalize();
+        swing(L.thigh, d.applyQuaternion(body).normalize(), _lc, 1);
+      }
+    }
+    _lq3.copy(L.rest).invert().multiply(L.shin.quaternion);
+    if (_lq3.w < 0) _lq3.set(-_lq3.x, -_lq3.y, -_lq3.z, -_lq3.w);
+    const k = 2 * Math.acos(Math.min(1, _lq3.w));
+    const kl = softCap(k, LEG_LIMIT.knee * D, soft);
+    if (k > 1e-4 && kl < k - 1e-4) {
+      _lq4.identity().slerp(_lq3, 1 - w + (w * kl) / k);
+      L.shin.quaternion.copy(L.rest).multiply(_lq4);
+      L.shin.updateWorldMatrix(false, true);
+    }
+  }
+}
+// The thighs and shins swung k times as far from rest as the clip has them (a longer stride, STRIDE).
+function strideLegs(bones, k) {
+  for (const L of bones) {
+    _lq3.copy(L.rest).invert().multiply(L.b.quaternion);
+    _lq4.identity().slerp(_lq3, k);
+    L.b.quaternion.copy(L.rest).multiply(_lq4);
+  }
+}
+
 /*
  * The same for the picked cartoon clips, whose feet roll heel to toe instead of sitting flat (so "the
  * lowest third of the swing" misses most of each step): each foot's backward sweep under the body, over the
  * time it spends sweeping back. Both feet averaged. Measured once per file and clip.
  */
-export function sweepSpeed(gltf, clipName) {
+export function sweepSpeed(gltf, clipName, stride = 1) {
   gltf.userData.sweeps ??= {};
-  if (clipName in gltf.userData.sweeps) return gltf.userData.sweeps[clipName];
+  const key = `${clipName}@${stride}`;
+  if (key in gltf.userData.sweeps) return gltf.userData.sweeps[key];
   const clip = THREE.AnimationClip.findByName(gltf.animations, clipName);
   let speed = 0;
   if (clip) {
     const rig = cloneSkinned(gltf.scene);
+    // As the world plays it: the longer stride, then the legs kept clear of the body (legLimit).
+    const legs = legRig(rig);
+    const strided = ['ThighL', 'ShinL', 'ThighR', 'ShinR'].map((n) => rig.getObjectByName(n)).filter(Boolean).map((b) => ({ b, rest: b.quaternion.clone() }));
     const mixer = new THREE.AnimationMixer(rig);
     mixer.clipAction(clip).play();
     const feet = ['FootL', 'FootR'].map((n) => rig.getObjectByName(n)).filter(Boolean);
@@ -401,6 +471,8 @@ export function sweepSpeed(gltf, clipName) {
       let back = 0, n = 0, prev = null;
       for (let i = 0; i <= N; i++) {
         mixer.setTime(i * dt);
+        if (stride !== 1) strideLegs(strided, stride);
+        legLimit(legs, 1);
         rig.updateMatrixWorld(true);
         const z = foot.getWorldPosition(p).z;
         if (prev !== null && z < prev) (back += prev - z), n++;
@@ -410,7 +482,7 @@ export function sweepSpeed(gltf, clipName) {
     }
     if (speeds.length) speed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
   }
-  gltf.userData.sweeps[clipName] = speed;
+  gltf.userData.sweeps[key] = speed;
   return speed;
 }
 
@@ -428,6 +500,17 @@ const ELBOW_MAX = THREE.MathUtils.degToRad(28);
 const STRIDE = { walk: 1.35, run: 1.3 };
 // How much of the clip's body motion (spine to head) is kept, walking and running.
 const TORSO = { walk: 0.6, run: 0.4 };
+// How far a leg swings from straight down in the body's own frame while walking or running (degrees): the
+// thigh forward (flex) and back (ext), the knee's bend. A Chog's thighs are short stubs under a round body:
+// the clip with its longer stride lifted them up to 105 degrees, into the belly, and kicked the heels up into
+// the seat (the user, 10-18: "why does their leg enter their body when in a running animation"). Each is
+// eased into over its last SOFT degrees, so a step never stops dead.
+const _lp = new URLSearchParams(globalThis.location?.search ?? '');
+const LEG_LIMIT = { flex: +(_lp.get('flex') ?? 48), ext: +(_lp.get('ext') ?? 38), knee: +(_lp.get('knee') ?? 75), soft: 14 };
+// Upper arms hang no lower than this under level (degrees), for a model whose body is wider at the hands
+// than at the shoulders: King Pom's cloak flares out, and a hand dropped to his side went into it (the user,
+// 10-18: "king pom's hand looks deformed").
+const ARM_DROP_MAX = { 'chog-409': +(_lp.get('drop') ?? 40) };
 // The wave (waveUpdate): the right arm out and up from the shoulder, swinging, the hand rocking.
 const WAVE = { lift: 0.5, swing: 0.16, forward: 0.45, hz: 1.7, rock: 0.5, fore: 0.4 };
 // Moves melt into each other over this long, their weights always adding up to one: a sum under one blends
@@ -481,6 +564,13 @@ const _tg = new THREE.Vector3();
 const _e2 = new THREE.Vector3();
 const _pole = new THREE.Vector3();
 const _qh = new THREE.Quaternion();
+const _lq = new THREE.Quaternion();
+const _lq2 = new THREE.Quaternion();
+const _lq3 = new THREE.Quaternion();
+const _lq4 = new THREE.Quaternion();
+const _la = new THREE.Vector3();
+const _lb = new THREE.Vector3();
+const _lc = new THREE.Vector3();
 const _qt = new THREE.Quaternion();
 
 // A model has fewer moves than a standee: these borrow the nearest it has.
@@ -764,8 +854,12 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   let gaze = null;
   // The right arm, for holding the hand (and what it holds) out toward something.
   let arm = null;
-  // Both upper arms, kept from lifting too high (ARM_LIFT_MAX).
+  // Both upper arms, kept from lifting too high (ARM_LIFT_MAX) or, for some, dropping too low (ARM_DROP_MAX).
   let lifts = [];
+  let armDrop = null;
+  // The legs kept clear of the body while walking or running (legLimit), and how much right now.
+  let legRigNow = null;
+  let legW = 0;
   // Thighs and shins, spine to head, with their rest turns and how far each swings from it right now
   // (STRIDE, TORSO).
   const legs = [];
@@ -854,6 +948,9 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       const up = model.getObjectByName('UpperArmR'), fore = model.getObjectByName('ForeArmR'), hand = model.getObjectByName('HandR');
       if (up && fore && hand) arm = { up, fore, hand, held: hand.getObjectByName('Mic'), at: new THREE.Vector3(), target: null, left: 0, w: 0, mouth: null, mw: 0, ww: 0, wt: 0 };
       lifts = ['L', 'R'].map((s) => ({ up: model.getObjectByName(`UpperArm${s}`), fore: model.getObjectByName(`ForeArm${s}`) })).filter((l) => l.up && l.fore);
+      const drop = ARM_DROP_MAX[base.match(/([\w-]+)\.glb$/)?.[1]];
+      armDrop = drop ? THREE.MathUtils.degToRad(drop) : null;
+      legRigNow = legRig(model);
       gltf.userData.soles ??= soleVertices(gltf);
       soles = gltf.userData.soles;
       model.traverse((o) => o.isSkinnedMesh && (!skin || o.geometry.attributes.position.count > skin.geometry.attributes.position.count) && (skin = o));
@@ -975,7 +1072,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     speedOf(move) {
       const name = clipOf[move];
       if (!gltfRef || !name) return 0;
-      if (CLIP_RATE[name]) return sweepSpeed(gltfRef, name) * CLIP_RATE[name] * (STRIDE[move] ?? 1);
+      if (CLIP_RATE[name]) return sweepSpeed(gltfRef, name, STRIDE[move] ?? 1) * CLIP_RATE[name];
       const v = clipSpeed(gltfRef, name);
       if (!v) return 0;
       const [lo, hi] = move === 'run' ? [1.4, 3] : [0.5, 1.2];
@@ -1197,6 +1294,9 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       _qh.identity().slerp(L.d, L.now);
       L.b.quaternion.copy(L.rest).multiply(_qh);
     }
+    // The picked walk and jog only (a model's own clips were made for its own body).
+    legW += ((CLIP_RATE[clipOf[state]] ? 1 : 0) - legW) * blend;
+    legLimit(legRigNow, legW);
   }
   // The moves' weights: the current one up, the rest down, over FADE, scaled to add up to one.
   function fadeUpdate(dt) {
@@ -1221,11 +1321,13 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       L.up.getWorldPosition(_sh);
       L.fore.getWorldPosition(_el);
       _cur.subVectors(_el, _sh).normalize();
-      if (_cur.y > Math.sin(ARM_LIFT_MAX)) {
+      const over = _cur.y > Math.sin(ARM_LIFT_MAX), under = armDrop !== null && _cur.y < -Math.sin(armDrop);
+      if (over || under) {
+        const a = over ? ARM_LIFT_MAX : -armDrop;
         _to.copy(_cur).setY(0);
         if (_to.lengthSq() < 1e-4) _to.subVectors(_sh, root.getWorldPosition(_side)).setY(0);
-        _to.normalize().multiplyScalar(Math.cos(ARM_LIFT_MAX));
-        _to.y = Math.sin(ARM_LIFT_MAX);
+        _to.normalize().multiplyScalar(Math.cos(a));
+        _to.y = Math.sin(a);
         swing(L.up, _cur, _to, 1);
         L.up.getWorldPosition(_sh);
         L.fore.getWorldPosition(_el);
@@ -1352,14 +1454,6 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   // Over the clip's pose: the upper arm out toward the target (the elbow a little out and down), the forearm
   // at it, and what the hand holds pointed at it (a mic's head). The clips set these bones every frame, so
   // nothing needs undoing.
-  function swing(bone, from, to, w) {
-    _dq.setFromUnitVectors(from, to);
-    _iq.identity().slerp(_dq, w);
-    bone.getWorldQuaternion(_hq).premultiply(_iq);
-    bone.parent.getWorldQuaternion(_pq);
-    bone.quaternion.copy(_pq.invert().multiply(_hq));
-    bone.updateWorldMatrix(false, true);
-  }
   function reachUpdate(dt) {
     const A = arm;
     if (!A) return;

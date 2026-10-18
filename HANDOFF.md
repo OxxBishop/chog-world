@@ -27,6 +27,29 @@ are real but free.
 
 ## Log
 
+### 2026-10-18 · A · The user's third look: legs inside the body when running, King Pom's mouth, hands and cloak
+- **Legs** (the user: "why does their leg enter their body when in a running animation? you can quite literally
+  see it for all the characters"): the jog with its longer stride swung a thigh up to 105 degrees from straight
+  down (73 walking), deep into the belly, and kicked the heels up into the seat. Walking and running, each thigh
+  now stays within 48 degrees forward and 38 back of straight down in the body's own frame, each knee within 75
+  degrees, eased in over the last 14 (`LEG_LIMIT`, `legLimit()` in src/chog.js; the picked walk and jog only).
+  The feet's pace is measured with the limit on (`sweepSpeed(gltf, clip, stride)`), and the steps may quicken
+  a little more to keep up (`STEP_MAX` 1.55 in travel.js). Probe: `tools/models/legprobe.html`.
+- **Every face** (King Pom: "his mouth is also still deformed"): Tripo's head weights go soft from the eyes down,
+  with a dip round the mouth, so any nod or turn bent it. `cleanup.py head` now holds each head wholly down to
+  where it meets the body (found round the neck in 16 slices, no higher than the chin on the face sheet), with
+  the head's share fading out under that line so a turn moves the neck and not the chest. All 11 rebuilt.
+- **King Pom's cloak** ("his legs also keeps passing through the hem"): it was skinned to the thighs, so the back
+  split down the middle and the hem flapped. Now held by the hips, the hem swaying with the knees a little,
+  each side blended across the middle (`robe`).
+- **King Pom's hands and sleeves** ("king pom's hand looks deformed", "the red coloring on the hand of that cloak
+  is also scuffed"): with his arms at his sides his hands went into his flared cloak, so his upper arms hang no
+  lower than 40 degrees under level (`ARM_DROP_MAX`). His sleeves were only 0.7 to 0.97 his arms' (the cloak's
+  sides up to 0.3), so they were drawn out into streaks: now all or nothing (`shoulders`), and where the hand-over
+  still stretches it is painted plain sleeve red (`sleeves`, from `tools/models/stretchmoves.html`).
+- Picker portraits rendered again with the new skins. Checked: walk 1.9 and run 4.2 m/s, the stick, soles 1.4 cm
+  over paving and grass, bubbles, no T-poses, no errors, phone and laptop.
+
 ### 2026-10-18 · A · The user's second test run: faces on turning, Patrol, Toasty, Quackers, bubbles, the picker
 - **Faces when a head turns** (the user: "any head movements literally deforms their lower face", King Pom's
   face): every cast model's head is held more firmly by its head bone (`cleanup.py head`: the Head weight w

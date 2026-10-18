@@ -1,0 +1,58 @@
+<!doctype html><meta charset="utf-8"><title>Leg probe</title>
+<pre id="log"></pre>
+<script type="module">
+// Joint angles through a move, as the world plays it (src/chog.js with its overlays), in the body's frame:
+// thigh flexion (forward +), knee bend, upper-arm drop below level, wrist bend; and how fast each walks and
+// runs (speedOf, metres a second at scale 1). Run under vite (src/chog.js's ?flex= ?ext= ?knee= apply):
+// /tools/models/legprobe.html?m=plain,chog-409&move=run,walk
+import * as THREE from 'three';
+import { makeChog, setChogRenderer } from '/src/chog.js';
+const q = new URLSearchParams(location.search);
+const models = (q.get('m') || 'plain').split(',');
+const moves = (q.get('move') || 'run').split(',');
+setChogRenderer(new THREE.WebGLRenderer());
+const D = THREE.MathUtils.radToDeg;
+const out = {};
+const P = (o) => o.getWorldPosition(new THREE.Vector3());
+for (const m of models) {
+  const c = await makeChog({ model: `models/npcs/${m}.glb` });
+  await new Promise((r) => setTimeout(r, 300));
+  const M = c.debug().model;
+  const B = (n) => M.getObjectByName(n);
+  M.updateMatrixWorld(true);
+  const hips = B('Hips');
+  const hipsBind = hips.getWorldQuaternion(new THREE.Quaternion());
+  const rest = {};
+  for (const s of 'LR') rest['Hand' + s] = B('Hand' + s)?.quaternion.clone();
+  for (const mv of moves) {
+    c.play('idle');
+    for (let k = 0; k < 40; k++) c.update(1 / 60, null);
+    c.play(mv);
+    for (let k = 0; k < 30; k++) c.update(1 / 60, null);
+    const r = { flex: [1e9, -1e9], knee: [1e9, -1e9], drop: [1e9, -1e9], wrist: [1e9, -1e9] };
+    const acc = (k, v) => ((r[k][0] = Math.min(r[k][0], v)), (r[k][1] = Math.max(r[k][1], v)));
+    for (let f = 0; f < 150; f++) {
+      c.update(1 / 60, null);
+      M.updateMatrixWorld(true);
+      const qh = hips.getWorldQuaternion(new THREE.Quaternion()).multiply(hipsBind.clone().invert()).invert();
+      for (const s of 'LR') {
+        const t = P(B('Thigh' + s)), sh = P(B('Shin' + s)), ft = P(B('Foot' + s));
+        const d1 = sh.clone().sub(t).applyQuaternion(qh).normalize(), d2 = ft.clone().sub(sh).applyQuaternion(qh).normalize();
+        acc('flex', D(Math.atan2(d1.z, -d1.y)));
+        acc('knee', D(d1.angleTo(d2)));
+        const ua = P(B('UpperArm' + s)), fa = P(B('ForeArm' + s));
+        const a = fa.clone().sub(ua).applyQuaternion(qh).normalize();
+        acc('drop', D(-Math.asin(a.y)));
+        const h = B('Hand' + s);
+        if (h) acc('wrist', D(rest['Hand' + s].clone().invert().multiply(h.quaternion).angleTo(new THREE.Quaternion())));
+      }
+    }
+    for (const k in r) r[k] = r[k].map((v) => Math.round(v));
+    out[`${m} ${mv}`] = JSON.stringify(r);
+  }
+  out[`${m} speeds`] = `walk ${c.speedOf('walk').toFixed(3)} run ${c.speedOf('run').toFixed(3)} pace ${c.paceFor('walk')} ${c.paceFor('run')}`;
+  c.dispose?.();
+}
+document.getElementById("log").textContent = JSON.stringify(out, null, 1);
+window.__done = true;
+</script>

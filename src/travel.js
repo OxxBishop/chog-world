@@ -47,10 +47,11 @@ const WALK = 1;
 const RUN = 1.6;
 // How fast you go (m/s; the user, 10-17: "walking speed is way too slow"): a Chog's own pace (its feet,
 // with the longer stride and quicker steps of src/chog.js) kept within these, so every Chog walks and runs
-// like it means it. Its steps speed up to match, up to STEP_MAX times their own rate.
+// like it means it. Its steps speed up to match, up to STEP_MAX times their own rate (quicker since 10-18,
+// when the legs were kept out of the body and their stride came out shorter).
 const WALK_BAND = [1.9, 2.6];
 const RUN_BAND = [4.2, 5.4];
-const STEP_MAX = 1.35;
+const STEP_MAX = 1.55;
 // The joystick: full walking speed at the ring's edge (its radius in px); running only once the thumb
 // is pulled on past it, and back to walking a little inside that (the user: a small drag ran).
 const STICK = 58;

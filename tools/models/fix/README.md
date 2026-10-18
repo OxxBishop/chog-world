@@ -64,6 +64,12 @@ Since 10-16 (A13, A14):
 - **10-18** (`cleanup.py`, same steps): `head sides hips` on every cast model, plus `duck` (chog-66) and
   `spill blush` (chog-56); `back` on chog-52 now lays the shirt and hem in straight bands. Run each from the
   shipped file of 10-17 (the tasks are not meant to be run twice on the same weights).
+- **10-18, later** (`cleanup.py`, from the shipped files of 10-17 again): `head sides hips` on every cast model
+  (`head` reworked: each head held wholly down to its neck), `duck` on chog-66 as before (chog-52 and chog-56
+  keep the colour maps painted earlier that day), and King Pom `head sides hips robe shoulders sleeves`.
+  `sleeves` reads `<out>/stretch.bin`: build once without it, open
+  `tools/models/stretchmoves.html?m=chog-409&poses=idle:0.5,run:0.6,...` under vite, save `window.__out`
+  (base64 Float32, one value per triangle) there, then build again.
 - **Picker portraits**: `tools/models/portraits.html` renders each Chog's loop (one clip length at 20 fps) as
   JPEG frames; pack them with Pillow into animated WebP (`save_all`, `duration=50`, `loop=0`, `quality=65`,
   `method=6`), 320 px, into `public/faces/portraits/<id>.webp`.
