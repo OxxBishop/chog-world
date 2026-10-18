@@ -326,16 +326,27 @@ function openSpot(hood, from, step = 0.35) {
 const NOTICE = 7.5;
 const NOTICE_AGAIN = 20;
 const CAST = {
-  1151: { name: 'Monty', face: 'excited', pace: 1.15, lines: ['Welcome to Chog Hub! The lobby is right behind me.', 'Hey! Fastest chain, friendliest door.', 'Good to see you. Purple suits this place, right?', 'Monad never sleeps, and neither do I.'] },
-  409: { name: 'King Pom', face: 'happy', pace: 0.85, lines: ['Ah, a visitor. You may approach.', 'Bow if you like. I am not fussy. I am a little fussy.', 'The plaza is mine, but you may borrow it.', 'Mind the crown. It is heavier than it looks.'] },
-  68: { name: 'Cosmo', face: 'curious', pace: 1, lines: ['New lifeform spotted. Friendly. Logging it.', 'Coordinates noted. You are right where you should be.', 'I mapped this island twice. You are my favourite landmark.', 'Hello from orbit. Well, from the walkway.'] },
-  124: { name: 'Snooze', face: 'sleepy', pace: 0.6, lines: ['Mmh? Oh, hi. Welcome...', 'Just resting my eyes. Nice to meet you.', 'You look lovely today. Sorry, I am so sleepy.'] },
-  132: { name: 'Peel', face: 'excited', pace: 1.35, lines: ['You are a-peeling already!', 'Let us go bananas!', 'This crowd is ripe for a party!', 'Careful, I hear it is a long slip from here.'] },
-  37: { name: 'Puff', face: 'happy', pace: 1.1, lines: ['This song gets me every time.', 'Oh, hi! Do not mind me, happy tears.', 'You came! Group hug later?'] },
-  56: { name: 'Patrol', face: 'happy', pace: 0.85, lines: ['Afternoon. Please enjoy the plaza responsibly.', 'All clear here. Have a lovely day.', 'Pardon me. Just keeping an eye out.'] },
-  66: { name: 'Quackers', face: 'excited', pace: 1.2, lines: ['Love the look. Mine is better, but love it.', 'Duck float? Iconic. Thanks for noticing.', 'Strike a pose with me. Quick!'] },
-  52: { name: 'Toasty', face: 'happy', pace: 1, lines: ['Did I ever tell you about the coldest night on these islands?', 'Brr. Sit down, I have a story for you.', 'You look warm. Stand a little closer, friend.'] },
+  1151: { name: 'Monty', face: 'excited', pace: 1.15, lines: ['Welcome to Chog Hub! The lobby is right behind me.', 'Hey! Fastest chain, friendliest door.', 'Good to see you. Purple suits this place, right?', 'Monad never sleeps, and neither do I.'], hi: ['Hey {n}! Come by the Hub later.', 'Good to see you, {n}!'] },
+  409: { name: 'King Pom', face: 'happy', pace: 0.85, lines: ['Ah, a visitor. You may approach.', 'Bow if you like. I am not fussy. I am a little fussy.', 'The plaza is mine, but you may borrow it.', 'Mind the crown. It is heavier than it looks.'], hi: ['Ah, {n}. Carry on.', 'Good day to you, {n}.'] },
+  68: { name: 'Cosmo', face: 'curious', pace: 1, lines: ['New lifeform spotted. Friendly. Logging it.', 'Coordinates noted. You are right where you should be.', 'I mapped this island twice. You are my favourite landmark.', 'Hello from orbit. Well, from the walkway.'], hi: ['{n}! Signal received.', 'Hey {n}, nice orbit.'] },
+  124: { name: 'Snooze', face: 'sleepy', pace: 0.6, lines: ['Mmh? Oh, hi. Welcome...', 'Just resting my eyes. Nice to meet you.', 'You look lovely today. Sorry, I am so sleepy.'], hi: ['Oh... hi, {n}...', 'Mmh. Hey, {n}.'] },
+  132: { name: 'Peel', face: 'excited', pace: 1.35, lines: ['You are a-peeling already!', 'Let us go bananas!', 'This crowd is ripe for a party!', 'Careful, I hear it is a long slip from here.'], hi: ['{n}! Looking a-peeling!', 'Hey hey, {n}!'] },
+  37: { name: 'Puff', face: 'happy', pace: 1.1, lines: ['This song gets me every time.', 'Oh, hi! Do not mind me, happy tears.', 'You came! Group hug later?'], hi: ['{n}! Hi hi!', 'Oh, {n}! Hug later?'] },
+  56: { name: 'Patrol', face: 'happy', pace: 0.85, lines: ['Afternoon. Please enjoy the plaza responsibly.', 'All clear here. Have a lovely day.', 'Pardon me. Just keeping an eye out.'], hi: ['All good, {n}?', 'Hey {n}. Stay safe out there.'] },
+  66: { name: 'Quackers', face: 'excited', pace: 1.2, lines: ['Love the look. Mine is better, but love it.', 'Duck float? Iconic. Thanks for noticing.', 'Strike a pose with me. Quick!'], hi: ['{n}! Love the fit.', 'Hey {n}! Quack!'] },
+  52: { name: 'Toasty', face: 'happy', pace: 1, lines: ['Did I ever tell you about the coldest night on these islands?', 'Brr. Sit down, I have a story for you.', 'You look warm. Stand a little closer, friend.'], hi: ['{n}! Warm enough?', 'Hey {n}, I owe you a story.'] },
+  // The dino on the beacon island (no wave of its own: it stands and talks).
+  dino: { name: 'Dino', face: 'excited', pace: 1, move: 'idle', lines: ['Rawr! Did I scare you? No? Okay.', 'Cannot stop, I am in training!', 'This block and I go everywhere together.', 'Race you round the island!'], hi: ['Rawr, {n}!', 'Hey {n}! Catch me if you can!'] },
 };
+// Greetings: two of the cast who come across each other, one of them walking, greet by name, the first
+// line and then the answer (the user, 10-18: "the chogs should say a greeting to each other if they come
+// across themselves on the island"); and your Chog answers whoever greets you, by name. Within this far
+// (metres), each pair once in so long (s), with a gap after any greeting (s).
+const GREET_NEAR = 3.6;
+const GREET_AGAIN = 70;
+const GREET_GAP = 6;
+const MY_HI = ['Hi, {n}!', 'Hey {n}!', 'Hello, {n}!'];
+const fill = (line, name) => line.replace('{n}', name);
 // Lyra, the singer: spots you joining the crowd, holds the mic out to you and dedicates the next song (it
 // starts again from the top). From in front of the stage only.
 const LYRA = { name: 'Lyra', face: 'excited', lines: ["This next one's for you!", 'Hey you! This one is yours.', 'Glad you made it. Here we go!'], near: 10, ahead: 0.2, rearm: 16, move: 'sing', reach: true };
@@ -392,34 +403,149 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     return (n.bubble = el);
   }
   // Turn to the camera, wave (the singer: her mic held out) and say a line.
-  function react(n) {
-    const { c, who } = n;
-    const pool = who.lines;
+  function pick(n, pool) {
     let i = Math.floor(Math.random() * pool.length);
     if (pool.length > 1 && i === n.said) i = (i + 1) % pool.length;
     n.said = i;
-    const line = pool[i];
-    n.left = THREE.MathUtils.clamp(2.2 + line.length * 0.075, 4.2, 7.5);
+    return pool[i];
+  }
+  // A line in a reaction: its bubble shows from `from` to `from + len` seconds in, the whole reaction lasts
+  // `total`; it faces `face` (a Chog's root) or else the camera. voice: it holds the one voice (VOICES).
+  function say(n, line, { len, from = 0, total = from + len, move = null, wave = 0, face = null, voice = true }) {
+    const { c, who } = n;
+    n.from = from;
+    n.to = from + len;
+    n.left = total;
     n.age = 0;
-    n.waving = who.move ? 0 : WAVE_FOR;
-    c.play(who.move ?? 'wave');
+    n.waving = wave;
+    n.face = face;
+    n.voice = voice;
+    n.line = line;
+    n.talked = false;
+    if (move) c.play(move);
     c.setPace(who.pace ?? 1);
-    c.express(who.face, n.left + 0.4);
-    c.talk(Math.min(n.left - 1, 0.6 + line.length * 0.06));
-    c.lookAt(null);
-    if (who.reach && lastCamera) c.reach(lastCamera, n.left);
+    c.express(who.face, total + 0.4);
+    c.lookAt(face);
     const el = bubbleFor(n);
     el.lastChild.textContent = line;
     el.hidden = false;
     el.style.opacity = '0';
     n.sx = null;
-    speaking++;
+    if (voice) speaking++;
+  }
+  const lineLen = (line, lo = 4.2, hi = 7.5) => THREE.MathUtils.clamp(2.2 + line.length * 0.075, lo, hi);
+  function react(n) {
+    const { c, who } = n;
+    const line = pick(n, who.lines);
+    const len = lineLen(line);
+    // Your Chog answers once the line is done, and this one keeps facing you while it does.
+    const api = lastMe?.userData.api;
+    const answer = api && who.name ? fill(pick(meN(api), MY_HI), who.name) : null;
+    const after = answer ? 0.3 + lineLen(answer, 2.4, 4) : 0;
+    say(n, line, { len, total: len + after, move: who.move ?? 'wave', wave: who.move ? 0 : WAVE_FOR });
+    if (answer) mine.pending = { line: answer, at: t + len + 0.3, len: after - 0.3 };
+    if (who.reach && lastCamera) c.reach(lastCamera, n.left);
+  }
+  // Your Chog's own bubble (it answers a greeting).
+  const mine = { c: null, who: { name: '', face: 'happy' }, bubble: null, said: -1, pending: null, left: 0, age: 0, from: 0, to: 0 };
+  function meN(api) {
+    if (mine.c !== api) {
+      mine.c = api;
+      mine.who.name = api.name ?? 'You';
+      if (mine.bubble) mine.bubble.firstChild.textContent = mine.who.name;
+    }
+    return mine;
+  }
+  function mineTick(dt, camera) {
+    const api = lastMe?.userData.api;
+    if (!api || mine.c !== api) {
+      if (mine.bubble) mine.bubble.hidden = true;
+      mine.pending = null;
+      return;
+    }
+    if (mine.pending && t >= mine.pending.at) {
+      const p = mine.pending;
+      mine.pending = null;
+      mine.from = 0;
+      mine.to = mine.left = p.len;
+      mine.age = 0;
+      mine.sx = null;
+      const el = bubbleFor(mine);
+      el.lastChild.textContent = p.line;
+      el.hidden = false;
+      el.style.opacity = '0';
+      api.express('happy', p.len + 0.4);
+      api.talk(Math.min(p.len - 0.8, 0.6 + p.line.length * 0.06));
+    }
+    if (mine.left <= 0 || !mine.bubble || mine.bubble.hidden) return;
+    mine.age += dt;
+    bubbleTick(mine, dt, camera, api.root);
+    if ((mine.left -= dt) <= 0) mine.bubble.hidden = true;
+  }
+  // A bubble over its head, faded in and out over its own stretch of the reaction.
+  function bubbleTick(n, dt, camera, root) {
+    const el = n.bubble;
+    if (!el || el.hidden || !camera) return;
+    root.localToWorld(_a.set(0, CHOG_HEIGHT + 0.7, 0));
+    _a.project(camera);
+    const shown = _a.z < 1 && Math.abs(_a.x) < 1.2 && Math.abs(_a.y) < 1.2 && n.age >= n.from;
+    const k = shown ? Math.min(1, (n.age - n.from) / FADE_IN) * Math.min(1, Math.max(0, n.to - n.age) / FADE_OUT) : 0;
+    el.style.opacity = (k * k * (3 - 2 * k)).toFixed(3);
+    if (shown) placeClear(n, el, ((_a.x + 1) / 2) * window.innerWidth, ((1 - _a.y) / 2) * window.innerHeight, dt);
+  }
+  // Two of the cast greeting each other (see GREET_NEAR): checked a few times a second.
+  const pairCool = new Map();
+  let greetGap = 0;
+  let greetCheck = 0;
+  const _g = new THREE.Vector3();
+  function greetTick(dt, camera) {
+    greetGap -= dt;
+    if ((greetCheck -= dt) > 0) return;
+    greetCheck = 0.25;
+    if (greetGap > 0 || speaking > 0 || !camera) return;
+    const free = (n) => !n.on && n.back <= 0 && n.who.hi && n.c.root.parent && n.c.root.visible && !n.c.root.userData.away;
+    for (let i = 0; i < noticers.length; i++) {
+      const a = noticers[i];
+      if (!free(a)) continue;
+      for (let j = i + 1; j < noticers.length; j++) {
+        const b = noticers[j];
+        if (!(a.steer || b.steer) || !free(b)) continue;
+        a.c.root.getWorldPosition(_a);
+        b.c.root.getWorldPosition(_b);
+        if (_a.distanceTo(_b) > GREET_NEAR || Math.abs(_a.y - _b.y) > 2) continue;
+        const key = a.who.name < b.who.name ? `${a.who.name}|${b.who.name}` : `${b.who.name}|${a.who.name}`;
+        if ((pairCool.get(key) ?? -1) > t) continue;
+        // Only where you can see and hear it: near the camera, on screen.
+        _g.addVectors(_a, _b).multiplyScalar(0.5);
+        if (_g.distanceTo(camera.position) > 30) continue;
+        _g.y += CHOG_HEIGHT;
+        _g.project(camera);
+        if (_g.z > 1 || Math.abs(_g.x) > 0.85 || Math.abs(_g.y) > 0.9) continue;
+        // The one walking speaks first.
+        const [p, q] = a.steer ? [a, b] : [b, a];
+        const l1 = fill(pick(p, p.who.hi), q.who.name);
+        const l2 = fill(pick(q, q.who.hi), p.who.name);
+        const len1 = lineLen(l1, 2.8, 5);
+        const len2 = lineLen(l2, 2.8, 5);
+        const total = len1 + 0.35 + len2 + 0.3;
+        for (const n of [p, q]) {
+          n.on = true;
+          n.yaw0 = n.c.root.rotation.y;
+        }
+        say(p, l1, { len: len1, total, move: 'idle', face: q.c.root });
+        say(q, l2, { len: len2, from: len1 + 0.35, total, move: 'idle', face: p.c.root, voice: false });
+        pairCool.set(key, t + GREET_AGAIN);
+        greetGap = GREET_GAP + total;
+        return;
+      }
+    }
   }
   function endReaction(n) {
     n.c.lookAt(null);
     n.c.setPace(1);
     if (n.bubble) n.bubble.hidden = true;
-    speaking = Math.max(0, speaking - 1);
+    if (n.voice) speaking = Math.max(0, speaking - 1);
+    n.face = null;
     n.on = false;
     n.cool = NOTICE_AGAIN;
     n.armed = false;
@@ -430,10 +556,13 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   // A bubble over a head, kept clear of the compass and the map up top (on a phone the map sits over the
   // stage): it steps aside, its tail still at the head, or below if there is no room beside.
   let hud = null;
+  let hudAt = 0;
   function placeClear(n, el, x, y, dt) {
     // Never off the top of the screen (a Chog right by the camera has its head up there).
     y = Math.max(y, el.offsetHeight + 10);
-    if (!hud?.length) hud = [...document.querySelectorAll('.tv-compass, .tv-map')];
+    // (The compass, the map, the title, Sign in and your Chog's panel; looked up again now and then, as
+    // they come and go.)
+    if (!hud || t - hudAt > 2) (hud = [...document.querySelectorAll('.tv-compass, .tv-map, .hud.top-left, #btn-signin, #chog-chip')]), (hudAt = t);
     const half = el.offsetWidth / 2, h = el.offsetHeight;
     let cx = Math.min(Math.max(x, half + 8), window.innerWidth - half - 8);
     for (const box of hud) {
@@ -449,7 +578,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     n.sx += (cx - n.sx) * k;
     n.sy += (y - n.sy) * k;
     n.tx += (x - n.tx) * k;
-    const pop = Math.min(1, n.age / 0.35);
+    const pop = Math.min(1, Math.max(0, n.age - (n.from ?? 0)) / 0.35);
     const s = 0.82 + 0.18 * (1 + 2.2 * Math.pow(pop - 1, 3) + 1.2 * Math.pow(pop - 1, 2));
     el.style.setProperty('--tail', `${Math.max(-half + 18, Math.min(half - 18, n.tx - n.sx))}px`);
     el.style.transform = `translate(-50%, -100%) translate(${n.sx}px, ${n.sy}px) scale(${s.toFixed(3)})`;
@@ -496,24 +625,21 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       n.yaw0 = c.root.rotation.y;
       react(n);
     }
-    // Turn to the camera, about its own middle.
-    if (camera && c.root.parent) {
-      c.root.parent.worldToLocal(_b.copy(camera.position));
-      const want = Math.atan2(_b.x - c.root.position.x, _b.z - c.root.position.z);
+    // Turn to whom it talks to (the camera, or another Chog), about its own middle.
+    const to = n.face ? n.face.getWorldPosition(_b) : camera ? _b.copy(camera.position) : null;
+    if (to && c.root.parent) {
+      c.root.parent.worldToLocal(to);
+      const want = Math.atan2(to.x - c.root.position.x, to.z - c.root.position.z);
       c.root.rotation.y = angleLerp(c.root.rotation.y, want, 1 - Math.exp(-dt * 5));
     }
     n.age += dt;
+    if (!n.talked && n.age >= n.from) {
+      n.talked = true;
+      c.talk(Math.min(n.to - n.from - 1, 0.6 + n.line.length * 0.06));
+    }
     // Waved enough: it stands and talks on, still facing you.
     if (n.waving > 0 && (n.waving -= dt) <= 0) c.play('idle');
-    const el = n.bubble;
-    if (el && !el.hidden && camera) {
-      c.root.localToWorld(_a.set(0, CHOG_HEIGHT + 0.7, 0));
-      _a.project(camera);
-      const shown = _a.z < 1 && Math.abs(_a.x) < 1.2 && Math.abs(_a.y) < 1.2;
-      const k = shown ? Math.min(1, n.age / FADE_IN) * Math.min(1, Math.max(0, n.left) / FADE_OUT) : 0;
-      el.style.opacity = (k * k * (3 - 2 * k)).toFixed(3);
-      if (shown) placeClear(n, el, ((_a.x + 1) / 2) * window.innerWidth, ((1 - _a.y) / 2) * window.innerHeight, dt);
-    }
+    bubbleTick(n, dt, camera, c.root);
     if ((n.left -= dt) > 0) return;
     endReaction(n);
   }
@@ -772,11 +898,13 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         block.rotation.set(Math.sin(tt * 4.5) * 0.15 * (speed / top), proud * Math.sin(tt * 3) * 0.4, 0);
       };
       step2(0, 0);
+      // It notices you and greets the others like the cast; its run waits while it does.
+      const tick = own(dino, step2, { steer: true, who: CAST.dino, resume: () => dino.play(mode === 'rest' ? 'idle' : 'run') });
       return {
         group: lap,
         chogs: await shown(lap, [dino]),
         where: (v) => v.copy(lapAt(runAngle, hood2)),
-        tick: (tt, dt) => step2(tt, dt),
+        tick: (tt, dt) => tick(tt, dt),
       };
     },
   );
@@ -894,6 +1022,8 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       lastCamera = camera;
       lastMe = me;
       for (const n of noticers) if (n.c.root.parent && (n.on || n.back > 0 || me)) notice(n, dt, me, camera);
+      greetTick(dt, camera);
+      mineTick(dt, camera);
     },
   };
 }

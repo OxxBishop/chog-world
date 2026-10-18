@@ -161,13 +161,18 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
     if (!onLand(x, z) || roadDistance(x, z) < 0.8 + noise2(x, z) || nearDome(x, z, 1.5) || downtownDist(x, z) < DOWNTOWN.r + 1 || falls.streamDistance(x, z) < 0.6) continue;
     const tall = dens > 0.6;
     const name = tall ? (rng() < 0.7 ? 'Grass_Common_Tall' : 'Grass_Wispy_Tall') : rng() < 0.8 ? 'Grass_Common_Short' : 'Grass_Wispy_Short';
-    low.add(name, x, heightAt(x, z), z, { scale: rng.range(0.6, 1.0), rotY: rng() * Math.PI * 2, tint: rng.pick(GRASS) });
+    const opts = { scale: rng.range(0.6, 1.0), rotY: rng() * Math.PI * 2, tint: rng.pick(GRASS) };
+    // Not on a portal's pad (the user, 10-18: "the grass is passing through the portal hub").
+    if (nearPortal(x, z, 0.5)) continue;
+    low.add(name, x, heightAt(x, z), z, opts);
   }
   for (let i = 0; i < 1600; i++) {
     const [x, z] = randomOnIslands(rng);
     if (noise2(x * 0.06 - 9, z * 0.06 + 2) < 0.62) continue;
     if (!onLand(x, z) || roadDistance(x, z) < 1 || nearDome(x, z, 1.5) || downtownDist(x, z) < DOWNTOWN.r + 1) continue;
-    bloom.add(rng.pick(MODELS.flowers), x, heightAt(x, z), z, { scale: rng.range(0.6, 1.0), rotY: rng() * Math.PI * 2 });
+    const flower = rng.pick(MODELS.flowers), opts = { scale: rng.range(0.6, 1.0), rotY: rng() * Math.PI * 2 };
+    if (nearPortal(x, z, 0.5)) continue;
+    bloom.add(flower, x, heightAt(x, z), z, opts);
   }
   // Boulders on the hills and near the rims.
   for (let i = 0; i < 200; i++) {

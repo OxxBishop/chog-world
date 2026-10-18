@@ -27,6 +27,40 @@ are real but free.
 
 ## Log
 
+### 2026-10-18 · A · The user's fourth look: faces, hands, the wave, greetings, grass and the portal pads
+- **Faces** (the user: "what are those ridges in my chog's face"): Tripo sculpted the face it was given
+  (closed eyes, lashes, mouth) into the mesh and its normal map, so the drawn eyes sat over old ridges.
+  `cleanup.py face` smooths the surface where the face sheet draws (a robust local fit, 6 cm round each
+  vertex) and flattens the normal map there; the nose and cheeks keep their shape. Every cast model.
+- **The forehead dot** (the user: "the yellow dot on the chogs face, was it in the 2d image? ... that's a
+  flaw"): `dot` paints it and its rim out, flattens the bump and its shine (metal-roughness map). On the
+  plain body (every walk-on Chog), the singer and Peel (chog-132); the others have none.
+- **Pink hands** (the user: "the pink still doesn't cover their entire hand"): `hands` now paints every
+  triangle the hand holds any of (it stopped at 0.35, leaving the back of the hand by the cuff skin-coloured).
+- **Patrol's blush** ("the rider chog's blush isn't where it's supposed to be"): on the apples of his cheeks
+  under the goggles, not beside his mouth (`BLUSH` in cleanup.py). `spill` and `blush` (lost from cleanup.py
+  in an earlier rewrite) are back.
+- **The wave** (the user: "like the hand is wobbling instead of waving"): the arm raised out to the side and a
+  little forward, swinging side to side from the shoulder, the forearm upright and following a beat behind,
+  the hand only trailing (`WAVE`, `waveUpdate` in src/chog.js). It used to sit at shoulder height with the hand
+  rocking at the wrist. The forearm never goes past upright (the big heads hid the hand).
+- **Greetings** (the user: "the chogs should say a greeting to each other if they come across themselves on
+  the island"): two of the cast who meet (one walking, within 3.6 m) stop, face each other and greet by name,
+  the answer after (`hi` lines in `CAST`, `greetTick` in src/npcs.js); each pair once in 70 s, only on screen
+  and near the camera. Your Chog answers whoever greets you ("Hi, Dino!"). Bubbles keep clear of the top-left
+  panel too.
+- **The dino** ("the dino chog didn't even say anything"): in `CAST` now, it notices you and greets the others.
+  Its body can't take the cast's fixes: Tripo rigged it with its arms up, so it has no arm bones (its arms
+  follow its head) and its hips are lopsided. The user is re-making it in Tripo (the prompt is in A's
+  scratchpad, `nft/dino-prompt.txt`); then it goes through the cast's pipeline.
+- **Grass**: none on a portal pad any more (src/island.js), and the grass and flowers lean away from your
+  Chog and the cast nearest it (`uPush` in src/foliage.js, filled by src/travel.js).
+- **Portal pads** ("my chog couldn't climb on to the portal hub"): a pad's edge eases up from the ground right
+  there, and is always walkable (it could be steeper than the cliff limit on a slope). Measured: onto every
+  pad from 15 of 16 directions (the 16th has a rock beside the pad).
+- Checked at phone size: walk 1.9 and run 4.2 m/s, the stick, soles 2.6 cm over the ground, no T-poses, no
+  errors; the greetings on the plaza and at the dino. Portraits rendered again.
+
 ### 2026-10-18 · A · The user's third look: legs inside the body when running, King Pom's mouth, hands and cloak
 - **Legs** (the user: "why does their leg enter their body when in a running animation? you can quite literally
   see it for all the characters"): the jog with its longer stride swung a thigh up to 105 degrees from straight

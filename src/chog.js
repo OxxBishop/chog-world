@@ -511,8 +511,12 @@ const LEG_LIMIT = { flex: +(_lp.get('flex') ?? 48), ext: +(_lp.get('ext') ?? 38)
 // than at the shoulders: King Pom's cloak flares out, and a hand dropped to his side went into it (the user,
 // 10-18: "king pom's hand looks deformed").
 const ARM_DROP_MAX = { 'chog-409': +(_lp.get('drop') ?? 40) };
-// The wave (waveUpdate): the right arm out and up from the shoulder, swinging, the hand rocking.
-const WAVE = { lift: 0.5, swing: 0.16, forward: 0.45, hz: 1.7, rock: 0.5, fore: 0.4 };
+// The wave (waveUpdate): the right arm raised high, out to the side and a little forward (lift, forward,
+// radians), the whole arm swinging side to side from the shoulder (swing) and the forearm following
+// through a beat later (fore, foreSwing, lag), the hand trailing a little (rock). The user, 10-18: the old
+// one (arm at shoulder height, the hand rocking at the wrist) looked "like the hand is wobbling".
+const _wq = new URLSearchParams(globalThis.location?.search ?? '');
+const WAVE = { lift: +(_wq.get('wlift') ?? 0.6), swing: +(_wq.get('wswing') ?? 0.28), forward: +(_wq.get('wfwd') ?? 0.45), hz: +(_wq.get('whz') ?? 1.5), fore: +(_wq.get('wfore') ?? 0.7), foreSwing: +(_wq.get('wfs') ?? 0.3), lag: 0.45, rock: 0.15 };
 // Moves melt into each other over this long, their weights always adding up to one: a sum under one blends
 // toward the bind pose, the T-pose a quick change of mind used to flash (the user, 10-17).
 const FADE = 0.3;
@@ -1013,6 +1017,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
 
   const chog = {
     root,
+    name,
     traits,
     look,
     personality,
@@ -1360,18 +1365,23 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     _bf.set(0, 0, 1).applyQuaternion(_rq).setY(0).normalize();
     root.getWorldPosition(_side);
     _side.subVectors(_sh, _side).setY(0).normalize();
+    // The arm in the plane out to its side (tipped a little forward), at an angle over level that swings.
+    _off.copy(_side).multiplyScalar(Math.cos(WAVE.forward)).addScaledVector(_bf, Math.sin(WAVE.forward)).normalize();
     const lift = WAVE.lift + WAVE.swing * Math.sin(ph);
-    _to.copy(_side).multiplyScalar(Math.cos(WAVE.forward)).addScaledVector(_bf, Math.sin(WAVE.forward)).normalize().multiplyScalar(Math.cos(lift));
+    _to.copy(_off).multiplyScalar(Math.cos(lift));
     _to.y = Math.sin(lift);
     A.fore.getWorldPosition(_el);
     swing(A.up, _cur.subVectors(_el, _sh).normalize(), _to, w);
+    // The forearm further up, toward upright, swinging a beat behind.
     A.fore.getWorldPosition(_el);
     A.hand.getWorldPosition(_wr);
-    _aim.copy(_to);
-    _aim.y += WAVE.fore + 0.12 * Math.sin(ph + 0.5);
+    // (Never past upright: leaning in over the head, the hand went behind it.)
+    const up = Math.min(lift + WAVE.fore + WAVE.foreSwing * Math.sin(ph - WAVE.lag), Math.PI * 0.5);
+    _aim.copy(_off).multiplyScalar(Math.cos(up));
+    _aim.y = Math.sin(up);
     swing(A.fore, _cur.subVectors(_wr, _el).normalize(), _aim.normalize(), w);
-    // The hand rocks about the way it faces (forward), a beat behind the arm.
-    _qh.setFromAxisAngle(_bf, -WAVE.rock * Math.sin(ph - 0.9) * w);
+    // The hand trails the swing a little, about the way it faces (forward).
+    _qh.setFromAxisAngle(_bf, -WAVE.rock * Math.sin(ph - WAVE.lag * 2) * w);
     A.hand.getWorldQuaternion(_qt).premultiply(_qh);
     A.hand.parent.getWorldQuaternion(_pq);
     A.hand.quaternion.copy(_pq.invert().multiply(_qt));
@@ -1501,6 +1511,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   chog.play('idle');
   mixer?.update(0);
   gait?.update(0, 'idle');
+  // For whoever has only its root (src/npcs.js: your Chog answering a greeting).
+  root.userData.api = chog;
   return chog;
 }
 

@@ -4,6 +4,9 @@ import * as THREE from 'three';
 export const wind = {
   uTime: { value: 0 },
   uWind: { value: 1 },
+  // Chogs the grass bends away from (A, the user 10-18: "grass passes through my chog"): xyz at their feet,
+  // w the reach (0 for none). src/travel.js fills them each frame.
+  uPush: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, -1e4, 0, 0)) },
 };
 
 // Same normal chunk three.js uses, minus the back-face flip, so leaf cards shade as one soft canopy.
@@ -24,6 +27,30 @@ const WIND_VERT = /* glsl */ `
   transformed.z += (cos(uTime * 1.1 + ph * 1.3) * 0.5) * uWindAmp * hf * uWind * gust;
 `;
 
+// Low plants lean away from a Chog walking through them, the tips most, and spring back as it goes.
+const PUSH_VERT = /* glsl */ `
+#ifdef USE_INSTANCING
+  mat4 pushM = modelMatrix * instanceMatrix;
+#else
+  mat4 pushM = modelMatrix;
+#endif
+  vec3 pw = (pushM * vec4(transformed, 1.0)).xyz;
+  vec3 pushOff = vec3(0.0);
+  for (int i = 0; i < 6; i++) {
+    vec4 P = uPush[i];
+    if (P.w <= 0.0) continue;
+    vec2 d = iOrigin.xz - P.xz;
+    float dist = length(d);
+    if (dist >= P.w || abs(iOrigin.y - P.y) > 2.5) continue;
+    float k = 1.0 - dist / P.w;
+    k *= k;
+    float h = max(pw.y - iOrigin.y, 0.0);
+    vec2 dir = dist > 1e-3 ? d / dist : vec2(0.0, 1.0);
+    pushOff += vec3(dir.x, 0.0, dir.y) * k * h * 1.1 - vec3(0.0, k * h * 0.55, 0.0);
+  }
+  transformed += inverse(mat3(pushM)) * pushOff;
+`;
+
 /**
  * Patch a standard material for plants.
  * kind: 'canopy' (tree leaves), 'bark', 'low' (grass, flowers, ferns).
@@ -39,12 +66,13 @@ export function patchPlant(material, { kind, base = 0, top = 7, amp = 0.25, tran
     shader.uniforms.uShade = { value: new THREE.Vector2(...shade) };
     shader.uniforms.uLumRef = { value: lumRef };
 
+    shader.uniforms.uPush = wind.uPush;
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nuniform float uTime, uWind, uWindBase, uWindTop, uWindAmp;\nvarying float vSway;',
+        '#include <common>\nuniform float uTime, uWind, uWindBase, uWindTop, uWindAmp;\nuniform vec4 uPush[6];\nvarying float vSway;',
       )
-      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${WIND_VERT}`);
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${WIND_VERT}${kind === 'low' ? PUSH_VERT : ''}`);
 
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float uTranslucency, uLumRef;\nuniform vec2 uShade;\nvarying float vSway;')

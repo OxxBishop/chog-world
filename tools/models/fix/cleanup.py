@@ -38,9 +38,20 @@ Tasks:
   duck   Quackers' duck float held by the body (spine and hips), not the thighs ("her duck deforms when she
          walks").
   spill  Patrol's goggles: the lens red that ran over the black rim and onto the face, painted out.
-  blush  Patrol: the cast's pink blush on his cheeks, under the goggles ("where's his chog blush").
+  blush  Patrol: the cast's pink blush on his cheeks, under the goggles ("where's his chog blush"); 10-18, on
+         the apples of his cheeks under the lenses, not beside his mouth (the user: "the position of the
+         rider chog's blush isn't where it's supposed to be").
   rigid  pieces of skin (UV islands) the head holds almost entirely held by it wholly: Toasty's hat cords hung
          from the ear flaps to loops on his shoulders and stretched down his back when his arms came down.
+  face   the face smoothed where its expressions are drawn (the user, 10-18: "what are those ridges in my
+         chog's face"): Tripo sculpted the face it was given (closed eyes and their lashes, the mouth, the
+         blush) into the mesh and its normal map, so open eyes drawn over them showed the old ones' ridges.
+         Wherever the face sheet paints an eye or a mouth (any state), the surface is smoothed and the
+         normal map made flat, eased out at the edges; the nose and anything between keep their shape.
+         Needs <dump dir>/normal.png (ktx extract --transcode rgba8 of the normal map); writes pos.f32,
+         nrm.f32 and normal.png.
+  dot    the plain body's yellow dot on its forehead painted out and its bump flattened (the user, 10-18: "the
+         yellow dot on the chogs face, was it in the 2d image? i don't think so. that's a flaw"). Before face.
 Writes <out dir>/base.png (when a texture task ran) and joints.f32 / weights.f32 (rigid) for patch.mjs.
 """
 import colorsys
@@ -83,7 +94,9 @@ def tri_mask(m, keep, size):
 def hands(m, img):
     n = img.shape[0]
     w = m.bone_weight(['HandL', 'HandR'])
-    keep = (w[m.index] > 0.35).all(1)
+    # Every triangle the hand holds any of (10-18: the back of the hand by the cuff, where the hand holds
+    # only 0.04 to 0.35, had stayed skin; the user: "the pink still doesn't cover their entire hand").
+    keep = (w[m.index] > 0.03).all(1)
     mask = tri_mask(m, keep, n)
     h, s, v = hsv(img)
     hue = h * 360
@@ -439,6 +452,54 @@ def sleeves(m, img, joints, weights, stretch=None):
     return img, total
 
 
+def spill(m, img):
+    """Thin runs of the lens red outside the lens: the red, opened (eroded then grown back) at 5 px, keeps
+    only the lens; what it drops is spill, filled from the nearest texel that isn't red."""
+    h, s_, v = hsv(img)
+    hue = h * 360
+    red = ((hue < 16) | (hue > 340)) & (s_ > 0.5) & (v > 0.2)
+    lens = ndimage.binary_dilation(ndimage.binary_erosion(red, iterations=5), iterations=6)
+    bad = red & ~lens
+    if not bad.any():
+        return img, 0
+    _, (iy, ix) = ndimage.distance_transform_edt(red, return_indices=True)
+    out = img.copy()
+    out[bad] = img[iy[bad], ix[bad]]
+    print(f'  spill: {int(bad.sum())} texels of red outside the lens painted out')
+    return out, int(bad.sum())
+
+
+# Where each model's blush goes, on its face sheet's frame (Patrol's sheet spans only his mouth, so his cheeks
+# lie outside 0..1): centres, radii across and up, strength.
+BLUSH = {'chog-56': dict(at=((-0.5, 0.6), (1.5, 0.6)), radius=(0.24, 0.18), alpha=1.0, colour=(0.95, 0.52, 0.6))}
+
+
+def blush(m, img, face, colour=(0.95, 0.62, 0.66), at=((0.25, 0.46), (0.75, 0.46)), radius=(0.1, 0.065), alpha=0.6):
+    """Soft pink ovals on the cheeks, placed on the face sheet (face: faces.json's entry), skin only."""
+    n = img.shape[0]
+    M = np.array(face['matrix'], np.float64).reshape(4, 4).T
+    P = np.c_[m.pos, np.ones(len(m.pos))] @ M.T
+    fp = P[:, :2].astype(np.float32)
+    front = (m.nrm @ np.array(face['dir'], np.float32)) > 0.3
+    headw = m.bone_weight(['Head']) > 0.8
+    keep = (front & headw)[m.index].all(1)
+    tid, vals = raster(m.uv * n, m.index[keep], values=fp, size=n)
+    inside = tid >= 0
+    h, s_, v = hsv(img)
+    hue = h * 360
+    skin = (hue > 5) & (hue < 45) & (s_ < 0.55) & (v > 0.5)
+    a = np.zeros(img.shape[:2], np.float32)
+    for cx, cy in at:
+        d = ((vals[..., 0] - cx) / radius[0]) ** 2 + ((vals[..., 1] - cy) / radius[1]) ** 2
+        a = np.maximum(a, np.clip(1 - d, 0, 1) ** 0.8)
+    a *= alpha * inside * skin
+    col = np.array(colour, np.float32)
+    shade = np.clip(lum(img) / max(np.median(lum(img)[skin & inside]), 1e-3), 0.8, 1.15)
+    out = img * (1 - a[..., None]) + (col[None, None] * shade[..., None]) * a[..., None]
+    print(f'  blush: {int((a > 0.05).sum())} texels')
+    return out, int((a > 0.05).sum())
+
+
 def welded(m):
     """Neighbours across the mesh, seams closed: (vertex -> welded id, sparse adjacency over welded ids)."""
     from scipy.sparse import coo_matrix
@@ -510,6 +571,219 @@ def sides(m, joints, weights):
             weights[rest, k] += give[rest]
     weights /= np.maximum(weights.sum(1, keepdims=True), 1e-6)
     print(f'  sides: {moved} vertex weights moved off the arms')
+
+
+def forehead_dot(m, img, joints, weights):
+    """See 'dot' above: (the image, per-vertex weights for face_smooth to flatten as well)."""
+    entry = faces_entry(m)
+    n = img.shape[0]
+    M = np.array(entry['matrix']).reshape(4, 4).T
+    fp = (np.c_[m.pos, np.ones(len(m.pos))] @ M.T)[:, :2]
+    front = m.nrm @ np.array(entry['dir'], np.float64)
+    H = m.bones.index('Head')
+    hw = np.where(joints == H, weights, 0).sum(1)
+    # Between the brows and the hairline only (a yellow hat or hood higher up isn't a dot).
+    area = (front > 0.2) & (hw > 0.9) & (fp[:, 1] > 0.45) & (fp[:, 1] < 0.8) & (np.abs(fp[:, 0] - 0.5) < 0.12)
+    h, s, v = hsv(img)
+    hue = h * 360
+    tid, fv = raster(m.uv * n, m.index[area[m.index].all(1)], values=fp.astype(np.float32), size=n)
+    # Gold, but not a suit's or hood's pure yellow showing at the face's edge.
+    gold = (hue > 38) & (hue < 70) & (s > 0.3) & (s < 0.85) & (v > 0.45) & (tid >= 0)
+    # Its pieces (an outlined dot comes in a few) joined, and the clump nearest the middle of the brow.
+    lab, k = ndimage.label(ndimage.binary_dilation(gold, iterations=4) & (tid >= 0))
+    best, best_d = 0, 0.07
+    for i in range(1, k + 1):
+        blob = (lab == i) & gold
+        if blob.sum() < 30 or blob.sum() > n * n * 0.002:
+            continue
+        c = fv[blob].mean(0)
+        d = np.hypot(c[0] - 0.5, c[1] - 0.62)
+        if d < best_d:
+            best, best_d = i, d
+    dot = (lab == best) if best else np.zeros_like(gold)
+    dot = ndimage.binary_dilation(dot, iterations=3) & (tid >= 0)
+    if not dot.any():
+        print('  dot: none found')
+        return img, np.zeros(len(m.pos))
+    # A disc round it (its glow too) filled in from the skin at its rim, smoothly.
+    ys, xs = np.nonzero(dot)
+    cy, cx = ys.mean(), xs.mean()
+    rr = np.hypot(ys - cy, xs - cx).max() * 1.6 + 6
+    yy, xx = np.mgrid[0:n, 0:n]
+    disc = (np.hypot(yy - cy, xx - cx) < rr) & (tid >= 0)
+    valid = (tid >= 0).astype(np.float32)
+    new = img.copy()
+    new[disc] = img[(tid >= 0) & ~disc & (np.hypot(yy - cy, xx - cx) < rr + 4)].mean(0)
+    k = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], np.float32)
+    y0, y1, x0, x1 = int(max(cy - rr - 6, 0)), int(min(cy + rr + 7, n)), int(max(cx - rr - 6, 0)), int(min(cx + rr + 7, n))
+    sub, vsub, dsub = new[y0:y1, x0:x1], valid[y0:y1, x0:x1], disc[y0:y1, x0:x1]
+    den = ndimage.convolve(vsub, k, mode='constant')
+    for _ in range(400):
+        avg = np.stack([ndimage.convolve(sub[..., c] * vsub, k, mode='constant') for c in range(3)], -1) / np.maximum(den, 1e-6)[..., None]
+        sub[dsub] = avg[dsub]
+    new[y0:y1, x0:x1] = sub
+    a = ndimage.gaussian_filter(disc.astype(np.float32), 1.0)
+    a = np.clip(a * 2, 0, 1)[..., None]
+    img = img * (1 - a) + new * a
+    dot = disc
+    # Its shine too (the metal-roughness map had it gold): the skin's, from round it. The maps share the UVs.
+    rmp = os.path.join(m.d, 'rm.png')
+    if os.path.exists(rmp):
+        rm = np.asarray(Image.open(rmp).convert('RGB'), np.float32) / 255
+        R = rm.shape[0]
+        d2 = np.asarray(Image.fromarray(disc.astype(np.uint8) * 255).resize((R, R), Image.BILINEAR), np.float32) / 255
+        ring = np.asarray(Image.fromarray(((np.hypot(yy - cy, xx - cx) < rr + 6) & ~disc & (tid >= 0)).astype(np.uint8) * 255).resize((R, R)), np.float32) > 127
+        rm = rm * (1 - d2[..., None]) + np.median(rm[ring], 0) * d2[..., None]
+        forehead_dot.rm = rm
+    # Its vertices (and a ring round them), for the smoothing.
+    px = np.clip((m.uv * n).astype(int), 0, n - 1)
+    on = dot[px[:, 1], px[:, 0]] & area
+    centre = fp[on].mean(0)
+    rad = max(np.linalg.norm(fp[on] - centre, axis=1).max(), 0.02)
+    # The dot is a raised disc: its rim's side walls face sideways (so the front-facing area above misses
+    # them) and are painted gold on pieces of their own. Every face of it, any way it faces, goes skin
+    # colour and flat with the rest.
+    dist = np.linalg.norm(fp - centre, axis=1)
+    # (Any way a face of it faces, but on the front of the head: no deeper than the face there, less 5 cm.)
+    depth = m.pos @ np.array(entry['dir'], np.float64)
+    near = (hw > 0.9) & (dist < rad * 1.6) & (depth > np.median(depth[on]) - 0.05)
+    tid2, _ = raster(m.uv * n, m.index[near[m.index].all(1)], size=n)
+    skin_col = np.median(img[(tid >= 0) & ~disc & (np.hypot(yy - cy, xx - cx) < rr + 8)], 0)
+    # (Anything there off the skin's colour in gold to brown: the gold and the dot's dark outline, never the
+    # hair or hood round the face.)
+    walls = (tid2 >= 0) & ~disc & (np.abs(img - skin_col).max(2) > 0.07) & (hue > 10) & (hue < 80)
+    if walls.any():
+        img[walls] = skin_col
+        if getattr(forehead_dot, 'rm', None) is not None:
+            R = forehead_dot.rm.shape[0]
+            wr = np.asarray(Image.fromarray(ndimage.binary_dilation(walls, iterations=2).astype(np.uint8) * 255).resize((R, R), Image.BILINEAR), np.float32) / 255
+            forehead_dot.rm = forehead_dot.rm * (1 - wr[..., None]) + np.median(rm[ring], 0) * wr[..., None]
+    area = area | near
+    w = (1 - smooth01((dist - rad) / (rad * 1.5))) * area
+    print(f'  dot: {int(dot.sum())} texels painted, {int(walls.sum())} on its rim, {int((w > 0.01).sum())} vertices to flatten (at {centre.round(2)})')
+    return img, w
+
+
+def face_smooth(m, joints, weights, out_dir, iters=40, extra=None):
+    """See 'face' above. Returns the number of vertices moved."""
+    entry = faces_entry(m)
+    if entry is None:
+        print('  face: no face sheet')
+        return 0
+    name = os.path.basename(os.path.normpath(m.d))
+    sheet = np.asarray(Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'public', 'faces', f'{name}.png')).convert('RGBA'), np.float32) / 255
+    SH, SW = sheet.shape[:2]
+    alpha = sheet[..., 3]
+    # Where any state paints, in face-sheet space (fp in 0..1 each way): the most of the six eye cells over
+    # the six mouth cells, grown a little and softened.
+    G = 256
+    fy, fx = np.mgrid[0:G, 0:G]
+    fpx, fpy = (fx + 0.5) / G, 1 - (fy + 0.5) / G
+    paint = np.zeros((G, G), np.float32)
+    for c in range(6):
+        col = np.clip(((c + fpx) / 6 * SW).astype(int), 0, SW - 1)
+        eye = np.clip(((0.5 - fpy * 0.5) * SH).astype(int), 0, SH - 1)
+        mouth = np.clip(((1 - fpy * 0.5) * SH).astype(int), 0, SH - 1)
+        paint = np.maximum(paint, np.maximum(alpha[eye, col], alpha[mouth, col]))
+    paint = (paint > 0.1).astype(np.float32)
+    paint = ndimage.binary_dilation(paint > 0, iterations=int(G * 0.05)).astype(np.float32)
+    paint = np.clip(ndimage.gaussian_filter(paint, G * 0.012) * 1.6, 0, 1)
+    M = np.array(entry['matrix']).reshape(4, 4).T
+    fp = (np.c_[m.pos, np.ones(len(m.pos))] @ M.T)[:, :2]
+    inside = (fp[:, 0] > 0) & (fp[:, 0] < 1) & (fp[:, 1] > 0) & (fp[:, 1] < 1)
+    gi = np.clip((fp[:, 0] * G).astype(int), 0, G - 1)
+    gj = np.clip(((1 - fp[:, 1]) * G).astype(int), 0, G - 1)
+    H = m.bones.index('Head')
+    hw = np.where(joints == H, weights, 0).sum(1)
+    front = m.nrm @ np.array(entry['dir'], np.float64)
+    wv = np.where(inside, paint[gj, gi], 0) * smooth01((hw - 0.9) / 0.09) * smooth01((front + 0.1) / 0.4)
+    if extra is not None:
+        wv = np.maximum(wv, extra)
+    wid, A = welded(m)
+    n = A.shape[0]
+    deg = np.maximum(np.asarray(A.sum(1)).ravel(), 1)
+    ww = np.zeros(n)
+    np.maximum.at(ww, wid, wv)
+    P = np.zeros((n, 3))
+    P[wid] = m.pos
+    P0 = P.copy()
+    # The face under the relief, found round each vertex: a quadric fitted to the face within 6 cm of it
+    # (depth along the face's direction), the narrow bumps weighed out (Cauchy, 3 mm). Each vertex moves
+    # onto it as far as its weight says, then a light smoothing over the top.
+    from scipy.spatial import cKDTree
+    dirv = np.array(entry['dir'], np.float64)
+    dirv /= np.linalg.norm(dirv)
+    ex = np.cross(dirv, [0, 1, 0]) if abs(dirv[1]) < 0.9 else np.cross(dirv, [1, 0, 0])
+    ex /= np.linalg.norm(ex)
+    ey = np.cross(dirv, ex)
+    frontw = np.full(n, -1.0)
+    np.maximum.at(frontw, wid, front)
+    hww = np.zeros(n)
+    np.maximum.at(hww, wid, hw)
+    face_ok = (frontw > 0.1) & (hww > 0.85)
+    pool = np.nonzero(face_ok)[0]
+    tree = cKDTree(P[pool])
+    target = P.copy()
+    todo = np.nonzero(ww > 1e-3)[0]
+    for i in todo:
+        nb = pool[tree.query_ball_point(P[i], 0.06)]
+        if len(nb) < 12:
+            continue
+        d = P[nb] - P[i]
+        x, y, z = d @ ex, d @ ey, d @ dirv
+        X = np.stack([np.ones_like(x), x, y, x * x, x * y, y * y], 1)
+        w = np.exp(-(x * x + y * y) / (2 * 0.03 ** 2))
+        for _ in range(5):
+            sw = np.sqrt(w)
+            c, *_ = np.linalg.lstsq(X * sw[:, None], z * sw, rcond=None)
+            r = z - X @ c
+            w = np.exp(-(x * x + y * y) / (2 * 0.03 ** 2)) / (1 + (r / 0.003) ** 2)
+        target[i] = P[i] + dirv * c[0]
+    P = P + (target - P) * ww[:, None]
+    for _ in range(10):
+        for lam in (0.5, -0.53):
+            P = P + ((A @ P) / deg[:, None] - P) * (lam * ww)[:, None]
+    # A bump to take away wholly (the forehead dot): a membrane stretched over it from the skin round it.
+    if extra is not None:
+        ew = np.zeros(n)
+        np.maximum.at(ew, wid, extra)
+        hole = ew > 0.2
+        for _ in range(400):
+            P[hole] = ((A @ P) / deg[:, None])[hole]
+        # Then relaxed along the surface too, so no thin triangles crease the middle.
+        for _ in range(30):
+            Q = (A @ P) / deg[:, None] - P
+            P[hole] += 0.5 * Q[hole]
+    moved = ww > 1e-3
+    pos = P[wid].astype(np.float32)
+    # Normals from the new surface where it moved, blended into the old ones at the edge.
+    tri = wid[m.index]
+    fn = np.cross(P[tri[:, 1]] - P[tri[:, 0]], P[tri[:, 2]] - P[tri[:, 0]])
+    vn = np.zeros((n, 3))
+    for k in range(3):
+        np.add.at(vn, tri[:, k], fn)
+    vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-12)
+    old = m.nrm / np.maximum(np.linalg.norm(m.nrm, axis=1, keepdims=True), 1e-12)
+    t = np.clip(ww[wid] * 1.5, 0, 1)[:, None]
+    nrm = old * (1 - t) + vn[wid] * t
+    nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-12)
+    pos.tofile(os.path.join(out_dir, 'pos.f32'))
+    nrm.astype(np.float32).tofile(os.path.join(out_dir, 'nrm.f32'))
+    # The normal map flat there too.
+    npath = os.path.join(m.d, 'normal.png')
+    if os.path.exists(npath):
+        nm = np.asarray(Image.open(npath).convert('RGB'), np.float32) / 255
+        N = nm.shape[0]
+        keep = wv[m.index].max(1) > 1e-3
+        tid, wt = raster(m.uv * N, m.index[keep], values=wv[:, None].astype(np.float32), size=N)
+        a = np.where(tid >= 0, np.clip(wt[..., 0] * 1.5, 0, 1), 0)
+        a = ndimage.grey_dilation(a, size=3)
+        flat = np.array([0.5, 0.5, 1.0], np.float32)
+        nm = nm * (1 - a[..., None]) + flat * a[..., None]
+        Image.fromarray((np.clip(nm, 0, 1) * 255 + 0.5).astype(np.uint8)).save(os.path.join(out_dir, 'normal.png'))
+    d = np.linalg.norm(P - P0, axis=1)
+    print(f'  face: {int(moved.sum())} vertices smoothed, the most by {d.max() * 100:.1f} cm (median {np.median(d[moved]) * 100 if moved.any() else 0:.2f})')
+    return int(moved.sum())
 
 
 def hips(m, joints, weights):
@@ -639,6 +913,13 @@ def main():
         elif t == 'shoulders':
             shoulders(m, joints, weights)
             skin_changed = True
+        elif t == 'dot':
+            img, dot_w = forehead_dot(m, img, joints, weights)
+            painted = True
+            if getattr(forehead_dot, 'rm', None) is not None:
+                Image.fromarray((np.clip(forehead_dot.rm, 0, 1) * 255 + 0.5).astype(np.uint8)).save(os.path.join(out_dir, 'rm.png'))
+        elif t == 'face':
+            face_smooth(m, joints, weights, out_dir, extra=locals().get('dot_w'))
         elif t == 'sleeves':
             sp = os.path.join(out_dir, 'stretch.bin')
             img, c = sleeves(m, img, joints, weights, np.fromfile(sp, np.float32) if os.path.exists(sp) else None)
@@ -654,7 +935,7 @@ def main():
             import json
             faces = json.load(open(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'public', 'faces', 'faces.json')))
             name = os.path.basename(os.path.normpath(d))
-            img, c = blush(m, img, faces[name])
+            img, c = blush(m, img, faces[name], **BLUSH.get(name, {}))
             painted |= c > 0
     if skin_changed:
         weights = np.clip(weights, 0, 1)

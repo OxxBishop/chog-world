@@ -70,6 +70,13 @@ Since 10-16 (A13, A14):
   `sleeves` reads `<out>/stretch.bin`: build once without it, open
   `tools/models/stretchmoves.html?m=chog-409&poses=idle:0.5,run:0.6,...` under vite, save `window.__out`
   (base64 Float32, one value per triangle) there, then build again.
+- **10-18, last** (`cleanup.py`, from the shipped files of 10-17): every model also gets `face` (its normal
+  map and metal-roughness map are decoded first: `ktx extract --transcode rgba8` of each into the dump as
+  `normal.png` and `rm.png`; `patch.mjs --pos --nrm` and `ktx2.mjs --normalmap --rmmap` take the results).
+  The plain body and the singer `head sides hips hands dot face`; chog-132 `head sides hips dot face`;
+  chog-1151 `head sides hips hands face`; chog-66 `head sides hips hands duck face`; chog-56
+  `head sides hips spill blush face`; chog-409 `head sides hips robe shoulders face sleeves`; the rest
+  `head sides hips face` (chog-52 and chog-56 keep their colour maps painted earlier that day).
 - **Picker portraits**: `tools/models/portraits.html` renders each Chog's loop (one clip length at 20 fps) as
   JPEG frames; pack them with Pillow into animated WebP (`save_all`, `duration=50`, `loop=0`, `quality=65`,
   `method=6`), 320 px, into `public/faces/portraits/<id>.webp`.

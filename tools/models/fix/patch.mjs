@@ -1,9 +1,9 @@
 /*
  * Patch a shipped cast model in place of its vertex order (no reorder, so its face sheet, clips and every
  * other fix stay as they are):
- *   node tools/models/fix/patch.mjs <in.glb> <out.glb> [--pos pos.f32] [--joints joints.f32 --weights weights.f32]
+ *   node tools/models/fix/patch.mjs <in.glb> <out.glb> [--pos pos.f32] [--nrm nrm.f32] [--joints joints.f32 --weights weights.f32]
  *        [--base base.png] [--quality 92] [--requantize 1]
- * --index: Uint32 triangles to keep (cleanup.py cords). --pos / --joints / --weights: Float32, the shipped file's vertex order (mane.py writes them). --base: a new
+ * --index: Uint32 triangles to keep (cleanup.py cords). --pos / --nrm / --joints / --weights: Float32, the shipped file's vertex order (mane.py writes them). --base: a new
  * colour map (upres.py's 2048), stored as JPEG. --requantize: store its normals, UVs and weights the way the
  * rest of the cast does (the sniffer's UVs were floats: a vertex layout, so a shader, of its own on Intel).
  * Then compressed the way apply.mjs does it.
@@ -30,7 +30,7 @@ const prim = doc.getRoot().listMeshes()[0].listPrimitives()[0];
 const f32 = (file) => new Float32Array(fs.readFileSync(file).buffer.slice(0));
 const n = prim.getAttribute('POSITION').getCount();
 
-if (opt.pos || opt.weights || opt.requantize || opt.index) {
+if (opt.pos || opt.nrm || opt.weights || opt.requantize || opt.index) {
   // Every attribute back to plain floats, so the re-quantising starts clean.
   for (const name of prim.listSemantics()) {
     const a = prim.getAttribute(name);
@@ -50,6 +50,11 @@ if (opt.pos || opt.weights || opt.requantize || opt.index) {
     const p = f32(opt.pos);
     if (p.length !== n * 3) throw new Error(`--pos has ${p.length / 3} vertices, the model ${n}`);
     prim.setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(p).setBuffer(buf));
+  }
+  if (opt.nrm) {
+    const v = f32(opt.nrm);
+    if (v.length !== n * 3) throw new Error(`--nrm has ${v.length / 3} vertices, the model ${n}`);
+    prim.setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(v).setBuffer(buf));
   }
   if (opt.weights) {
     const w = f32(opt.weights), j = f32(opt.joints);

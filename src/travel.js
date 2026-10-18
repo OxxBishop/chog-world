@@ -5,6 +5,7 @@ import { modelFor } from './traitmap.js';
 import { ISLANDS, HOODS, DOMES, DOME_R, DOWNTOWN, ROADS, TERRACES, PORTAL_SPOTS, roadDistance } from './layout.js';
 import { heightAt, islandAt, cameraFloor, rimPoint } from './terrain.js';
 import { RoomBox } from './camera.js';
+import { wind } from './foliage.js';
 
 // B's portal effect (src/fx/teleport.js, built to the user's pick) takes over each trip once it's in:
 // departs({ chog, pad, scene, camera }) and arrives(...) play on your Chog at a pad (pad.centre, pad.facing),
@@ -326,8 +327,11 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     for (const p of portals) {
       const r = Math.hypot(x - p.at.x, z - p.at.z);
       if (r > PAD_OUT) continue;
+      // (Eased up from the ground right there, which can lie below the pad's foot on a slope: the user, 10-18,
+      // "my chog couldn't climb on to the portal hub".)
       const k = 1 - THREE.MathUtils.smoothstep(r, PAD_OUT - 0.8, PAD_OUT);
-      return { y: Math.max(heightAt(x, z), p.at.y + PAD_TOP * k), on: 'pad' };
+      const h = heightAt(x, z);
+      return { y: h + Math.max(0, p.at.y + PAD_TOP - h) * k, on: 'pad' };
     }
     const options = [];
     for (const br of bridges) {
@@ -507,7 +511,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     collide(state.pos, next);
     const g = groundAt(next.x, next.z, state.pos.y);
     const climbable = (gy, x, z) => gy - state.pos.y < STEP_UP && (gy - state.pos.y < 0.12 || (gy - state.pos.y) / Math.max(Math.hypot(x - state.pos.x, z - state.pos.z), 1e-3) < MAX_SLOPE);
-    if (g && climbable(g.y, next.x, next.z)) {
+    if (g && (g.on === 'pad' || climbable(g.y, next.x, next.z))) {
       next.y = g.y;
       state.pos.copy(next);
     } else {
@@ -516,7 +520,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
         const t = state.pos.clone();
         t[axis] = next[axis];
         const g2 = groundAt(t.x, t.z, state.pos.y);
-        if (g2 && climbable(g2.y, t.x, t.z)) {
+        if (g2 && (g2.on === 'pad' || climbable(g2.y, t.x, t.z))) {
           t.y = g2.y;
           state.pos.copy(t);
           break;
@@ -526,6 +530,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     }
     chog.root.position.copy(state.pos);
     chog.root.rotation.y = state.yaw;
+    pushGrass(chog);
     animate(chog, speed, walkV, runV, walkFeet, runFeet);
     if (!state.own) chog.update(dt, camera);
 
@@ -556,6 +561,25 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
 
   // Idle, walk or run, its legs keeping pace with how fast it's actually going (the clip's own rate at its
   // full speed, slower while it speeds up or slows down).
+  // The grass leans away from your Chog and the cast nearest it (src/foliage.js).
+  const near = [];
+  function pushGrass(chog) {
+    const P = wind.uPush.value;
+    P[0].set(state.pos.x, state.pos.y, state.pos.z, 0.85 * chog.root.scale.y);
+    near.length = 0;
+    for (const c of world.npcRoots?.() ?? []) {
+      if (c === chog.root || !c.visible) continue;
+      c.getWorldPosition(_v);
+      const d = _v.distanceToSquared(state.pos);
+      if (d < 900) near.push([d, _v.x, _v.y, _v.z, 0.85 * c.getWorldScale(_w).y]);
+    }
+    near.sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < P.length; i++) {
+      const n = near[i - 1];
+      if (n) P[i].set(n[1], n[2], n[3], n[4]);
+      else P[i].w = 0;
+    }
+  }
   function animate(chog, speed, walkV, runV, walkFeet = walkV, runFeet = runV) {
     // A little either side of each change, so a speed near one never flickers between two moves.
     const was = state.move;
@@ -1188,6 +1212,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     },
     travelTo,
     groundAt,
+    // Where the portal pads stand (the plaza's first).
+    portals: () => portals.map((p) => p.at.clone()),
   };
 }
 
