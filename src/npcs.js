@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { makeChog, CHOG_HEIGHT } from './chog.js';
-import { placeBubble } from './chat.js';
 import { surfaceAt } from './travel.js';
 import { chogInfo } from './chogdata.js';
 import { HOODS, roadDistance, nearDome } from './layout.js';
@@ -340,8 +339,13 @@ const CAST = {
 // Lyra, the singer: spots you joining the crowd, holds the mic out to you and dedicates the next song (it
 // starts again from the top). From in front of the stage only.
 const LYRA = { name: 'Lyra', face: 'excited', lines: ["This next one's for you!", 'Hey you! This one is yours.', 'Glad you made it. Here we go!'], near: 10, ahead: 0.2, rearm: 16, move: 'sing', reach: true };
-// At most this many lines show at once; the next waits its turn.
-const VOICES = 2;
+// One line shows at a time; the next waits its turn (the user, 10-17: hard to keep track of). Each stays up
+// long enough to read and comes and goes softly.
+const VOICES = 1;
+const FADE_IN = 0.3;
+const FADE_OUT = 0.45;
+// How long it waves before standing and talking on, facing you.
+const WAVE_FOR = 2.6;
 
 /**
  * The sets, each built the first time the camera comes near (or at once with standees: show every
@@ -381,6 +385,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     const el = document.createElement('div');
     el.className = 'chog-bubble bar-bubble';
     el.hidden = true;
+    el.style.transition = 'none';
     el.innerHTML = '<span class="who"></span><span class="line"></span>';
     el.firstChild.textContent = n.who.name;
     document.body.append(el);
@@ -394,17 +399,20 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     if (pool.length > 1 && i === n.said) i = (i + 1) % pool.length;
     n.said = i;
     const line = pool[i];
-    n.left = THREE.MathUtils.clamp(1.4 + line.length * 0.05, 2.6, 4.4);
+    n.left = THREE.MathUtils.clamp(2.2 + line.length * 0.075, 4.2, 7.5);
+    n.age = 0;
+    n.waving = who.move ? 0 : WAVE_FOR;
     c.play(who.move ?? 'wave');
     c.setPace(who.pace ?? 1);
     c.express(who.face, n.left + 0.4);
-    c.talk(Math.min(n.left - 0.4, 0.3 + line.length * 0.055));
+    c.talk(Math.min(n.left - 1, 0.6 + line.length * 0.06));
     c.lookAt(null);
     if (who.reach && lastCamera) c.reach(lastCamera, n.left);
     const el = bubbleFor(n);
     el.lastChild.textContent = line;
     el.hidden = false;
     el.style.opacity = '0';
+    n.sx = null;
     speaking++;
   }
   function endReaction(n) {
@@ -422,25 +430,30 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   // A bubble over a head, kept clear of the compass and the map up top (on a phone the map sits over the
   // stage): it steps aside, its tail still at the head, or below if there is no room beside.
   let hud = null;
-  function placeClear(el, x, y) {
+  function placeClear(n, el, x, y, dt) {
     // Never off the top of the screen (a Chog right by the camera has its head up there).
     y = Math.max(y, el.offsetHeight + 10);
-    placeBubble(el, x, y);
     if (!hud?.length) hud = [...document.querySelectorAll('.tv-compass, .tv-map')];
     const half = el.offsetWidth / 2, h = el.offsetHeight;
     let cx = Math.min(Math.max(x, half + 8), window.innerWidth - half - 8);
-    let moved = false;
     for (const box of hud) {
       const r = box.getBoundingClientRect();
       if (!r.width || y - h > r.bottom + 4 || y < r.top || cx + half < r.left - 4 || cx - half > r.right + 4) continue;
-      moved = true;
       if (r.left - half - 6 >= half + 8 && x < r.right) cx = r.left - half - 6;
       else if (r.right + half + 6 <= window.innerWidth - half - 8) cx = r.right + half + 6;
       else y = r.bottom + h + 6;
     }
-    if (!moved) return;
-    el.style.setProperty('--tail', `${Math.max(-half + 18, Math.min(half - 18, x - cx))}px`);
-    el.style.transform = `translate(-50%, -100%) translate(${cx}px, ${y}px)`;
+    // It glides after the head rather than jump with every step, and pops in.
+    if (n.sx == null) (n.sx = cx), (n.sy = y), (n.tx = x);
+    const k = 1 - Math.exp(-dt * 10);
+    n.sx += (cx - n.sx) * k;
+    n.sy += (y - n.sy) * k;
+    n.tx += (x - n.tx) * k;
+    const pop = Math.min(1, n.age / 0.35);
+    const s = 0.82 + 0.18 * (1 + 2.2 * Math.pow(pop - 1, 3) + 1.2 * Math.pow(pop - 1, 2));
+    el.style.setProperty('--tail', `${Math.max(-half + 18, Math.min(half - 18, n.tx - n.sx))}px`);
+    el.style.transform = `translate(-50%, -100%) translate(${n.sx}px, ${n.sy}px) scale(${s.toFixed(3)})`;
+    el.style.transformOrigin = '50% 100%';
   }
   function notice(n, dt, me, camera) {
     const c = n.c;
@@ -469,6 +482,11 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         _b.sub(c.root.position).setY(0).normalize();
         if (_b.x * Math.sin(c.root.rotation.y) + _b.z * Math.cos(c.root.rotation.y) < n.ahead) return;
       }
+      // Only one you can see: one off screen would hold the voice while you can't see it.
+      if (camera) {
+        c.root.localToWorld(_a.set(0, CHOG_HEIGHT * 0.6, 0)).project(camera);
+        if (_a.z > 1 || Math.abs(_a.x) > 0.85 || Math.abs(_a.y) > 0.9) return;
+      }
       // Noticed: a beat later (so a few who see you at once don't all move as one), and only while a voice
       // is free.
       if (!n.wait) n.wait = 0.15 + Math.random() * 0.7;
@@ -484,13 +502,17 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       const want = Math.atan2(_b.x - c.root.position.x, _b.z - c.root.position.z);
       c.root.rotation.y = angleLerp(c.root.rotation.y, want, 1 - Math.exp(-dt * 5));
     }
+    n.age += dt;
+    // Waved enough: it stands and talks on, still facing you.
+    if (n.waving > 0 && (n.waving -= dt) <= 0) c.play('idle');
     const el = n.bubble;
     if (el && !el.hidden && camera) {
       c.root.localToWorld(_a.set(0, CHOG_HEIGHT + 0.7, 0));
       _a.project(camera);
       const shown = _a.z < 1 && Math.abs(_a.x) < 1.2 && Math.abs(_a.y) < 1.2;
-      el.style.opacity = shown ? '1' : '0';
-      if (shown) placeClear(el, ((_a.x + 1) / 2) * window.innerWidth, ((1 - _a.y) / 2) * window.innerHeight);
+      const k = shown ? Math.min(1, n.age / FADE_IN) * Math.min(1, Math.max(0, n.left) / FADE_OUT) : 0;
+      el.style.opacity = (k * k * (3 - 2 * k)).toFixed(3);
+      if (shown) placeClear(n, el, ((_a.x + 1) / 2) * window.innerWidth, ((1 - _a.y) / 2) * window.innerHeight, dt);
     }
     if ((n.left -= dt) > 0) return;
     endReaction(n);

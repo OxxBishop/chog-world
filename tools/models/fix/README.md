@@ -61,3 +61,9 @@ Since 10-16 (A13, A14):
   <tmp> --joints <out>/joints.f32 --weights <out>/weights.f32 --index <out>/index.u32` first. Last,
   `ktx2.mjs <glb> <shipped.glb> --base <out>/base.png` (the body's colour map only; a stage keeps its own).
   Checks: `tools/models/pose.html` (the world's own Chogs in a move, from any side) and `headturn.html`.
+- **10-18** (`cleanup.py`, same steps): `head sides hips` on every cast model, plus `duck` (chog-66) and
+  `spill blush` (chog-56); `back` on chog-52 now lays the shirt and hem in straight bands. Run each from the
+  shipped file of 10-17 (the tasks are not meant to be run twice on the same weights).
+- **Picker portraits**: `tools/models/portraits.html` renders each Chog's loop (one clip length at 20 fps) as
+  JPEG frames; pack them with Pillow into animated WebP (`save_all`, `duration=50`, `loop=0`, `quality=65`,
+  `method=6`), 320 px, into `public/faces/portraits/<id>.webp`.

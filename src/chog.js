@@ -260,9 +260,10 @@ function soleVertices(gltf) {
       lo = Math.min(lo, v.y);
     }
     const flat = near.filter((n) => n[2] < lo + 0.03);
+    const low = near.filter((n) => n[2] < lo + 0.1);
     if (!flat.length) continue;
-    const pick = (f) => flat.reduce((a, b) => (f(b) > f(a) ? b : a))[0];
-    out.push(...new Set([pick((n) => -n[2]), pick((n) => n[3]), pick((n) => -n[3]), pick((n) => n[1]), pick((n) => -n[1])]));
+    const pick = (list, f) => list.reduce((a, b) => (f(b) > f(a) ? b : a))[0];
+    out.push(...new Set([pick(flat, (n) => -n[2]), pick(flat, (n) => n[3]), pick(flat, (n) => -n[3]), pick(flat, (n) => n[1]), pick(flat, (n) => -n[1]), pick(low, (n) => n[3]), pick(low, (n) => -n[3])]));
   }
   return out;
 }
@@ -415,7 +416,7 @@ export function sweepSpeed(gltf, clipName) {
 
 // Heads turn toward the camera (or whatever a Chog is told to look at) when it's near and in front.
 const LOOK_RANGE = 18;
-const LOOK_MAX = THREE.MathUtils.degToRad(55);
+const LOOK_MAX = THREE.MathUtils.degToRad(32);
 // Upper arms lift no higher than this over level: above it Tripo's shoulders fold into the body (the user,
 // 10-17: "their side goes into their body upon wave"). A hand still goes up, by the elbow.
 const ARM_LIFT_MAX = THREE.MathUtils.degToRad(+(new URLSearchParams(globalThis.location?.search ?? '').get('armlift') ?? 30));
@@ -428,10 +429,15 @@ const STRIDE = { walk: 1.35, run: 1.3 };
 // How much of the clip's body motion (spine to head) is kept, walking and running.
 const TORSO = { walk: 0.6, run: 0.4 };
 // The wave (waveUpdate): the right arm out and up from the shoulder, swinging, the hand rocking.
-const WAVE = { lift: 0.5, swing: 0.2, forward: 0.45, hz: 1.6, rock: 0.4 };
+const WAVE = { lift: 0.5, swing: 0.16, forward: 0.45, hz: 1.7, rock: 0.5, fore: 0.4 };
 // Moves melt into each other over this long, their weights always adding up to one: a sum under one blends
 // toward the bind pose, the T-pose a quick change of mind used to flash (the user, 10-17).
 const FADE = 0.3;
+// The ground's height at (x, z) outdoors (src/travel.js surfaceAt), for each foot (groundUpdate).
+let groundAt = null;
+export function setChogGround(fn) {
+  groundAt = fn;
+}
 // The mic's head this far in front of the lips while singing (model units).
 const MIC_GAP = 0.085;
 // The mic's head along its own axis from its grip (tools/models/fix/singer_rebuild.mjs: 0.14 x 1.5).
@@ -975,6 +981,11 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       const [lo, hi] = move === 'run' ? [1.4, 3] : [0.5, 1.2];
       return THREE.MathUtils.clamp(v, lo, hi);
     },
+    /** Seconds one loop of a move's clip takes at its own rate (0 if it has none). */
+    lengthOf(move) {
+      const a = actions[move];
+      return a ? a.getClip().duration : 0;
+    },
     paceFor(move) {
       const name = clipOf[move];
       if (CLIP_RATE[name]) return CLIP_RATE[name];
@@ -1167,7 +1178,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     L.head.getWorldQuaternion(_hq);
     _cur.copy(L.fwd).applyQuaternion(_hq);
     _dq.setFromUnitVectors(_cur, L.dir);
-    _iq.identity().slerp(_dq, L.w * 0.85);
+    _iq.identity().slerp(_dq, L.w * 0.7);
     _hq.premultiply(_iq);
     L.head.parent.getWorldQuaternion(_pq);
     L.head.quaternion.copy(_pq.invert().multiply(_hq));
@@ -1255,7 +1266,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     A.fore.getWorldPosition(_el);
     A.hand.getWorldPosition(_wr);
     _aim.copy(_to);
-    _aim.y += 0.25;
+    _aim.y += WAVE.fore + 0.12 * Math.sin(ph + 0.5);
     swing(A.fore, _cur.subVectors(_wr, _el).normalize(), _aim.normalize(), w);
     // The hand rocks about the way it faces (forward), a beat behind the arm.
     _qh.setFromAxisAngle(_bf, -WAVE.rock * Math.sin(ph - 0.9) * w);
@@ -1327,10 +1338,16 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     root.getWorldPosition(centre);
     if (camera && centre.distanceTo(camera.position) > 80) return;
     model.updateMatrixWorld(true);
+    // Standing on the world's ground (not a room's floor): each sole against the ground right under it.
+    const onGround = groundAt && Math.abs(groundAt(centre.x, centre.z) - centre.y) < 0.3;
     let lo = Infinity;
-    for (const i of soles) lo = Math.min(lo, skin.getVertexPosition(i, _tg).applyMatrix4(skin.matrixWorld).y);
-    const raw = (lo - centre.y) / root.getWorldScale(_lim).y - model.position.y;
-    model.position.y += (Math.max(0, -raw) - model.position.y) * Math.min(1, dt * 20);
+    for (const i of soles) {
+      skin.getVertexPosition(i, _tg).applyMatrix4(skin.matrixWorld);
+      lo = Math.min(lo, _tg.y - (onGround ? groundAt(_tg.x, _tg.z) : centre.y));
+    }
+    // Up at once (a toe never shows in the ground), back down gently; a hair over the ground.
+    const want = Math.max(0, 0.008 - lo / root.getWorldScale(_lim).y + model.position.y);
+    model.position.y = want > model.position.y ? want : model.position.y + (want - model.position.y) * Math.min(1, dt * 12);
   }
   // Over the clip's pose: the upper arm out toward the target (the elbow a little out and down), the forearm
   // at it, and what the hand holds pointed at it (a mic's head). The clips set these bones every frame, so

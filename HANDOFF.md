@@ -27,6 +27,29 @@ are real but free.
 
 ## Log
 
+### 2026-10-18 · A · The user's second test run: faces on turning, Patrol, Toasty, Quackers, bubbles, the picker
+- **Faces when a head turns** (the user: "any head movements literally deforms their lower face", King Pom's
+  face): every cast model's head is held more firmly by its head bone (`cleanup.py head`: the Head weight w
+  becomes smoothstep(0.12, 0.5, w), so the blend into the neck sits under the chin), and head turns are smaller
+  (`LOOK_MAX` 32 degrees, 70% of the way).
+- **Sides on a wave** (`cleanup.py sides`): the body under each armpit no longer follows the arm. **Clothes
+  while running** (`hips`): above the hip joints the clothes follow the hips, not the thighs.
+- **Patrol** (chog-56): the lens red that ran over the rim onto his face painted out, the cast's blush on his
+  cheeks; the frown stays (the user: "gives personality").
+- **Toasty's back**: clean bands now (shirt red over the flame hem, straight across), so jumping shows no smears.
+- **Quackers' duck float**: held by the spine and hips, blended into the body at the seam (it dipped with a
+  thigh); the purple smears on its top painted out.
+- **Feet**: every sole (toe and heel too) against the ground right under it, lifted at once
+  (`groundUpdate`, `setChogGround` from travel.js). Measured: lowest point 1.4 cm over the ground walking on
+  paving and grass.
+- **Bubbles** (the user: "appeared too abrupt and disappeared too quickly"): one at a time, only from a Chog on
+  screen, 4 to 7.5 s each (by length), faded in and out, gliding after the head, a small pop. The Chog waves
+  for 2.6 s then talks on facing you.
+- **The picker** (the user: "should be animated not still images"): `public/faces/portraits/*.webp` are now
+  animated loops (each Chog in its own idle or talk with its face, 20 fps, one seamless clip loop, ~280 KB
+  each), preloaded once the world is idle. `tools/models/portraits.html` + a packer (README).
+- Next, the user's word: "when the character polishes are done to my taste, we revamp the ui".
+
 ### 2026-10-17 · A · The user's test-run notes: moving, waving, the singer, Toasty, the picker
 - **Speed and the joystick** (`src/travel.js`): every Chog walks at 1.9 to 2.6 m/s and runs at 4.2 to 5.4
   (its own pace kept in those bands; before, true foot speed left most at about 1 m/s walking). Its legs take

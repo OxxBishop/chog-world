@@ -46,8 +46,11 @@ for (let mi = 0; mi < models.length; mi++) {
     for (let k = 0; k < 30; k++) c.update(1 / 30, null);
     c.play(move);
     if (q.get('reach')) c.reach(new THREE.Vector3(-3, H * 0.6, 5), 99);
+    // look=x,y,z: the head turned toward that point (the world's head turn), looking from the front camera.
+    const look = q.get('look') ? new THREE.Vector3(...q.get('look').split(',').map(Number)) : null;
+    if (look) c.lookAt(look);
     const steps = Math.round(ts[ti] * 60);
-    for (let k = 0; k < steps; k++) c.update(1 / 60, null);
+    for (let k = 0; k < steps; k++) c.update(1 / 60, look ? cam : null);
     c.root.updateMatrixWorld(true);
     for (let vi = 0; vi < views.length; vi++) {
       const a = { front: 0, threeq: Math.PI / 4, side: Math.PI / 2, back: Math.PI, lthreeq: -Math.PI / 4, lside: -Math.PI / 2, lback: -Math.PI * 0.75, rback: Math.PI * 0.75 }[views[vi]] ?? +views[vi];

@@ -1,24 +1,27 @@
 <!doctype html><meta charset="utf-8"><title>Cast portraits</title>
 <style>body{margin:0;background:#222}canvas{display:block}</style>
 <script type="module">
-// The guest picker's portraits (public/faces/portraits/<id>.webp, 320 px): each of the cast as the world draws
-// it (src/chog.js: its face, its moves), in a pose of its own, looking at you from eye level (the user,
-// 10-17: they all looked down). Run under vite: /tools/models/portraits.html (?only=52). window.__shots holds
-// { id: PNG data URL }; tools save them as WebP.
+// The guest picker's portraits (public/faces/portraits/<id>.webp, 320 px), animated (the user, 10-17: "the
+// character selector should be animated not still images"): each of the cast as the world draws it
+// (src/chog.js: its face, its moves) in a loop of its own move, looking out from eye level. One loop of the
+// move's clip, FPS frames a second, so it repeats without a seam. Run under vite:
+// /tools/models/portraits.html (?only=52&fps=20). window.__shots holds { id: [JPEG data URLs] }; tools write
+// them out as animated WebP.
 import * as THREE from 'three';
 import { makeChog, setChogRenderer, CHOG_HEIGHT } from '/src/chog.js';
 const q = new URLSearchParams(location.search);
-// [id, move, seconds into it, face, camera turn (radians, + to its left), camera distance (heights)]
+const FPS = +(q.get('fps') || 20);
+// [id, move, face, camera turn (radians, + to its left), camera distance (heights)]
 const CAST = [
-  [1151, 'wave', 0.55, 'excited', 0.35],
-  [409, 'talk', 1.1, 'happy', -0.3],
-  [68, 'wave', 0.8, 'curious', -0.35],
-  [124, 'idle', 0.6, 'sleepy', 0.3],
-  [132, 'cheer', 0.45, 'excited', 0.25, 2.5],
-  [37, 'talk', 0.9, 'happy', -0.25],
-  [56, 'wave', 0.7, 'happy', 0.3],
-  [66, 'cheer', 0.7, 'excited', -0.3],
-  [52, 'talk', 1.4, 'happy', 0.3],
+  [1151, 'talk', 'excited', 0.35],
+  [409, 'idle', 'happy', -0.3],
+  [68, 'talk', 'curious', -0.35],
+  [124, 'idle', 'sleepy', 0.3],
+  [132, 'talk', 'excited', 0.25],
+  [37, 'talk', 'happy', -0.25],
+  [56, 'idle', 'calm', 0.3],
+  [66, 'idle', 'excited', -0.3],
+  [52, 'talk', 'happy', 0.3],
 ].filter((c) => !q.get('only') || q.get('only').split(',').includes(String(c[0])));
 const S = 320;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -41,28 +44,27 @@ scene.add(rim);
 const cam = new THREE.PerspectiveCamera(26, 1, 0.05, 60);
 const H = CHOG_HEIGHT;
 window.__shots = {};
-const grid = document.createElement('canvas');
-grid.width = S * Math.min(5, CAST.length);
-grid.height = S * Math.ceil(CAST.length / 5);
-document.body.append(grid);
-for (const [i, [id, move, at, face, turn, far = 2.3]] of CAST.entries()) {
+for (const [id, move, face, turn, far = 2.3] of CAST) {
   const c = await makeChog({ model: `models/npcs/chog-${id}.glb` });
   await new Promise((r) => setTimeout(r, 1200));
   scene.add(c.root);
   // Eye level, a little under the face, so it looks out at you (never down).
-  const look = new THREE.Vector3(0, H * 0.49, 0);
   cam.position.set(Math.sin(turn) * H * far, H * 0.47, Math.cos(turn) * H * far);
-  cam.lookAt(look);
-  c.play('idle');
-  for (let k = 0; k < 40; k++) c.update(1 / 30, cam);
+  cam.lookAt(0, H * 0.49, 0);
   c.play(move);
-  c.express(face, 99);
-  for (let k = 0; k < Math.round(at * 60); k++) c.update(1 / 60, cam);
-  renderer.render(scene, cam);
-  window.__shots[id] = renderer.domElement.toDataURL('image/png');
-  grid.getContext('2d').drawImage(renderer.domElement, (i % 5) * S, Math.floor(i / 5) * S);
+  c.express(face, 1e6);
+  // Settled into the move (its fade done, the head turned to you), then one loop of it.
+  const len = c.lengthOf(move) || 2;
+  for (let k = 0; k < Math.round(len * 60) * 2; k++) c.update(1 / 60, cam);
+  const frames = [];
+  const n = Math.round(len * FPS);
+  for (let f = 0; f < n; f++) {
+    for (let k = 0; k < 60 / FPS; k++) c.update(1 / 60, cam);
+    renderer.render(scene, cam);
+    frames.push(renderer.domElement.toDataURL('image/jpeg', 0.93));
+  }
+  window.__shots[id] = frames;
   scene.remove(c.root);
 }
-renderer.domElement.style.display = 'none';
 window.__done = true;
 </script>

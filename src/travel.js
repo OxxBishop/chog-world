@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeChog, CHOG_HEIGHT } from './chog.js';
+import { makeChog, CHOG_HEIGHT, setChogGround } from './chog.js';
 import { chogInfo } from './chogdata.js';
 import { modelFor } from './traitmap.js';
 import { ISLANDS, HOODS, DOMES, DOME_R, DOWNTOWN, ROADS, TERRACES, PORTAL_SPOTS, roadDistance } from './layout.js';
@@ -33,6 +33,7 @@ let plazaY = null;
  * The ground you see at (x, z), which a Chog stands on: the plaza's paving, a walk's paving and its curbs
  * (roads.js lays them a few cm over the land), or the land (the user, 10-17: Chogs sank into the ground).
  */
+setChogGround((x, z) => surfaceAt(x, z));
 export function surfaceAt(x, z) {
   const h = heightAt(x, z);
   plazaY ??= heightAt(DOWNTOWN.x, DOWNTOWN.z) + 0.09;
@@ -1100,6 +1101,13 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       state.lastDoor = null;
     });
   }
+
+  // The picker's portraits are short animated loops (tools/models/portraits.html, ~300 KB each): fetched
+  // quietly once the world is up, so the picker opens with them already playing.
+  const portraits = CAST.map((c) => `${import.meta.env.BASE_URL}faces/portraits/${c.id}.webp`);
+  const warm = () => portraits.forEach((src) => (new Image().src = src));
+  if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 8000 });
+  else setTimeout(warm, 4000);
 
   /** A guest picks who to walk as, then beams down on the plaza. */
   function pickGuest() {
