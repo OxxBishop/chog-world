@@ -325,11 +325,18 @@ export function buildRoulette(room, x, z, rot, style) {
     return out.set(layout.position.x + ((sp.x + sp.w / 2) / LAYOUT.w - 0.5) * LAYOUT_W, H + 0.003, layout.position.z + ((sp.y + sp.h / 2) / LAYOUT.h - 0.5) * LAYOUT_D);
   };
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+  // How many chips stand on each spot, and how many instances the stacks use (the chip you hold, over
+  // the spot it would land on, is the one after them).
+  const tops = new Map();
+  let base = 0;
+  const aim = { key: null, value: 10, ok: true, k: 0, in: 1, shown: false, at: new THREE.Vector3(), size: new THREE.Vector2(0.1, 0.1) };
   const setStacks = (bets) => {
     let i = 0;
+    tops.clear();
     for (const { key, amount, lift = 0 } of bets) {
       spotAt(key, v);
       const chips = chipsFor(amount);
+      tops.set(key, chips.length);
       chips.forEach((value, k) => {
         if (i >= STACK_MAX) return;
         // A slight wobble, so a stack reads as chips and not a cylinder.
@@ -340,11 +347,95 @@ export function buildRoulette(room, x, z, rot, style) {
         i++;
       });
     }
-    stacks.count = i;
+    stacks.count = base = i;
     stacks.instanceMatrix.needsUpdate = true;
     if (stacks.instanceColor) stacks.instanceColor.needsUpdate = true;
+    aim.shown = false;
   };
   setStacks([{ key: 'red', amount: 5 }]);
+
+  // Where a chip will land: a soft glow round the spot under the pointer or finger, and the chip you
+  // hold hovering over it. Drawn from the load on (at nothing), so its shader is ready.
+  const glowMat = new THREE.ShaderMaterial({
+    uniforms: { uSize: { value: new THREE.Vector2(0.1, 0.1) }, uColor: { value: new THREE.Color('#ffe7a0') }, uAlpha: { value: 0 } },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec2 uSize;
+      uniform vec3 uColor;
+      uniform float uAlpha;
+      varying vec2 vUv;
+      void main() {
+        vec2 full = uSize + vec2(${(2 * AIM_PAD).toFixed(3)});
+        vec2 p = (vUv - 0.5) * full;
+        // A rounded box the size of the spot: a bright rim, a light fill and a soft halo outside it.
+        vec2 qd = abs(p) - uSize * 0.5 + 0.012;
+        float d = length(max(qd, 0.0)) + min(max(qd.x, qd.y), 0.0) - 0.012;
+        float rim = 1.0 - smoothstep(0.0, 0.007, abs(d));
+        float fill = 0.3 * (1.0 - step(0.0, d));
+        float halo = 0.6 * step(0.0, d) * exp(-max(d, 0.0) * 70.0);
+        gl_FragColor = vec4(uColor * (rim * 0.95 + fill + halo) * uAlpha, 1.0);
+      }`,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), glowMat);
+  glow.renderOrder = 2;
+  glow.frustumCulled = false;
+  glow.position.set(layout.position.x, H + 0.006, layout.position.z);
+  glow.userData.keep = true;
+  g.add(glow);
+  const GOLD_GLOW = new THREE.Color('#ffe7a0'), NO_GLOW = new THREE.Color('#ff7a6b');
+  const spin = new THREE.Quaternion(), tilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.12);
+  const size = new THREE.Vector2();
+  const stepAim = (dt, t) => {
+    const sp = aim.key ? SPOTS.find((x) => x.key === aim.key) : null;
+    // Nothing aimed and all faded: nothing to do.
+    if (!sp && aim.k < 0.002 && !aim.shown) {
+      glowMat.uniforms.uAlpha.value = 0;
+      return;
+    }
+    aim.k += ((sp ? 1 : 0) - aim.k) * Math.min(1, dt * 14);
+    if (sp) {
+      spotAt(sp.key, v);
+      size.set((sp.w / LAYOUT.w) * LAYOUT_W, (sp.h / LAYOUT.h) * LAYOUT_D);
+      // From nothing it starts where it is; from another spot it glides across.
+      const f = aim.k < 0.08 ? 1 : Math.min(1, dt * 24);
+      aim.at.lerp(v, f);
+      aim.size.lerp(size, f);
+    }
+    glow.position.set(aim.at.x, H + 0.006, aim.at.z);
+    glow.scale.set(aim.size.x + 2 * AIM_PAD, 1, aim.size.y + 2 * AIM_PAD);
+    glowMat.uniforms.uSize.value.copy(aim.size);
+    glowMat.uniforms.uColor.value.copy(aim.ok ? GOLD_GLOW : NO_GLOW);
+    glowMat.uniforms.uAlpha.value = aim.k < 0.01 ? 0 : aim.k * (0.8 + 0.2 * Math.sin(t * 6.5));
+    // The chip in hand, over the top of the spot's stack, bobbing and turning slowly.
+    const show = sp && aim.ok && aim.k > 0.02 && base < STACK_MAX;
+    if (show) {
+      aim.in = Math.min(1, aim.in + dt / 0.24);
+      const e = ease(aim.in);
+      const top = tops.get(sp.key) ?? 0;
+      v.copy(aim.at).setY(H + 0.003 + CHIP_H / 2 + top * CHIP_H + 0.035 + 0.05 * (1 - e) + 0.006 * Math.sin(t * 4));
+      spin.setFromAxisAngle(UP, t * 0.9).multiply(tilt);
+      stacks.setMatrixAt(base, m4.compose(v, spin, sc.setScalar(Math.max(0.001, aim.k * e))));
+      stacks.setColorAt(base, CHIP_COLOURS[aim.value] ?? CHIP_COLOURS[10]);
+      stacks.count = base + 1;
+      stacks.instanceMatrix.needsUpdate = true;
+      if (stacks.instanceColor) stacks.instanceColor.needsUpdate = true;
+      aim.shown = true;
+    } else if (aim.shown) {
+      stacks.count = base;
+      aim.shown = false;
+    }
+  };
+  const sc = new THREE.Vector3();
+  const UP = new THREE.Vector3(0, 1, 0);
   g.traverse((o) => o.isMesh && (o.userData.keep = true));
   const L = (a, b, c) => g.localToWorld(new THREE.Vector3(a, b, c));
   return {
@@ -360,10 +451,10 @@ export function buildRoulette(room, x, z, rot, style) {
      * over the wheel while the ball runs.
      */
     view(kind, tall) {
-      // On a tall screen the panel takes the bottom third: the views aim a little nearer, so what
-      // matters sits higher up. On a wide one it's on the right: the table sits left of middle.
-      if (kind === 'wheel') return tall ? { pos: L(-1.1, 3.1, 1.3), target: L(-1.1, 1.0, 0.3), enter: true } : { pos: L(-0.75, 2.05, 1.35), target: L(-0.8, 0.98, -0.05), enter: true };
-      return tall ? { pos: L(0.62, 4.6, 0.68), target: L(0.62, 1.0, 0.5), enter: true } : { pos: L(0.72, 3.45, 1.95), target: L(0.72, 0.95, -0.05), enter: true };
+      // In the middle of the screen, between your Chog's edges at the top and the chips along the
+      // bottom: on a wide screen the whole table to bet, the wheel alone while the ball runs.
+      if (kind === 'wheel') return tall ? { pos: L(-1.1, 3.1, 1.3), target: L(-1.1, 1.0, 0.3), enter: true } : { pos: L(-1.1, 2.3, 1.45), target: L(-1.1, 0.8, -0.15), enter: true };
+      return tall ? { pos: L(0.62, 4.6, 0.44), target: L(0.62, 1.0, 0.26), enter: true } : { pos: L(0, 3.25, 2.35), target: L(0, 0.92, -0.05), enter: true };
     },
     highlight(on) {
       drawLayout(lg, on);
@@ -384,14 +475,34 @@ export function buildRoulette(room, x, z, rot, style) {
     },
     // Where the winning chips fly from, in the room's space.
     worldAt: (key) => g.localToWorld(spotAt(key)),
+    /**
+     * The glow where a chip will land: key (or null, to fade it out), the chip's value, and whether it
+     * can go down there (if not, the glow turns coral and no chip hovers).
+     */
+    aim(key, value = 10, ok = true) {
+      aim.key = key;
+      aim.value = value;
+      aim.ok = ok;
+    },
+    get aimed() {
+      return aim.key;
+    },
+    /** A chip just went down where it aimed: the next one drops in from above. */
+    dropped() {
+      aim.in = 0;
+    },
+    stepAim,
   };
 }
 
 // ---------- the chips ----------
 const CHIP_R = 0.046, CHIP_H = 0.014, STACK_MAX = 120;
+// How far the landing glow reaches past its spot's edge.
+const AIM_PAD = 0.035;
 const LAYOUT_W = 2.0, LAYOUT_D = 2.0 * (LAYOUT.h / LAYOUT.w);
 export const CHIP_VALUES = [100, 50, 25, 10, 5];
-const CHIP_COLOURS = { 5: new THREE.Color('#f4efe4'), 10: new THREE.Color('#e2554f'), 25: new THREE.Color('#2fb3a3'), 50: new THREE.Color('#f0b23a'), 100: new THREE.Color('#2b3a77') };
+// The rack's colours (src/style.css, .cz-chip), so the chip in your hand is the one on the felt.
+const CHIP_COLOURS = { 5: new THREE.Color('#efeaf7'), 10: new THREE.Color('#ff6f61'), 25: new THREE.Color('#2fb3a3'), 50: new THREE.Color('#8a63ff'), 100: new THREE.Color('#2a3c6e') };
 // An amount as the chips that make it, biggest first, up to 9 in a stack.
 function chipsFor(amount) {
   const out = [];

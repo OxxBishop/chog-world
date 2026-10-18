@@ -679,219 +679,277 @@ body.intro-reveal .hud, body.intro-reveal .places-toggle, body.intro-reveal .nav
   #loading.intro.leaving { animation: none; opacity: 0; }
 }
 
-/* ---------- B: the casino's panel (src/casino.js) ---------- */
-.casino-panel {
-  position: fixed;
-  z-index: 6;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 300px;
-  padding: 16px;
-  border-radius: 18px;
-  background: rgba(42, 10, 22, 0.86);
-  border: 1px solid rgba(232, 184, 74, 0.45);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 220, 150, 0.08);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  color: #fff6e8;
-  font-family: var(--body);
-  font-size: 14px;
+/* ---------- B: the casino's controls, "Chips in hand" (the user's pick, 10-16; src/casino.js) ----------
+   No panel: your Chog's edges as badges at the top left, a rack of chips, your chips and SPIN along
+   the bottom. Sizes from the mockup (wip/b/casino-ui on B's branch): SPIN 104 px on a laptop, 82 on a phone. */
+.cz-ui {
+  --cz-gold: #ffd36b; --cz-gold-deep: #6b4a14; --cz-plum: #1a1233; --cz-plum-hi: #3a2c63; --cz-pink: #ff5fa0; --cz-ink: #12263a;
+  --c5: #e9e4f2; --c10: #ff6f61; --c25: #2fb3a3; --c50: #8a63ff; --c100: #1d2a44;
+  position: fixed; inset: 0; z-index: 6; pointer-events: none;
+  color: #fff; font-family: var(--body); font-size: 14px;
+  transition: opacity 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
 }
-.casino-panel[hidden] { display: none; }
-body.intro-open .casino-panel { opacity: 0; pointer-events: none; }
-.casino-panel button { font: inherit; cursor: pointer; border: 0; color: inherit; }
-.cz-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.cz-chips { display: inline-flex; align-items: center; gap: 8px; font-family: var(--display); font-weight: 600; font-size: 28px; color: #ffe6a8; }
-.cz-chips i {
-  width: 22px; height: 22px; border-radius: 50%;
-  background: radial-gradient(circle, #c4334a 0 38%, #fff6e8 39% 47%, #c4334a 48%);
-  box-shadow: 0 0 0 2px #fff6e8 inset;
+.cz-ui[hidden] { display: none; }
+.cz-ui.away { opacity: 0; }
+.cz-ui.away * { pointer-events: none !important; }
+body.intro-open .cz-ui { opacity: 0; pointer-events: none; }
+/* A soft shade along the bottom, so the gold and the chips read over a bright floor. Static: nothing
+   over the canvas repaints each frame. */
+.cz-ui::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 30%; z-index: -1; background: linear-gradient(to top, rgba(10, 6, 20, 0.55), rgba(10, 6, 20, 0)); }
+.cz-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+.cz-ui button { font: inherit; color: inherit; border: 0; margin: 0; cursor: pointer; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.cz-ui button:focus { outline: none; }
+/* Over a 3D room the rest of the world's buttons step aside: the casino has its own way out. */
+body.in-casino .hud.bottom, body.in-casino .focus-bar, body.in-casino .signin-btn, body.in-casino .chog-chip,
+body.in-casino .places-toggle, body.in-casino #places, body.in-casino .nav-hint { display: none !important; }
+
+/* Your Chog and its edges. */
+.cz-edges { position: absolute; left: calc(env(safe-area-inset-left, 0px) + 16px); top: calc(env(safe-area-inset-top, 0px) + 84px); display: grid; justify-items: start; gap: 10px; max-width: calc(100vw - 32px); }
+.cz-who, .cz-badges { pointer-events: auto; }
+.cz-who { display: flex; align-items: center; gap: 10px; }
+.cz-who img { width: 44px; height: 44px; flex: none; border-radius: 50%; object-fit: cover; background: #2a1e3f; box-shadow: 0 0 0 3px var(--cz-gold), 0 4px 12px rgba(0, 0, 0, 0.4); }
+.cz-who div { display: grid; justify-items: start; line-height: 1.15; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7); }
+.cz-who b { font: 600 17px var(--display); }
+.cz-who span { font-size: 12px; opacity: 0.9; }
+.cz-ui .cz-signin { display: none; margin-top: 3px; padding: 0; background: none; font-size: 12px; font-weight: 700; color: #ffd6e7; text-decoration: underline; text-underline-offset: 2px; }
+.cz-ui.guest .cz-signin { display: block; }
+.cz-ui .cz-signin:hover { color: #fff; }
+.cz-ui .cz-signin:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 4px; }
+.cz-badges { display: flex; flex-wrap: wrap; width: max-content; max-width: 100%; box-sizing: border-box; gap: 8px 10px; list-style: none; margin: 0; padding: 6px 4px 4px; }
+.cz-badges:empty { display: none; }
+.cz-badges li { flex: none; }
+.cz-ui .cz-badge { position: relative; width: 60px; display: grid; justify-items: center; gap: 5px; padding: 0; background: none; }
+.cz-badge i {
+  position: relative; width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 40% 30%, var(--cz-plum-hi), var(--cz-plum) 70%);
+  box-shadow: 0 0 0 2.5px var(--cz-gold), 0 6px 14px rgba(0, 0, 0, 0.45);
+  color: var(--ic, var(--cz-gold)); transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.3s ease;
 }
-.cz-who { color: #ffb3c8; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cz-note { margin: 10px 0 6px; color: #f3d9c4; line-height: 1.4; }
-.cz-msg { min-height: 1.4em; margin: 10px 0 8px; font-family: var(--display); font-size: 18px; color: #fff; }
-.cz-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
-.cz-bet { width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 230, 168, 0.14); font-size: 18px; }
-.cz-betv { min-width: 64px; text-align: center; font-weight: 600; }
-.cz-spin, .cz-play {
-  flex: 1; padding: 12px 16px; border-radius: 999px;
-  background: linear-gradient(#ffe08a, #e0a83a); color: #3a1220 !important;
-  font-family: var(--display) !important; font-weight: 600; font-size: 18px; letter-spacing: 0.04em;
-  box-shadow: 0 3px 0 #9a6612, 0 0 18px rgba(255, 200, 90, 0.35);
+.cz-badge i::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; box-shadow: 0 0 0 3px #fff, 0 0 16px 6px rgba(255, 220, 120, 0.95), 0 0 42px 16px rgba(255, 170, 60, 0.55); opacity: 0; pointer-events: none; }
+.cz-badge svg { width: 26px; height: 26px; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.35)); }
+.cz-badge .cz-num { font: 700 22px var(--display); line-height: 1; color: var(--cz-gold); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); }
+.cz-badge span { max-width: 62px; font-size: 10.5px; font-weight: 700; line-height: 1.1; text-align: center; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cz-badge em { position: absolute; top: -4px; right: 1px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: var(--cz-pink); font: 700 11px/18px var(--body); font-style: normal; text-align: center; box-shadow: 0 0 0 2px var(--cz-plum); }
+.cz-badge em[hidden] { display: none; }
+.cz-badge:hover i, .cz-badge.open i { transform: translateY(-2px); box-shadow: 0 0 0 2.5px #ffe7a8, 0 0 14px rgba(255, 211, 107, 0.35), 0 8px 18px rgba(0, 0, 0, 0.5); }
+.cz-badge:active i { transform: scale(0.94); }
+.cz-badge:focus-visible i { outline: 2px solid #fff; outline-offset: 4px; }
+.cz-badge.used i { filter: saturate(0.15) brightness(0.62); }
+.cz-badge.used span { opacity: 0.6; }
+/* The moment an edge fires: the badge pops, a white ring and a gold glow flare and fade. */
+.cz-badge.fire i { animation: cz-fire-pop 0.9s cubic-bezier(0.3, 1.6, 0.5, 1); filter: none; }
+.cz-badge.fire i::after { animation: cz-fire-ring 2.4s ease-out; }
+.cz-ui .cz-badge.fire span { color: #fff; opacity: 1; }
+@keyframes cz-fire-pop { 0% { transform: scale(1); } 18% { transform: scale(1.24); } 100% { transform: scale(1); } }
+@keyframes cz-fire-ring { 0% { opacity: 0; transform: scale(0.85); } 10% { opacity: 1; transform: scale(1.08); } 55% { opacity: 0.8; transform: scale(1); } 100% { opacity: 0; transform: scale(1); } }
+.cz-tip {
+  position: absolute; z-index: 2; width: 300px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 11px 14px 12px; border-radius: 14px;
+  background: rgba(20, 13, 38, 0.94); box-shadow: 0 0 0 1.5px rgba(255, 211, 107, 0.6), 0 10px 30px rgba(0, 0, 0, 0.45);
+  font-size: 13.5px; line-height: 1.4; pointer-events: none; animation: cz-tip-in 0.16s ease-out;
 }
-.cz-play { width: 100%; margin-top: 12px; }
-.cz-spin:disabled { filter: saturate(0.4) brightness(0.8); cursor: default; }
-.cz-spin:active:not(:disabled), .cz-play:active { transform: translateY(2px); box-shadow: 0 1px 0 #9a6612; }
-.cz-re { flex-wrap: wrap; color: #ffb3c8; }
-.cz-re span { width: 100%; font-size: 13px; }
-.cz-reroll { padding: 6px 10px; border-radius: 999px; background: rgba(255, 95, 143, 0.2); border: 1px solid rgba(255, 140, 180, 0.5) !important; }
-.cz-perks { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; color: #f3d9c4; }
-.cz-perks b { color: #ffe6a8; font-weight: 600; margin-right: 4px; }
-.cz-leave { margin-top: 12px; padding: 0; background: none; color: #ffb3c8 !important; text-decoration: underline; font-size: 13px; }
-.casino-panel button:focus-visible { outline: 2px solid #ffe08a; outline-offset: 2px; }
-.cz-games { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
-.cz-games .cz-play { margin: 0; width: auto; padding: 12px 6px; font-size: 16px; }
-.cz-edges { margin-top: 12px; }
-.cz-edges summary { display: flex; align-items: center; gap: 7px; cursor: pointer; list-style: none; font-weight: 600; font-size: 13px; }
-.cz-edges summary::-webkit-details-marker { display: none; }
-.cz-edges summary::before { content: ''; border: 5px solid transparent; border-left-color: currentColor; margin-right: -4px; transform-origin: 25% 50%; transition: transform 0.2s ease; }
-.cz-edges[open] summary::before { transform: rotate(90deg); }
-.cz-edges summary em { font-style: normal; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); }
-.cz-edges .cz-perks { max-height: 36vh; overflow: auto; padding-right: 4px; overscroll-behavior: contain; }
-.casino-panel.at-slots .cz-edges .cz-perks, .casino-panel.at-roulette .cz-edges .cz-perks { max-height: max(90px, calc(100vh - 470px)); }
-@media (min-width: 641px) { .casino-panel { max-height: calc(100vh - 150px); overflow-y: auto; overscroll-behavior: contain; } }
-.cz-perks li { line-height: 1.35; }
-.cz-perks li span { display: block; font-size: 11px; opacity: 0.65; }
-.cz-perks li.cz-guest { font-style: italic; opacity: 0.8; }
-.cz-perks li.cz-h { margin-top: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-.cz-ups { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
-.cz-ups > span { font-size: 13px; font-weight: 600; margin-right: 2px; }
-.cz-up { padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; background: rgba(255, 95, 143, 0.2); box-shadow: 0 0 0 1px rgba(255, 140, 180, 0.5) inset; }
-.cz-up i { font-style: normal; opacity: 0.7; margin-left: 2px; }
-.cz-up:active { transform: translateY(1px); }
-.casino-panel .cz-reel { width: 36px; padding: 7px 0; }
-.casino-panel .cz-cancel { width: 30px; padding: 7px 0; background: none; box-shadow: none; font-size: 18px; line-height: 1; }
-.cz-chipv { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 56px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.cz-chipv i { width: 20px; height: 20px; border-radius: 50%; box-shadow: 0 0 0 1.5px rgba(18, 38, 58, 0.6); }
-.cz-chipv i.v5 { background: repeating-conic-gradient(#f4efe4 0 30deg, #c9c3b6 30deg 45deg); }
-.cz-chipv i.v10 { background: repeating-conic-gradient(#e2554f 0 30deg, #fff 30deg 45deg); }
-.cz-chipv i.v25 { background: repeating-conic-gradient(#2fb3a3 0 30deg, #fff 30deg 45deg); }
-.cz-chipv i.v50 { background: repeating-conic-gradient(#f0b23a 0 30deg, #fff 30deg 45deg); }
-.cz-chipv i.v100 { background: repeating-conic-gradient(#2b3a77 0 30deg, #fff 30deg 45deg); }
-.cz-on { margin-left: auto; font-size: 12px; opacity: 0.85; white-space: nowrap; }
-.cz-on b { font-size: 15px; font-variant-numeric: tabular-nums; }
-.cz-quick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 10px 0 8px; }
-.cz-q { position: relative; padding: 8px 2px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; background: rgba(255, 255, 255, 0.1); }
-.cz-q i { position: absolute; top: -8px; right: -5px; min-width: 18px; padding: 1px 5px; border-radius: 999px; font-style: normal; font-size: 10px; line-height: 14px; background: #ffc94a; color: #12263a; box-shadow: 0 0 0 1.5px #12263a; }
-.cz-q:active { transform: translateY(1px); }
-.cz-quick[inert] { opacity: 0.45; }
-.cz-clear, .cz-rebet, .cz-undo { padding: 11px 12px; border-radius: 999px; font-weight: 600; background: rgba(255, 255, 255, 0.1); }
-.cz-clear:disabled, .cz-rebet:disabled, .cz-undo:disabled { opacity: 0.4; cursor: default; }
-.cz-chiplabel { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; }
-/* Held to take a chip off: no text selection or callout on a long press. */
-.cz-q { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: none; }
-.cz-hint { margin: 2px 0 0; font-size: 12px; opacity: 0.7; }
-/* On a phone the panel is one slim bar along the bottom (B22): chips, the bet and SPIN in a row, the
-   last result over them, "step back" a small round x. It never covers the machine. */
+.cz-tip[hidden] { display: none; }
+.cz-tip::before { content: ''; position: absolute; top: -6px; left: calc(var(--arrow, 30px) - 6px); width: 12px; height: 12px; transform: rotate(45deg); background: rgb(20, 13, 38); box-shadow: -1.5px -1.5px 0 rgba(255, 211, 107, 0.6); }
+.cz-tip small { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: #b3a8c8; }
+.cz-tip b { display: block; margin: 1px 0 3px; font: 600 16px var(--display); color: var(--cz-gold); }
+.cz-tip em { display: block; margin-top: 6px; font-style: normal; font-weight: 700; color: #ffb3d2; }
+.cz-tip em.out { color: #b3a8c8; }
+@keyframes cz-tip-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* Out: back to the room from a game, out of the casino from the room. */
+.cz-ui .cz-leave {
+  position: absolute; top: calc(env(safe-area-inset-top, 0px) + 16px); right: calc(env(safe-area-inset-right, 0px) + 16px);
+  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px 0 6px; border-radius: 999px;
+  background: rgba(20, 13, 38, 0.82); box-shadow: 0 0 0 1.5px rgba(255, 211, 107, 0.55), 0 6px 16px rgba(0, 0, 0, 0.35);
+  font: 600 15px var(--display); pointer-events: auto; transition: transform 0.12s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.cz-leave i { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 40% 30%, var(--cz-plum-hi), var(--cz-plum) 70%); box-shadow: 0 0 0 2px var(--cz-gold); color: var(--cz-gold); }
+.cz-leave svg { width: 18px; height: 18px; }
+.cz-ui .cz-leave:hover { background: rgba(48, 32, 84, 0.92); box-shadow: 0 0 0 1.5px var(--cz-gold), 0 0 16px rgba(255, 211, 107, 0.3), 0 6px 16px rgba(0, 0, 0, 0.35); }
+.cz-ui .cz-leave:active { transform: scale(0.96); }
+.cz-ui .cz-leave:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+/* The bottom: what just happened, the power-ups, what's on the felt, then the chips and SPIN. */
+.cz-dock { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 24px); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.cz-dock > * { pointer-events: auto; }
+.cz-say { margin: 0; max-width: min(620px, calc(100vw - 32px)); font: 600 18px var(--display); line-height: 1.25; text-align: center; text-wrap: balance; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 2px 10px rgba(0, 0, 0, 0.75); pointer-events: none !important; }
+.cz-say[hidden] { display: none; }
+.cz-say.quiet { font: 500 13px var(--body); opacity: 0.88; }
+.cz-say.pop { animation: cz-say 0.35s cubic-bezier(0.3, 1.5, 0.5, 1); }
+@keyframes cz-say { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
+.cz-tokens { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+.cz-tokens[hidden] { display: none; }
+.cz-ui .cz-token {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 15px; border-radius: 999px;
+  background: rgba(20, 13, 38, 0.88); box-shadow: 0 0 0 1.5px var(--cz-gold), 0 6px 14px rgba(0, 0, 0, 0.35);
+  font: 700 13.5px var(--body); color: var(--cz-gold); animation: cz-token-in 0.28s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+  transition: transform 0.12s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.cz-token em { font-style: normal; font-weight: 600; color: #fff; opacity: 0.8; }
+.cz-ui .cz-token:hover { background: rgba(58, 40, 99, 0.95); box-shadow: 0 0 0 1.5px #ffe7a8, 0 0 16px rgba(255, 211, 107, 0.35), 0 6px 14px rgba(0, 0, 0, 0.35); transform: translateY(-1px); }
+.cz-ui .cz-token:active { transform: translateY(1px) scale(0.97); }
+.cz-ui .cz-token:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.cz-ui .cz-token.save { color: #ffd6e7; box-shadow: 0 0 0 1.5px #ff8cbc, 0 0 14px rgba(255, 95, 160, 0.35), 0 6px 14px rgba(0, 0, 0, 0.35); }
+.cz-ui .cz-token.wild { background: linear-gradient(100deg, rgba(120, 40, 90, 0.92), rgba(58, 40, 99, 0.92) 50%, rgba(30, 80, 100, 0.92)); }
+.cz-ui .cz-token.reel { width: 40px; padding: 0; justify-content: center; font-size: 16px; }
+.cz-ui .cz-token.cancel { color: #fff; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.5); }
+.cz-ask { font: 600 15px var(--display); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); margin-right: 2px; }
+@keyframes cz-token-in { from { opacity: 0; transform: translateY(8px) scale(0.92); } to { opacity: 1; transform: none; } }
+.cz-felt { padding: 6px 14px; border-radius: 999px; background: rgba(20, 13, 38, 0.82); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2); font-size: 14px; white-space: nowrap; }
+.cz-felt[hidden] { display: none; }
+.cz-felt b { color: var(--cz-gold); font-variant-numeric: tabular-nums; }
+.cz-bar { display: flex; align-items: flex-end; gap: 22px; margin-top: 10px; }
+.cz-bank { display: grid; justify-items: end; min-width: 132px; padding-bottom: 14px; line-height: 1; }
+.cz-bank small { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.88; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); white-space: nowrap; }
+.cz-bank b {
+  margin-top: 5px; font: 700 40px var(--display); font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
+  background: linear-gradient(180deg, #fff6d4 0%, #ffd36b 48%, #e6a93a 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(92, 52, 8, 0.75)) drop-shadow(0 3px 8px rgba(0, 0, 0, 0.45));
+}
+.cz-rack {
+  display: flex; align-items: flex-end; gap: 12px; padding: 14px 18px 12px; border-radius: 26px;
+  background: linear-gradient(#2a1e3f, #170f28);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.06), inset 0 -8px 16px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(255, 211, 107, 0.35), 0 14px 30px rgba(0, 0, 0, 0.45);
+}
+/* A casino chip: striped edge, inset ring, its value. Its colours match the chips on the felt (src/roulette.js). */
+.cz-ui .cz-chip {
+  --c: var(--c10); --t: #fff; --stripe: #fff; position: relative; flex: none; width: 64px; height: 64px; padding: 0; border-radius: 50%;
+  background: repeating-conic-gradient(from 8deg, var(--stripe) 0 14deg, var(--c) 14deg 60deg);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 10px 16px rgba(0, 0, 0, 0.35);
+  transition: transform 0.22s cubic-bezier(0.3, 1.6, 0.5, 1), box-shadow 0.22s ease, filter 0.2s ease;
+}
+.cz-chip::before {
+  content: ''; position: absolute; inset: 9px; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 60%), var(--c);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.9), inset 0 0 0 5px var(--c), inset 0 0 0 6px rgba(255, 255, 255, 0.45);
+}
+.cz-chip b { position: absolute; inset: 0; display: grid; place-items: center; font: 700 19px var(--display); color: var(--t); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3); }
+.cz-ui .cz-chip.v5 { --c: var(--c5); --t: var(--cz-ink); --stripe: #8a63ff; }
+.cz-ui .cz-chip.v10 { --c: var(--c10); }
+.cz-ui .cz-chip.v25 { --c: var(--c25); }
+.cz-ui .cz-chip.v50 { --c: var(--c50); }
+.cz-ui .cz-chip.v100 { --c: var(--c100); }
+.cz-ui .cz-chip:hover { transform: translateY(-6px); }
+.cz-ui .cz-chip.on { transform: translateY(-16px) scale(1.08); box-shadow: 0 0 0 3px #fff, 0 0 22px 4px rgba(255, 255, 255, 0.55), 0 18px 18px rgba(0, 0, 0, 0.4); }
+.cz-ui .cz-chip:active { transform: translateY(-10px) scale(1.02); transition-duration: 0.08s; }
+.cz-ui .cz-chip.poor { filter: saturate(0.35) brightness(0.62); }
+.cz-ui .cz-chip:focus-visible { outline: 2px solid #fff; outline-offset: 5px; }
+.cz-act { display: flex; align-items: flex-end; gap: 12px; }
+.cz-ui .cz-key {
+  width: 50px; height: 50px; margin-bottom: 4px; border-radius: 50%; display: grid; place-items: center; padding: 0;
+  background: radial-gradient(circle at 40% 30%, var(--cz-plum-hi), var(--cz-plum) 70%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55), 0 6px 14px rgba(0, 0, 0, 0.4);
+  transition: transform 0.12s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+}
+.cz-key svg { width: 22px; height: 22px; }
+.cz-ui .cz-key:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 0 0 2px #fff, 0 0 14px rgba(255, 255, 255, 0.35), 0 8px 16px rgba(0, 0, 0, 0.45); }
+.cz-ui .cz-key:active:not(:disabled) { transform: translateY(1px) scale(0.95); }
+.cz-ui .cz-key:disabled { opacity: 0.38; cursor: default; }
+.cz-ui .cz-key:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.cz-ui .cz-key.again { box-shadow: 0 0 0 2px var(--cz-gold), 0 6px 14px rgba(0, 0, 0, 0.4); color: var(--cz-gold); }
+/* SPIN: a domed coral button in a gold ring. While the reels or the wheel turn a light runs round the ring. */
+.cz-ui .cz-spin {
+  position: relative; flex: none; width: 104px; height: 104px; margin: 0 4px 8px; padding: 0; border-radius: 50%; display: grid; place-items: center;
+  font: 700 24px var(--display); letter-spacing: 0.06em; text-shadow: 0 2px 0 rgba(120, 20, 20, 0.5);
+  background: radial-gradient(circle at 38% 30%, #ffc2b8, #ff5a4e 45%, #c4302a 85%);
+  box-shadow: 0 0 0 5px var(--cz-gold), 0 0 0 8px var(--cz-gold-deep), 0 8px 0 8px rgba(0, 0, 0, 0.3), 0 18px 30px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.2s ease;
+}
+.cz-spin::before { content: ''; position: absolute; top: 9%; left: 22%; width: 56%; height: 32%; border-radius: 50%; background: radial-gradient(ellipse at 50% 35%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 70%); pointer-events: none; }
+.cz-spin span { position: relative; }
+.cz-ui .cz-spin:hover:not(:disabled) { filter: brightness(1.08) saturate(1.05); transform: translateY(-2px); }
+.cz-ui .cz-spin:active:not(:disabled) { transform: translateY(5px); box-shadow: 0 0 0 5px var(--cz-gold), 0 0 0 8px var(--cz-gold-deep), 0 3px 0 8px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.45); transition-duration: 0.06s; }
+.cz-ui .cz-spin:disabled { opacity: 1; cursor: default; filter: saturate(0.5) brightness(0.82); }
+.cz-ui .cz-spin.busy { filter: saturate(0.85) brightness(0.94); }
+.cz-ui .cz-spin:focus-visible { outline: 3px solid #fff; outline-offset: 11px; }
+.cz-spin.busy::after {
+  content: ''; position: absolute; inset: -8px; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-60 -60 120 120'%3E%3Cdefs%3E%3Cfilter id='g' x='-1' y='-1' width='3' height='3'%3E%3CfeGaussianBlur stdDeviation='1.8'/%3E%3C/filter%3E%3C/defs%3E%3Ccircle cx='0.00' cy='-54.20' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='14.03' cy='-52.35' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='27.10' cy='-46.94' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='38.33' cy='-38.33' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='46.94' cy='-27.10' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='52.35' cy='-14.03' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='54.20' cy='0.00' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='52.35' cy='14.03' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='46.94' cy='27.10' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='38.33' cy='38.33' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='27.10' cy='46.94' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='14.03' cy='52.35' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='0.00' cy='54.20' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-14.03' cy='52.35' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-27.10' cy='46.94' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-38.33' cy='38.33' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-46.94' cy='27.10' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-52.35' cy='14.03' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-54.20' cy='0.00' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-52.35' cy='-14.03' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-46.94' cy='-27.10' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-38.33' cy='-38.33' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-27.10' cy='-46.94' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='-14.03' cy='-52.35' r='1.9' fill='%23fff0c8' fill-opacity='.55'/%3E%3Ccircle cx='0.00' cy='-54.20' r='4.8' fill='%23ffe7a0' filter='url(%23g)'/%3E%3Ccircle cx='0.00' cy='-54.20' r='2.7' fill='%23fffdf2'/%3E%3Ccircle cx='38.33' cy='-38.33' r='4.8' fill='%23ffe7a0' filter='url(%23g)'/%3E%3Ccircle cx='38.33' cy='-38.33' r='2.7' fill='%23fffdf2'/%3E%3Ccircle cx='54.20' cy='0.00' r='4.8' fill='%23ffe7a0' filter='url(%23g)'/%3E%3Ccircle cx='54.20' cy='0.00' r='2.7' fill='%23fffdf2'/%3E%3Ccircle cx='38.33' cy='38.33' r='4.8' fill='%23ffe7a0' filter='url(%23g)'/%3E%3Ccircle cx='38.33' cy='38.33' r='2.7' fill='%23fffdf2'/%3E%3Ccircle cx='0.00' cy='54.20' r='4.8' fill='%23ffe7a0' filter='url(%23g)'/%3E%3Ccircle cx='0.00' cy='54.20' r='2.7' fill='%23fffdf2'/%3E%3Ccircle cx='-38.33' cy='38.33' r='4.8' fill='%23ffe7a0' filter='url(%23g)'/%3E%3Ccircle cx='-38.33' cy='38.33' r='2.7' fill='%23fffdf2'/%3E%3Ccircle cx='-54.20' cy='0.00' r='4.8' fill='%23ffe7a0' filter='url(%23g)'/%3E%3Ccircle cx='-54.20' cy='0.00' r='2.7' fill='%23fffdf2'/%3E%3Ccircle cx='-38.33' cy='-38.33' r='4.8' fill='%23ffe7a0' filter='url(%23g)'/%3E%3Ccircle cx='-38.33' cy='-38.33' r='2.7' fill='%23fffdf2'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+  animation: cz-chase 0.42s steps(3) infinite;
+}
+@keyframes cz-chase { to { transform: rotate(45deg); } }
+/* In the room: your chips and the two games. */
+.cz-games { display: none; gap: 14px; padding-bottom: 6px; }
+.cz-ui .cz-go {
+  display: inline-flex; align-items: center; gap: 10px; height: 62px; padding: 0 26px 0 20px; border-radius: 999px;
+  font: 700 20px var(--display); letter-spacing: 0.02em; text-shadow: 0 2px 0 rgba(120, 20, 20, 0.45);
+  background: radial-gradient(ellipse 80% 120% at 40% 20%, #ffc2b8, #ff5a4e 50%, #c4302a 95%);
+  box-shadow: 0 0 0 4px var(--cz-gold), 0 0 0 6px var(--cz-gold-deep), 0 7px 0 6px rgba(0, 0, 0, 0.3), 0 14px 26px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease, filter 0.2s ease, box-shadow 0.12s ease;
+}
+.cz-ui .cz-go.roulette { text-shadow: 0 2px 0 rgba(10, 60, 50, 0.5); background: radial-gradient(ellipse 80% 120% at 40% 20%, #a8f0e4, #2fb3a3 50%, #187a6f 95%); }
+.cz-go svg { width: 26px; height: 26px; }
+.cz-ui .cz-go:hover { filter: brightness(1.08); transform: translateY(-2px); }
+.cz-ui .cz-go:active { transform: translateY(4px); box-shadow: 0 0 0 4px var(--cz-gold), 0 0 0 6px var(--cz-gold-deep), 0 3px 0 6px rgba(0, 0, 0, 0.3), 0 8px 14px rgba(0, 0, 0, 0.45); }
+.cz-ui .cz-go:focus-visible { outline: 3px solid #fff; outline-offset: 9px; }
+.cz-ui.at-room .cz-games { display: flex; }
+.cz-ui.at-room .cz-rack, .cz-ui.at-room .cz-act, .cz-ui.at-room .cz-badges { display: none; }
+.cz-ui.at-room .cz-bank { padding-bottom: 12px; }
+.cz-ui.at-slots .cz-undo, .cz-ui.at-slots .cz-clear { display: none; }
+/* A phone: the badges across the top, your chips and SPIN in one row over the rack, the rack full width. */
 @media (max-width: 640px) {
-  .casino-panel {
-    top: auto; transform: none; left: 10px; right: 10px; width: auto;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
-    padding: 8px 10px; font-size: 13px;
-    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
-  }
-  .cz-top { flex: 0 0 auto; }
-  .cz-who { display: none; }
-  .cz-chips { font-size: 20px; }
-  .cz-perks, .cz-note { display: none; }
-  .cz-msg { order: -1; width: 100%; margin: 0; min-height: 0; font-size: 14px; text-align: center; }
-  .cz-msg.none { display: none; }
-  .cz-row { flex: 1; margin: 0; gap: 6px; }
-  .cz-bet { width: 30px; height: 30px; }
-  .cz-betv { min-width: 52px; }
-  .cz-spin, .cz-play { padding: 10px 12px; font-size: 16px; }
-  .cz-play { flex: 1; width: auto; margin: 0; }
-  .cz-re { order: 5; width: 100%; flex: 1 1 100%; }
-  .cz-edges, .cz-hint { display: none; }
-  .cz-games { display: flex; flex: 1; gap: 6px; margin: 0; }
-  .cz-games .cz-play { flex: 1; padding: 10px 6px; font-size: 14px; }
-  .cz-ups { order: 6; width: 100%; margin: 0; justify-content: center; }
-  .cz-up { padding: 6px 10px; font-size: 12px; }
-  .casino-panel.at-roulette .cz-row { flex: 1 1 100%; }
-  .casino-panel.at-roulette .cz-top { flex: 1 1 auto; }
-  .casino-panel.at-roulette .cz-chiprow { flex: 0 1 auto; }
-  .cz-quick { order: 3; width: 100%; margin: 2px 0; gap: 4px; }
-  .cz-q { padding: 7px 0; font-size: 11px; }
-  .cz-q i { top: -6px; right: -3px; }
-  .casino-panel .cz-leave {
-    position: absolute; top: -12px; right: -6px; width: 28px; height: 28px; margin: 0; padding: 0;
-    border-radius: 50%; background: rgba(20, 8, 16, 0.9); text-decoration: none; font-size: 0; line-height: 0;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
-  }
-  .casino-panel .cz-leave::after { content: '\00d7'; font-size: 18px; line-height: 28px; color: #fff; }
+  .cz-edges { top: calc(env(safe-area-inset-top, 0px) + 72px); left: 12px; right: 12px; gap: 8px; }
+  .cz-who img { width: 34px; height: 34px; }
+  .cz-who b { font-size: 15px; }
+  .cz-badges { gap: 8px; padding: 6px 2px 4px; }
+  .cz-ui .cz-badge { width: 46px; }
+  .cz-badge i { width: 42px; height: 42px; }
+  .cz-badge svg { width: 22px; height: 22px; }
+  .cz-badge .cz-num { font-size: 19px; }
+  .cz-badge span { display: none; }
+  .cz-badge em { top: -5px; right: -3px; }
+  .cz-ui .cz-leave { top: calc(env(safe-area-inset-top, 0px) + 14px); right: 12px; width: 44px; padding: 0; justify-content: center; }
+  .cz-leave span { display: none; }
+  .cz-dock { left: 12px; right: 12px; width: auto; max-width: none; transform: none; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); align-items: stretch; gap: 8px; }
+  .cz-say, .cz-tokens, .cz-felt { align-self: center; }
+  .cz-say { font-size: 16px; }
+  .cz-ui .cz-token { height: 34px; padding: 0 13px; font-size: 13px; }
+  .cz-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "bank act" "rack rack"; gap: 12px 10px; align-items: end; }
+  .cz-bank { grid-area: bank; justify-items: start; min-width: 0; padding: 0 0 6px 4px; }
+  .cz-bank b { font-size: 32px; }
+  .cz-act { grid-area: act; gap: 8px; }
+  .cz-ui .cz-spin { width: 82px; height: 82px; margin: 0 6px 6px 4px; font-size: 19px; }
+  .cz-ui .cz-key { width: 42px; height: 42px; margin-bottom: 2px; }
+  .cz-key svg { width: 20px; height: 20px; }
+  .cz-rack { grid-area: rack; justify-content: space-between; gap: 6px; padding: 12px 12px 10px; }
+  .cz-ui .cz-chip { width: 54px; height: 54px; }
+  .cz-chip::before { inset: 8px; }
+  .cz-chip b { font-size: 16px; }
+  .cz-ui .cz-chip.on { transform: translateY(-12px) scale(1.06); }
+  .cz-games { grid-area: act; gap: 8px; padding-bottom: 4px; }
+  .cz-ui .cz-go { height: 52px; padding: 0 16px 0 12px; gap: 7px; font-size: 16px; }
+  .cz-go svg { width: 22px; height: 22px; }
+  .cz-ui.at-room .cz-bar { grid-template-areas: "bank bank" "act act"; }
+  .cz-ui.at-room .cz-games { justify-content: center; }
 }
-
-/* The three looks the user is choosing between (B23): the panel and the win's lights in each. */
-.casino-panel.look-capsule {
-  background: rgba(18, 10, 42, 0.9); border: 2px solid #3ef2ff; border-radius: 8px;
-  box-shadow: 0 0 0 2px #120a26, 0 0 26px rgba(62, 242, 255, 0.35), inset 0 0 18px rgba(255, 61, 139, 0.12);
+/* A short screen (a phone on its side): everything a size down, so the table keeps the middle. */
+@media (max-height: 520px) {
+  .cz-edges { top: calc(env(safe-area-inset-top, 0px) + 74px); gap: 6px; }
+  .cz-who b { font-size: 15px; }
+  .cz-who img { width: 32px; height: 32px; }
+  .cz-ui .cz-badge { width: 46px; }
+  .cz-badge i { width: 40px; height: 40px; }
+  .cz-badge svg { width: 21px; height: 21px; }
+  .cz-badge span { display: none; }
+  .cz-dock { bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); gap: 6px; }
+  .cz-say { font-size: 15px; }
+  .cz-bar { gap: 14px; }
+  .cz-bank { min-width: 96px; padding-bottom: 8px; }
+  .cz-bank b { font-size: 28px; }
+  .cz-rack { gap: 8px; padding: 10px 12px 8px; border-radius: 20px; }
+  .cz-ui .cz-chip { width: 46px; height: 46px; }
+  .cz-chip::before { inset: 7px; }
+  .cz-chip b { font-size: 14px; }
+  .cz-ui .cz-chip.on { transform: translateY(-9px) scale(1.06); }
+  .cz-ui .cz-spin { width: 72px; height: 72px; font-size: 17px; }
+  .cz-ui .cz-key { width: 40px; height: 40px; }
 }
-.look-capsule .cz-chips { font-family: 'Press Start 2P', monospace; font-size: 20px; color: #ffe27a; text-shadow: 0 0 10px rgba(255, 226, 122, 0.6); }
-.look-capsule .cz-chips i { border-radius: 4px; background: #ff3d8b; box-shadow: 0 0 0 3px #ffd0e6 inset, 0 0 10px #ff3d8b; }
-.look-capsule .cz-who { color: #3ef2ff; font-family: 'Pixelify Sans', monospace; }
-.look-capsule .cz-msg { font-family: 'Pixelify Sans', monospace; color: #ffd0e6; }
-.look-capsule .cz-note, .look-capsule .cz-perks { color: #cfc6ff; }
-.look-capsule .cz-perks b { color: #ffe27a; }
-.look-capsule .cz-bet { border-radius: 6px; background: rgba(62, 242, 255, 0.12); box-shadow: 0 0 0 1px rgba(62, 242, 255, 0.6) inset; }
-.look-capsule .cz-spin, .look-capsule .cz-play {
-  border-radius: 6px; background: #ff3d8b; color: #fff !important;
-  font-family: 'Press Start 2P', monospace !important; font-size: 14px; letter-spacing: 0.06em;
-  box-shadow: 0 4px 0 #9e1d57, 0 0 20px rgba(255, 61, 139, 0.55);
+@media (prefers-reduced-motion: reduce) {
+  .cz-badge.fire i, .cz-say.pop, .cz-ui .cz-token, .cz-tip { animation: none; }
+  .cz-badge.fire i::after { animation: none; opacity: 1; }
+  .cz-spin.busy::after { animation: none; }
 }
-.look-capsule .cz-spin:active:not(:disabled), .look-capsule .cz-play:active { box-shadow: 0 1px 0 #9e1d57; }
-.look-capsule .cz-leave { color: #3ef2ff !important; }
-
-.casino-panel.look-starlite {
-  background: #fff1d6; color: #12263a; border: 3px solid #12263a; border-radius: 22px;
-  box-shadow: 0 6px 0 rgba(18, 38, 58, 0.35), 0 12px 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: none; backdrop-filter: none;
-}
-.look-starlite .cz-chips { color: #fff1d6; background: #12263a; padding: 2px 12px 2px 6px; border-radius: 999px; font-variant-numeric: tabular-nums; }
-.look-starlite .cz-chips i { background: radial-gradient(circle, #ff6f61 0 38%, #fff1d6 39% 47%, #ff6f61 48%); }
-.look-starlite .cz-who { color: #ff6f61; }
-.look-starlite .cz-msg { color: #12263a; }
-.look-starlite .cz-note, .look-starlite .cz-perks { color: #35505f; }
-.look-starlite .cz-perks b { color: #ff6f61; }
-.look-starlite .cz-bet { background: #7ff0c9; color: #12263a !important; box-shadow: 0 0 0 2px #12263a inset; }
-.look-starlite .cz-spin, .look-starlite .cz-play {
-  background: #ffc94a; color: #12263a !important; border: 3px solid #12263a !important;
-  border-radius: 999px 999px 999px 999px / 70% 70% 30% 30%; box-shadow: 0 4px 0 #12263a;
-}
-.look-starlite .cz-spin:active:not(:disabled), .look-starlite .cz-play:active { box-shadow: 0 1px 0 #12263a; }
-.look-starlite .cz-leave { color: #ff6f61 !important; }
-.look-starlite .cz-up { background: #7ff0c9; color: #12263a !important; box-shadow: 0 0 0 2px #12263a inset; }
-.look-starlite .cz-offer .cz-up { background: #ffc94a; }
-.look-starlite .cz-wild { background: linear-gradient(100deg, #ff9a8f, #ffc94a 40%, #7ff0c9 75%, #7fe9ff); }
-.look-starlite .cz-q { background: #ffffff; color: #12263a !important; box-shadow: 0 0 0 2px #12263a inset; }
-.look-starlite .cz-q.q-red { background: #e2554f; color: #fff !important; }
-.look-starlite .cz-q.q-black { background: #12263a; color: #fff1d6 !important; }
-.look-starlite .cz-q.q-lucky { background: #ffc94a; }
-.look-starlite .cz-q.on { box-shadow: 0 0 0 2px #12263a inset, 0 0 0 4px #7ff0c9 inset; }
-.look-starlite .cz-q.q-black.on { box-shadow: 0 0 0 2px #7ff0c9 inset; }
-.look-starlite .cz-clear, .look-starlite .cz-rebet { background: #ffffff; color: #12263a !important; box-shadow: 0 0 0 2px #12263a inset; }
-.look-starlite .cz-games .cz-play + .cz-play { background: #7ff0c9; }
-.look-starlite .cz-edges summary { color: #12263a; }
-.look-starlite .cz-edges summary em { background: #12263a; color: #fff1d6; }
-.look-starlite .cz-perks li.cz-h { color: #ff6f61; }
-.look-starlite .cz-chipv i { box-shadow: 0 0 0 2px #12263a; }
-
-.casino-panel.look-pier {
-  background: #ffffff; color: #5a3a2a; border: 0; border-radius: 14px; padding-top: 22px;
-  box-shadow: 0 10px 30px rgba(90, 40, 60, 0.25); -webkit-backdrop-filter: none; backdrop-filter: none;
-  -webkit-mask: radial-gradient(circle 9px at 0 60%, #0000 98%, #000) left / 51% 100% no-repeat, radial-gradient(circle 9px at 100% 60%, #0000 98%, #000) right / 51% 100% no-repeat;
-  mask: radial-gradient(circle 9px at 0 60%, #0000 98%, #000) left / 51% 100% no-repeat, radial-gradient(circle 9px at 100% 60%, #0000 98%, #000) right / 51% 100% no-repeat;
-}
-.casino-panel.look-pier::before {
-  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 12px; border-radius: 14px 14px 0 0;
-  background: repeating-linear-gradient(90deg, #ff8fb8 0 14px, #fff4e6 14px 28px);
-}
-.look-pier .cz-chips { color: #ff3d8b; }
-.look-pier .cz-chips i { background: radial-gradient(circle, #9ff0d8 0 38%, #ffffff 39% 47%, #9ff0d8 48%); box-shadow: 0 0 0 2px #ff8fb8 inset; }
-.look-pier .cz-who { color: #4fb2d4; }
-.look-pier .cz-msg { color: #5a3a2a; }
-.look-pier .cz-note, .look-pier .cz-perks { color: #7a5a4a; }
-.look-pier .cz-perks b { color: #ff3d8b; }
-.look-pier .cz-bet { background: #fff4e6; color: #5a3a2a !important; box-shadow: 0 0 0 2px #ff8fb8 inset; }
-.look-pier .cz-spin, .look-pier .cz-play { background: #ff3d8b; color: #fff !important; box-shadow: 0 4px 0 #c22a6a; }
-.look-pier .cz-spin:active:not(:disabled), .look-pier .cz-play:active { box-shadow: 0 1px 0 #c22a6a; }
-.look-pier .cz-leave { color: #ff3d8b !important; }
-@media (max-width: 640px) {
-  .casino-panel.look-pier { padding-top: 18px; }
-  .casino-panel.look-pier .cz-leave { top: 16px; right: 6px; background: #ff3d8b; }
-  .look-capsule .cz-chips { font-size: 15px; }
-  .look-capsule .cz-spin, .look-capsule .cz-play { font-size: 12px; }
-  .look-capsule .cz-leave, .look-starlite .cz-leave, .look-pier .cz-leave { color: #fff !important; }
-}
+/* The win's lights in each of the room's looks. */
 .cz-banner.look-capsule .czb-title {
   font-family: 'Pixelify Sans', monospace; font-weight: 700; color: #ffd0e6; background: none; -webkit-background-clip: border-box; background-clip: border-box;
   text-shadow: 0 0 6px #ff3d8b, 0 0 22px #ff3d8b, 0 0 44px rgba(255, 61, 139, 0.7); filter: none;
@@ -905,8 +963,6 @@ body.intro-open .casino-panel { opacity: 0; pointer-events: none; }
   color: #ff3d8b; background: none; -webkit-background-clip: border-box; background-clip: border-box;
   -webkit-text-stroke: 4px #ffffff; paint-order: stroke fill; text-shadow: 0 5px 0 rgba(255, 143, 184, 0.6); filter: none;
 }
-.casino-panel { transition: opacity 0.3s ease; }
-.casino-panel.away { opacity: 0; pointer-events: none; }
 /* A win's name up in lights (src/casino.js). */
 .cz-banner {
   position: fixed; z-index: 7; left: 50%; top: 18%; transform: translateX(-50%);

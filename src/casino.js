@@ -3,7 +3,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { Room } from './interior.js';
 import { createFlight } from './flight.js';
 import { LOOKS } from './casinolooks.js';
-import { SYMBOLS, STRIP, NAMES, payout, perksFor, chargesFor } from './casinoperks.js';
+import { SYMBOLS, STRIP, NAMES, THREE_OF, payout, perksFor, chargesFor } from './casinoperks.js';
 import { spinBall, settleSpin, colourOf, BETS as TABLE_BETS } from './roulette.js';
 
 /*
@@ -12,7 +12,7 @@ import { spinBall, settleSpin, colourOf, BETS as TABLE_BETS } from './roulette.j
  * this browser, topped up every day, and no transaction is ever asked for.
  *
  * Chog Slots: three reels of six symbols, the jackpot symbol your own Chog. The roulette: a European
- * wheel; tap the felt (or a quick bet in the panel) to put chips down, then spin. Your Chog's traits
+ * wheel; pick a chip from the rack and tap the felt to put it down, then spin. Your Chog's traits
  * give it edges in both games (src/casinoperks.js): a few always-on, small enough that the house
  * keeps its edge, and power-ups a few times a day (free and wild spins, re-rolls, nudges, a second
  * spin of the wheel, a lost bet back). A leaderboard of the Chogs with the most chips hangs on the wall.
@@ -25,7 +25,9 @@ import { spinBall, settleSpin, colourOf, BETS as TABLE_BETS } from './roulette.j
  * wheel while the ball runs. Walking in, the machines' lights ripple on.
  *
  * buildCasinoRoom() is the room itself (src/hub.js places it); createCasino() is the games, their
- * panel and camera moves (src/main.js).
+ * controls and camera moves (src/main.js). The controls are the user's pick, "Chips in hand" (10-16): no
+ * panel, a rack of chips along the bottom, a round SPIN, and your Chog's edges as badges at the top
+ * left that light up when they fire.
  */
 
 const BASE = import.meta.env?.BASE_URL ?? '/';
@@ -715,12 +717,81 @@ const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const COLOUR_NAME = { red: 'Red', black: 'Black', green: 'Green' };
 
+// ---------- the controls' parts (styled in src/style.css, the casino's section) ----------
+const TOUCH = typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
+// The day's charges each game counts down on its badges.
+const SLOT_CHARGES = new Set(['free', 'wild', 'rerolls', 'nudges', 'cashback']);
+const WHEEL_CHARGES = new Set(['second', 'near', 'luckySave', 'luckyBig', 'anyBig', 'red', 'black', 'even', 'dozen', 'cashback']);
+// What saved or paid a roulette bet (src/roulette.js settleSpin), as the edge that did it.
+const WHY_TAG = { 'lucky number': 'luckyBig', 'first straight win': 'anyBig', 'near miss': 'near', shield: 'shield', red: 'red', black: 'black', 'even money': 'even', dozen: 'dozen', 'lucky save': 'luckySave' };
+const TIERS = new Set(['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']);
+const ICON_OF = { aura: 'spark', wild: 'bolt', free: 'ticket', rerolls: 'reroll', nudges: 'nudge', streak: 'flame', cashback: 'back', shield: 'shield', second: 'eye', near: 'target', red: 'diamond', black: 'diamond', even: 'half', dozen: 'dozen', luckyBig: 'clover', anyBig: 'tooth', daily: 'gem' };
+function iconOf(x) {
+  if (TIERS.has(x.trait)) return 'crown';
+  if (x.name === 'Fwog') return 'frog';
+  if (x.name === 'Gold tooth') return 'tooth';
+  for (const t of ['aura', ...x.tags]) if (x.tags.includes(t) && ICON_OF[t]) return ICON_OF[t];
+  return x.tags.some((t) => t.startsWith('pays:')) ? 'star' : 'spark';
+}
+const ICONS = `<svg class="cz-defs" width="0" height="0" aria-hidden="true">
+  <symbol id="czi-crown" viewBox="0 0 24 24"><path fill="currentColor" d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z"/></symbol>
+  <symbol id="czi-eye" viewBox="0 0 24 24"><path fill="currentColor" d="M12 5C6.5 5 2.7 9.4 1.5 12c1.2 2.6 5 7 10.5 7s9.3-4.4 10.5-7C21.3 9.4 17.5 5 12 5zm0 11.5A4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 0 1 0 9zm0-2.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></symbol>
+  <symbol id="czi-tooth" viewBox="0 0 24 24"><path fill="currentColor" d="M7 3c-2.6 0-4 2.2-4 5 0 2.2 1 3.6 1.6 5.6.6 2 .7 6.4 2.4 7.3 1.6.8 2.2-3 3-5 .5-1.2 1.5-1.2 2 0 .8 2 1.4 5.8 3 5 1.7-.9 1.8-5.3 2.4-7.3C18 11.6 21 10.2 21 8c0-2.8-1.4-5-4-5-2 0-3 1-5 1S9 3 7 3z"/></symbol>
+  <symbol id="czi-spark" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"/><circle cx="19" cy="19" r="2" fill="currentColor"/></symbol>
+  <symbol id="czi-diamond" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2l8 10-8 10-8-10z"/></symbol>
+  <symbol id="czi-bolt" viewBox="0 0 24 24"><path fill="currentColor" d="M13 2L4 14h6l-1 8 9-12h-6z"/></symbol>
+  <symbol id="czi-star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2l3 6 6 1-4.5 4.2 1 6.3L12 16.8 6.5 19.5l1-6.3L3 9l6-1z"/></symbol>
+  <symbol id="czi-frog" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4a3 3 0 0 0-2.9 3.7C2.8 9 2 10.8 2 13c0 4.4 4.5 7 10 7s10-2.6 10-7c0-2.2-.8-4-2.1-5.3A3 3 0 1 0 15 6.6 12 12 0 0 0 12 6c-1 0-2 .2-3 .6A3 3 0 0 0 7 4zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm10 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM8 13c1.2 1.2 2.5 1.8 4 1.8s2.8-.6 4-1.8l1 1c-1.4 1.6-3.1 2.4-5 2.4S8.4 15.6 7 14z"/></symbol>
+  <symbol id="czi-ticket" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2.6a2.4 2.4 0 0 0 0 4.8V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.6a2.4 2.4 0 0 0 0-4.8zm12 0.6h1.6v2.2H15zm0 3.3h1.6v2.2H15zm0 3.3h1.6v2.2H15zM9 9.2l.9 1.8 2 .3-1.4 1.4.3 2-1.8-.9-1.8.9.3-2-1.4-1.4 2-.3z"/></symbol>
+  <symbol id="czi-reroll" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M19 12a7 7 0 1 1-2.1-5M19 3.5V8h-4.5"/></symbol>
+  <symbol id="czi-nudge" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M6.5 5.5l5.5 5.5 5.5-5.5M6.5 13l5.5 5.5 5.5-5.5"/></symbol>
+  <symbol id="czi-flame" viewBox="0 0 24 24"><path fill="currentColor" d="M12.4 2c.7 3.6 6.1 5.8 6.1 11.4A6.5 6.5 0 0 1 5.5 13.6c0-2.9 1.6-4.9 3.4-6.4.2 1.9 1 3.1 2.2 3.7-.4-3.3.4-6.1 1.3-8.9z"/></symbol>
+  <symbol id="czi-back" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M4.6 9.2A8 8 0 1 1 4 12.5M4 4.5v4.7h4.7"/><circle cx="12" cy="12.5" r="3" fill="currentColor"/></symbol>
+  <symbol id="czi-shield" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2l8 3v6.2c0 5-3.4 9.2-8 10.8-4.6-1.6-8-5.8-8-10.8V5z"/></symbol>
+  <symbol id="czi-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="12" r="4.4" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
+  <symbol id="czi-half" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="2.4"/><path fill="currentColor" d="M12 3.4a8.6 8.6 0 0 0 0 17.2z"/></symbol>
+  <symbol id="czi-dozen" viewBox="0 0 24 24"><path fill="currentColor" d="M4 4.5h16v3.6H4zM4 10.2h16v3.6H4zM4 15.9h16v3.6H4z"/></symbol>
+  <symbol id="czi-clover" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="8.4" cy="8.4" r="3.9"/><circle cx="15.6" cy="8.4" r="3.9"/><circle cx="8.4" cy="15.6" r="3.9"/><circle cx="15.6" cy="15.6" r="3.9"/></g><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M14 14c2 2 3.5 4.5 4 7.5"/></symbol>
+  <symbol id="czi-gem" viewBox="0 0 24 24"><path fill="currentColor" d="M6.5 3.5h11L22 9.4 12 21 2 9.4z"/><path fill="rgba(0,0,0,0.25)" d="M2 9.4h20L12 21z"/></symbol>
+  <symbol id="czi-undo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M9 14.5L4 9.5l5-5M4.5 9.5h10a5.5 5.5 0 0 1 0 11H11"/></symbol>
+  <symbol id="czi-clear" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+  <symbol id="czi-rebet" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5A7.8 7.8 0 0 0 5.2 7.6M4.5 3.5v4.4h4.4M4.5 13.5a7.8 7.8 0 0 0 14.3 2.9M19.5 20.5v-4.4h-4.4"/></symbol>
+  <symbol id="czi-leave" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M14.5 5.5L8 12l6.5 6.5"/></symbol>
+  <symbol id="czi-reels" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M3.5 5h17a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 17.5v-11A1.5 1.5 0 0 1 3.5 5zM4.5 8v8h4V8zm5.5 0v8h4V8zm5.5 0v8h4V8z"/></symbol>
+  <symbol id="czi-wheel" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8" fill="none" stroke="currentColor" stroke-width="2.4"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 3.2v17.6M3.2 12h17.6M5.8 5.8l12.4 12.4M18.2 5.8L5.8 18.2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+</svg>`;
+const UI_HTML = `${ICONS}
+  <div class="cz-edges">
+    <div class="cz-who"><img alt="" width="44" height="44"><div><b></b><span></span><button type="button" class="cz-signin">Sign in for your Chog's edges</button></div></div>
+    <ul class="cz-badges" aria-label="Your Chog's edges"></ul>
+  </div>
+  <div class="cz-tip" role="tooltip" hidden></div>
+  <button type="button" class="cz-leave"><i><svg aria-hidden="true"><use href="#czi-leave"/></svg></i><span>Step back</span></button>
+  <div class="cz-dock">
+    <p class="cz-say" aria-live="polite"></p>
+    <div class="cz-tokens" hidden></div>
+    <div class="cz-felt" hidden>On the felt <b>0</b></div>
+    <div class="cz-bar">
+      <div class="cz-bank"><small>Your chips</small><b>0</b></div>
+      <div class="cz-rack" role="radiogroup" aria-label="Chip in hand">${BETS.map((v) => `<button type="button" class="cz-chip v${v}" role="radio" aria-checked="false" data-v="${v}" aria-label="${v}"><b>${v}</b></button>`).join('')}</div>
+      <div class="cz-act">
+        <button type="button" class="cz-key cz-undo" title="Undo" aria-label="Take the last chip back"><svg aria-hidden="true"><use href="#czi-undo"/></svg></button>
+        <button type="button" class="cz-key cz-clear" title="Clear" aria-label="Clear the felt"><svg aria-hidden="true"><use href="#czi-clear"/></svg></button>
+        <button type="button" class="cz-spin"><span>SPIN</span></button>
+      </div>
+      <div class="cz-games">
+        <button type="button" class="cz-go" data-game="slots"><svg aria-hidden="true"><use href="#czi-reels"/></svg><span>Chog Slots</span></button>
+        <button type="button" class="cz-go roulette" data-game="roulette"><svg aria-hidden="true"><use href="#czi-wheel"/></svg><span>Roulette</span></button>
+      </div>
+    </div>
+  </div>`;
+
 /**
- * The games, their panel and camera moves. room: the casino's island.rooms entry; rig and camera:
+ * The games, their controls and camera moves. room: the casino's island.rooms entry; rig and camera:
  * the camera rig; dom: the canvas (taps on the machines, the reels and the felt); session(): A's
  * session (for your Chog: its id, name, art and traits); entering(): the walk in is playing; sky: the
  * world's lights (the room lights itself). Call update(dt, env) every frame; show(inside) says
- * whether you're in the room, and the panel shows while you are.
+ * whether you're in the room, and the controls show while you are.
  */
 export function createCasino({ room: r, rig, camera, dom, session, entering = () => false, sky = null }) {
   const c = r.room.casino;
@@ -728,10 +799,18 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   const look = c.look;
   const table = c.roulette ?? null;
   const sparks = c.burst.userData.sparks;
-  const panel = document.createElement('div');
-  panel.className = `casino-panel look-${look.name}`;
-  panel.hidden = true;
-  document.body.appendChild(panel);
+  const ui = document.createElement('div');
+  ui.className = `cz-ui look-${look.name}`;
+  ui.hidden = true;
+  ui.innerHTML = UI_HTML;
+  document.body.appendChild(ui);
+  const q$ = (sel) => ui.querySelector(sel);
+  const el = {
+    img: q$('.cz-who img'), name: q$('.cz-who b'), sub: q$('.cz-who span'), badges: q$('.cz-badges'), tip: q$('.cz-tip'),
+    leave: q$('.cz-leave'), leaveText: q$('.cz-leave span'), say: q$('.cz-say'), tokens: q$('.cz-tokens'), felt: q$('.cz-felt'),
+    feltN: q$('.cz-felt b'), bankLabel: q$('.cz-bank small'), bankN: q$('.cz-bank b'), chips: [...ui.querySelectorAll('.cz-chip')],
+    undo: q$('.cz-undo'), clear: q$('.cz-clear'), spin: q$('.cz-spin'),
+  };
   const banner = document.createElement('div');
   banner.className = `cz-banner look-${look.name}`;
   banner.hidden = true;
@@ -743,7 +822,6 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   let mode = null; // null (looking round the room), 'slots' or 'roulette'
   let message = '';
   let faceFor = null;
-  const edgesOpen = {}; // each panel's edges list, open or shut (shut to start with, so the room shows)
   // The slots.
   let bet = 10;
   let spinning = null; // { t, stops, from, durations, kind, only, wild, stake, paid }
@@ -772,7 +850,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   c.burst.count = 0;
 
   // The casino's own framing (the look's, or from the right of the door across the floor to the
-  // machines), clear of the panel on the right (the room's view, so the way in ends on it).
+  // machines): the room's view, so the way in ends on it.
   r.room.group.updateMatrixWorld(true);
   const g = r.room.group;
   const L = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
@@ -794,13 +872,17 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     }
     if (mode === 'roulette' && rig.view === 'casino-roulette') goTable(wheel ? 'wheel' : 'bet', true);
   };
-  // Where to stand to play: in front of the middle machine, eyes level with its reels; on a wide
-  // screen a little to its right, so the panel doesn't cover it.
+  // Where to stand to play: in front of the middle machine, eyes level with its reels, the cabinet
+  // in the middle of the screen between your Chog's edges and the chips.
   const M = (x, y, z) => machine.group.localToWorld(new THREE.Vector3(x, y, z));
   const playView = () => {
     const wide = window.innerWidth > window.innerHeight * 1.1;
-    rig.views['casino-play'] = wide
-      ? { pos: M(0.66, 1.9, 3.0), target: M(0.66, 1.78, 0), enter: true }
+    // A short wide screen (a phone on its side): further back and higher on screen, over the chips.
+    const short = wide && window.innerHeight < 520;
+    rig.views['casino-play'] = short
+      ? { pos: M(0, 1.6, 4.3), target: M(0, 1.12, 0), enter: true }
+      : wide
+      ? { pos: M(0, 1.95, 3.4), target: M(0, 1.72, 0), enter: true }
       : // A tall screen: back far enough for the whole cabinet, top to tray, over the slim bar (B22).
         { pos: M(0, 2.15, 3.6), target: M(0, 1.65, 0), enter: true };
   };
@@ -964,8 +1046,10 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       ch[use]--;
       ({ stake, paid, wild } = last);
     }
+    fire(kind === 'free' ? 'free' : kind === 'wild' ? 'wild' : kind === 'reroll' ? 'rerolls' : kind === 'nudge' ? 'nudges' : null);
     offer = false;
     picking = null;
+    hinted.slots = true;
     const stops = machine.reels.map((reel, i) => {
       if (kind === 'reroll') return i === only ? randomStop() : reel.userData.stop;
       if (kind === 'nudge') return i === only ? (reel.userData.stop + 1) % STRIP.length : reel.userData.stop;
@@ -997,6 +1081,10 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     const won = Math.round(k * stake * (1 + extra));
     state.chips += won;
     sweep(machine, 1);
+    // The edges that paid more on this line light up.
+    if (extra > 0) fire('streak');
+    if (res.three && p.slots.three[res.three] > THREE_OF[res.three]) fire(`pays:${res.three}`);
+    if (!res.three && k > 1 && p.slots.twoChogs > 6) fire('pays:two');
     const streakNote = extra > 0 ? ` Streak +${Math.round(extra * 100)}%.` : '';
     if (res.three) {
       const name = NAMES[res.three];
@@ -1033,6 +1121,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     const ch = state.charges;
     if (ch.cashback <= 0 || amount <= 0) return;
     ch.cashback--;
+    fire('cashback');
     const back = Math.min(amount, CASHBACK_MAX);
     state.chips += back;
     message = `${fmt(back)} back.`;
@@ -1067,8 +1156,12 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       bets.set(key, (bets.get(key) ?? 0) + chip);
       placed.push({ key, amount: chip });
       message = '';
+      hinted.roulette = true;
+      table.dropped();
+      sparkleAt(table.worldAt(key), 5, 0.35, false);
     }
     drawFelt();
+    if (table.aimed) aimAt(table.aimed);
     render();
   }
   // Takes a chip back off the felt: the last one placed, or the last one on `key`.
@@ -1085,6 +1178,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     else bets.delete(k);
     message = '';
     drawFelt();
+    if (table.aimed) aimAt(table.aimed);
     render();
   }
   function rebet() {
@@ -1118,6 +1212,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     if (kind === 'second') {
       if (!lost?.length || state.charges.second <= 0) return;
       state.charges.second--;
+      fire('second');
       clearFelt();
       bets.clear();
       for (const x of lost) bets.set(x.key, x.amount);
@@ -1141,6 +1236,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     wheel = { step: spinBall(table, n), n, bets: [...bets].map(([key, amount]) => ({ key, amount })), kind };
     coast = null;
     table.mark(null);
+    table.aim(null);
     drawFelt();
     goTable('wheel');
     message = kind === 'second' ? 'Second spin: your bets ride again.' : 'No more bets.';
@@ -1164,6 +1260,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     table.mark(n);
     // A glitter where the ball lands, whatever it lands on.
     sparkleAt(table.group.localToWorld(table.ball.position.clone()), 14, 0.7, false);
+    // Each edge that saved or paid a bet lights up.
+    for (const x of res.results) if (x.why) fire(WHY_TAG[x.why]);
     const notes = [];
     for (const x of res.results) {
       if (x.why === 'near miss') notes.push(`Near miss: ${fmt(x.back)} back.`);
@@ -1415,7 +1513,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       { t: 5.2, pos: view.pos.clone(), look: view.target.clone() },
     ];
     show = { t: 0, flight: createFlight({ keys: keys.map((k) => ({ t: k.t, pos: k.pos.toArray(), look: k.look.toArray() })) }) };
-    panel.classList.add('away');
+    ui.classList.add('away');
+    hideTip();
     // Your Chog, if it came in with you, waves at it.
     const chog = session()?.active?.chog;
     if (chog?.root.parent === g) {
@@ -1425,7 +1524,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   }
   function endShow() {
     show = null;
-    panel.classList.remove('away');
+    ui.classList.remove('away');
+    render();
   }
   const skip = (e) => {
     if (!show || (e.type === 'keydown' && e.key !== 'Escape')) return;
@@ -1442,15 +1542,21 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     ndc.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
     ray.setFromCamera(ndc, camera);
   };
+  // The bet spot under (x, y) at the roulette, while bets can go down, or null.
+  function spotAt(x, y) {
+    if (ui.hidden || show || !who || mode !== 'roulette' || !table || wheel) return null;
+    aim(x, y);
+    const hit = ray.intersectObject(table.layout, false)[0];
+    return hit?.uv ? table.keyAt(hit.uv) : null;
+  }
   // What a tap at (x, y) would do, or null.
   function target(x, y) {
-    if (panel.hidden || show || !who) return null;
-    aim(x, y);
+    if (ui.hidden || show || !who) return null;
     if (mode === 'roulette' && table) {
-      const hit = ray.intersectObject(table.layout, false)[0];
-      const key = hit?.uv ? table.keyAt(hit.uv) : null;
-      return key && !wheel ? () => placeBet(key) : null;
+      const key = spotAt(x, y);
+      return key ? () => placeBet(key) : null;
     }
+    aim(x, y);
     if (mode === 'slots') {
       if (!picking) return null;
       const hit = ray.intersectObjects(machine.reels, false)[0];
@@ -1460,173 +1566,291 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     if (ray.intersectObject(machine.group, true)[0]) return () => goPlay('slots');
     return null;
   }
+  // The glow on the felt where the chip in hand would land (coral where it can't go).
+  const fits = () => staked() + chip <= Math.min(TABLE_MAX, state?.chips ?? 0);
+  const aimAt = (key) => table?.aim(key, chip, fits());
+  // Pressing on a bet and holding takes a chip off it; so does a right click.
+  const HOLD = 420;
   let down = null;
   dom?.addEventListener('pointerdown', (e) => {
-    down = e.isPrimary ? { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId } : null;
+    if (down) clearTimeout(down.timer);
+    down = e.isPrimary ? { x: e.clientX, y: e.clientY, t: performance.now(), at: e.timeStamp, id: e.pointerId, button: e.button, key: spotAt(e.clientX, e.clientY), held: false, timer: 0 } : null;
+    if (!down?.key) return;
+    if (e.button === 0) aimAt(down.key);
+    if (e.button === 0 && bets.has(down.key)) {
+      const d = down;
+      d.timer = setTimeout(() => {
+        if (down !== d || !bets.has(d.key)) return;
+        d.held = true;
+        takeOff(d.key);
+      }, HOLD);
+    }
   });
-  dom?.addEventListener('pointerup', (e) => {
-    if (!down || down.id !== e.pointerId) return;
-    const quick = performance.now() - down.t < 400 && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10;
-    down = null;
-    if (quick) target(e.clientX, e.clientY)?.();
-  });
-  // A mouse over something to tap shows the hand.
   let hoverAt = 0;
   dom?.addEventListener('pointermove', (e) => {
-    if (e.pointerType !== 'mouse' || e.buttons || panel.hidden) return;
+    if (down && down.id === e.pointerId) {
+      // A drag turns the camera: no bet, and the glow goes.
+      if (down.key && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 10) {
+        clearTimeout(down.timer);
+        down.key = null;
+        table?.aim(null);
+      }
+      return;
+    }
+    // A mouse over something to tap shows the hand, and over the felt the glow.
+    if (e.pointerType !== 'mouse' || e.buttons || ui.hidden) return;
     const now = performance.now();
-    if (now - hoverAt < 60) return;
+    if (now - hoverAt < 50) return;
     hoverAt = now;
-    dom.style.cursor = target(e.clientX, e.clientY) ? 'pointer' : '';
+    const key = spotAt(e.clientX, e.clientY);
+    if (key) aimAt(key);
+    else if (table?.aimed) table.aim(null);
+    dom.style.cursor = key || target(e.clientX, e.clientY) ? 'pointer' : '';
   });
+  dom?.addEventListener('pointerleave', (e) => e.pointerType === 'mouse' && table?.aim(null));
+  const lift = (e) => {
+    if (!down || down.id !== e.pointerId) return;
+    const d = down;
+    down = null;
+    clearTimeout(d.timer);
+    const quick = performance.now() - d.t < 400 && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 10;
+    // Held long enough, even if the page was too busy for the timer: a chip comes off.
+    if (!d.held && d.key && d.button === 0 && e.type === 'pointerup' && e.timeStamp - d.at >= HOLD && bets.has(d.key) && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 10) {
+      d.held = true;
+      takeOff(d.key);
+    }
+    if (e.type === 'pointerup' && !d.held) {
+      if (d.button === 2 && quick && d.key && bets.has(d.key)) takeOff(d.key);
+      else if (d.button === 0 && quick) target(e.clientX, e.clientY)?.();
+    }
+    // A finger leaves no hover: the glow stays a moment where the chip went, then fades.
+    if (e.pointerType !== 'mouse') setTimeout(() => !down && table?.aim(null), 500);
+  };
+  dom?.addEventListener('pointerup', lift);
+  dom?.addEventListener('pointercancel', lift);
 
-  // ---------- the panel ----------
-  const ups = (label, n, cls, extra = '') => `<button class="cz-up ${cls}"${extra}>${label}${n > 1 ? ` <i>×${n}</i>` : ''}</button>`;
-  // The edges a Chog's traits give, at one game or (in the room) all of them by game.
-  const HEADS = { slots: 'At the slots', roulette: 'At the roulette', both: 'In both games' };
-  function edgesList(game) {
-    const list = who.perks.list.filter((x) => !game || x.game === game || x.game === 'both');
-    const item = (x) => `<li><b>${x.name}</b> ${x.text}<span>${x.trait}</span></li>`;
-    const body = game
-      ? list.map(item).join('')
-      : ['slots', 'roulette', 'both'].map((gm) => {
-          const of = list.filter((x) => x.game === gm);
-          return of.length ? `<li class="cz-h">${HEADS[gm]}</li>${of.map(item).join('')}` : '';
-        }).join('');
-    const guest = who.key === 'guest' ? '<li class="cz-guest">Playing as a guest. Sign in with a Chog and its traits give it edges here.</li>' : '';
-    const key = game ?? 'room';
-    const open = edgesOpen[key] ?? false;
-    return `<details class="cz-edges" data-key="${key}"${open ? ' open' : ''}><summary>${game ? `Your edges at the ${game}` : 'Your Chog\'s edges'} <em>${list.length}</em></summary><ul class="cz-perks">${guest}${body}</ul></details>`;
+  // ---------- your Chog's edges, as badges ----------
+  let badgeFor = '';
+  let badgeEls = [];
+  let tipFor = null, tipPinned = false;
+  const capital = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  const charged = () => (mode === 'slots' ? SLOT_CHARGES : WHEEL_CHARGES);
+  const chargeOf = (x) => x.tags.find((tag) => charged().has(tag)) ?? null;
+  const edgesHere = () => (mode ? who.perks.list.filter((x) => x.game === mode || x.game === 'both') : []);
+  function buildBadges() {
+    const list = edgesHere();
+    el.badges.innerHTML = list
+      .map((x, i) => {
+        const face = x.tags.includes('luckySave') ? `<b class="cz-num">${who.perks.roulette.lucky}</b>` : `<svg aria-hidden="true"><use href="#czi-${iconOf(x)}"/></svg>`;
+        const tint = x.tags.includes('aura') ? ` style="--ic:${who.perks.aura ?? '#ffd36b'}"` : x.tags.includes('red') ? ' style="--ic:#ff6f61"' : x.tags.includes('black') ? ' style="--ic:#dcd6ea"' : '';
+        return `<li><button type="button" class="cz-badge" data-i="${i}" aria-label="${x.name}"><i${tint}>${face}</i><span>${x.name}</span><em hidden></em></button></li>`;
+      })
+      .join('');
+    badgeEls = [...el.badges.querySelectorAll('.cz-badge')].map((b, i) => ({ b, x: list[i], em: b.querySelector('em') }));
+    hideTip();
   }
-  const chipsTop = () => `<div class="cz-top"><span class="cz-chips"><i></i><b>${fmt(shownChips)}</b></span><span class="cz-who">${who.name}</span></div>`;
-  const msg = () => `<div class="cz-msg${message ? '' : ' none'}" aria-live="polite">${message || '&nbsp;'}</div>`;
-  function slotsPanel() {
-    const ch = state.charges;
-    // After a loss, what can save it (or, picking, which reel); and the spins on the house or wild.
-    let row = '';
-    if (picking) {
-      row = `<div class="cz-ups cz-pick"><span>${picking === 'reroll' ? 'Re-roll a reel' : 'Nudge a reel'}</span>${[1, 2, 3].map((n) => `<button class="cz-up cz-reel" data-i="${n - 1}">${n}</button>`).join('')}<button class="cz-up cz-cancel" aria-label="Cancel">×</button></div>`;
-    } else if (offer) {
-      row = `<div class="cz-ups cz-offer">${ch.rerolls > 0 ? ups('Re-roll', ch.rerolls, 'cz-pick-re') : ''}${ch.nudges > 0 ? ups('Nudge', ch.nudges, 'cz-pick-nu') : ''}${ch.cashback > 0 && last.paid > 0 ? ups(`Take ${fmt(Math.min(last.paid, CASHBACK_MAX))} back`, ch.cashback, 'cz-back') : ''}</div>`;
+  function updateBadges() {
+    for (const { b, x, em } of badgeEls) {
+      const tag = chargeOf(x);
+      const n = tag ? state.charges[tag] ?? 0 : null;
+      em.hidden = !n;
+      if (n) em.textContent = n;
+      b.classList.toggle('used', n === 0);
     }
-    if (!spinning && !picking && (ch.free > 0 || ch.wild > 0)) {
-      const w = who.perks.slots.wild;
-      row += `<div class="cz-ups">${ch.free > 0 ? ups('Free spin', ch.free, 'cz-free') : ''}${ch.wild > 0 ? ups('Wild spin', ch.wild, 'cz-wild', ` title="The ${ONE[w.symbol]}${w.mid ? ' on the middle reel' : ''} stands in for any symbol"`) : ''}</div>`;
+    if (tipFor) showTip(tipFor, tipPinned);
+  }
+  // An edge doing its work: every badge it belongs to lights up.
+  function fire(tag) {
+    if (!tag) return;
+    for (const { b, x } of badgeEls) {
+      if (!x.tags.includes(tag)) continue;
+      b.classList.remove('fire');
+      void b.offsetWidth;
+      b.classList.add('fire');
+      clearTimeout(b._fire);
+      b._fire = setTimeout(() => b.classList.remove('fire'), 2400);
     }
-    return `${chipsTop()}${msg()}
-      <div class="cz-row">
-        <button class="cz-bet" data-d="-1" aria-label="Lower the bet">−</button>
-        <span class="cz-betv">Bet ${bet}</span>
-        <button class="cz-bet" data-d="1" aria-label="Raise the bet">+</button>
-        <button class="cz-spin"${spinning ? ' disabled' : ''}>SPIN</button>
-      </div>
-      ${row}
-      ${edgesList('slots')}
-      <button class="cz-leave">Step back</button>`;
   }
-  const QUICK = ['red', 'black', 'odd', 'even', 'low', 'high', 'd1', 'd2', 'd3'];
-  function roulettePanel() {
+  function showTip(entry, pinned = false) {
+    const { b, x } = entry;
+    tipFor = entry;
+    tipPinned = pinned;
+    const tag = chargeOf(x);
+    const n = tag ? state.charges[tag] ?? 0 : null;
+    const left = n === null ? 'Always on.' : n > 0 ? `${n} left today.` : 'Used up today. Back tomorrow.';
+    // Which trait gives it, unless the edge already says (Legendary, Gold tooth).
+    const from = x.trait.startsWith('#') ? `Its number, ${x.trait}` : x.trait.toLowerCase() === x.name.toLowerCase() ? '' : x.trait;
+    el.tip.innerHTML = `${from ? `<small>${from}</small>` : ''}<b>${x.name}</b>${capital(x.text)}.<em class="${n === 0 ? 'out' : ''}">${left}</em>`;
+    el.tip.hidden = false;
+    // Under the badge, kept on screen.
+    const r = b.getBoundingClientRect();
+    const w = el.tip.offsetWidth;
+    const left0 = Math.max(12, Math.min(window.innerWidth - w - 12, r.left + r.width / 2 - 34));
+    el.tip.style.left = `${left0}px`;
+    el.tip.style.top = `${r.bottom + 12}px`;
+    el.tip.style.setProperty('--arrow', `${Math.max(14, Math.min(w - 20, r.left + r.width / 2 - left0))}px`);
+    for (const o of badgeEls) o.b.classList.toggle('open', o === entry && pinned);
+  }
+  function hideTip() {
+    tipFor = null;
+    tipPinned = false;
+    el.tip.hidden = true;
+    for (const o of badgeEls) o.b.classList.remove('open');
+  }
+  el.badges.addEventListener('click', (e) => {
+    const b = e.target.closest('.cz-badge');
+    const entry = b && badgeEls.find((o) => o.b === b);
+    if (!entry) return;
+    if (tipFor === entry && tipPinned) hideTip();
+    else showTip(entry, true);
+  });
+  el.badges.addEventListener('pointerover', (e) => {
+    const b = e.pointerType === 'mouse' && e.target.closest('.cz-badge');
+    const entry = b && badgeEls.find((o) => o.b === b);
+    if (entry && !tipPinned) showTip(entry, false);
+  });
+  el.badges.addEventListener('pointerout', (e) => {
+    if (e.pointerType === 'mouse' && !tipPinned && !el.badges.contains(e.relatedTarget)) hideTip();
+  });
+  document.addEventListener('pointerdown', (e) => tipPinned && !e.target.closest?.('.cz-badge') && hideTip(), true);
+
+  // ---------- the controls ----------
+  // A first visit to each game says how it works, until you've played it.
+  const hinted = { roulette: false, slots: false };
+  const HINT = {
+    roulette: TOUCH ? 'Pick a chip, then tap the felt. Hold a bet to take a chip back.' : 'Pick a chip, then click the felt. Right-click or hold a bet to take a chip back.',
+    slots: 'The chip you hold is your bet. Pull with SPIN.',
+  };
+  let said = '';
+  const token = (act, label, n = 0, cls = '', extra = '') => `<button type="button" class="cz-token ${cls}" data-act="${act}"${extra}><b>${label}</b>${n > 1 ? `<em>×${n}</em>` : ''}</button>`;
+  function tokens() {
     const ch = state.charges;
-    const on = staked();
-    const lucky = who.perks.roulette.lucky;
-    const label = (k) => (k === 'low' ? '1-18' : k === 'high' ? '19-36' : TABLE_BETS[k].label);
-    const quick = QUICK.map((k) => `<button class="cz-q q-${k}${bets.has(k) ? ' on' : ''}" data-k="${k}">${label(k)}${bets.has(k) ? `<i>${bets.get(k)}</i>` : ''}</button>`).join('') + `<button class="cz-q q-lucky${bets.has(`n${lucky}`) ? ' on' : ''}" data-k="n${lucky}">Lucky ${lucky}${bets.has(`n${lucky}`) ? `<i>${bets.get(`n${lucky}`)}</i>` : ''}</button>`;
-    const offers = lost?.length && !wheel
-      ? `<div class="cz-ups cz-offer">${ch.second > 0 ? ups('Spin again', ch.second, 'cz-second') : ''}${ch.cashback > 0 && lostKind === 'spin' ? ups(`Take ${fmt(Math.min(lostTotal(), CASHBACK_MAX))} back`, ch.cashback, 'cz-back') : ''}</div>`
-      : '';
-    return `${chipsTop()}${msg()}
-      <div class="cz-row cz-chiprow">
-        <span class="cz-chiplabel">Chip</span>
-        <button class="cz-bet" data-c="-1" aria-label="Smaller chip">−</button>
-        <span class="cz-chipv"><i class="v${chip}"></i>${chip}</span>
-        <button class="cz-bet" data-c="1" aria-label="Bigger chip">+</button>
-        <span class="cz-on">On the felt <b>${fmt(on)}</b></span>
-      </div>
-      <div class="cz-quick"${wheel ? ' inert' : ''}>${quick}</div>
-      <div class="cz-row">
-        <button class="cz-clear"${wheel || !on ? ' disabled' : ''}>Clear</button>
-        <button class="cz-undo"${wheel || !on ? ' disabled' : ''} aria-label="Take the last chip back">Undo</button>
-        <button class="cz-rebet"${wheel || !lastBets ? ' disabled' : ''}>Rebet</button>
-        <button class="cz-spin"${wheel ? ' disabled' : ''}>SPIN</button>
-      </div>
-      ${offers}
-      <p class="cz-hint">Tap a bet or the felt to add a chip, hold a bet to take one off.</p>
-      ${edgesList('roulette')}
-      <button class="cz-leave">Step back</button>`;
+    if (mode === 'slots') {
+      if (picking) {
+        return `<span class="cz-ask">${picking === 'reroll' ? 'Re-roll which reel?' : 'Nudge which reel?'}</span>${[1, 2, 3].map((n) => token('reel', String(n), 0, 'reel', ` data-i="${n - 1}" aria-label="Reel ${n}"`)).join('')}${token('cancel', '×', 0, 'reel cancel', ' aria-label="Cancel"')}`;
+      }
+      let out = '';
+      if (offer) {
+        if (ch.rerolls > 0) out += token('reroll', 'Re-roll a reel', ch.rerolls, 'save');
+        if (ch.nudges > 0) out += token('nudge', 'Nudge a reel', ch.nudges, 'save');
+        if (ch.cashback > 0 && last.paid > 0) out += token('back', `Take ${fmt(Math.min(last.paid, CASHBACK_MAX))} back`, ch.cashback, 'save');
+      }
+      if (!spinning && !show) {
+        const w = who.perks.slots.wild;
+        if (ch.free > 0) out += token('free', 'Free spin', ch.free);
+        if (ch.wild > 0) out += token('wild', 'Wild spin', ch.wild, 'wild', ` title="The ${ONE[w.symbol]}${w.mid ? ' on the middle reel' : ''} stands in for any symbol"`);
+      }
+      return out;
+    }
+    if (mode === 'roulette' && lost?.length && !wheel) {
+      let out = '';
+      if (ch.second > 0) out += token('second', 'Spin again, free', ch.second, 'save');
+      if (ch.cashback > 0 && lostKind === 'spin') out += token('back', `Take ${fmt(Math.min(lostTotal(), CASHBACK_MAX))} back`, ch.cashback, 'save');
+      return out;
+    }
+    return '';
   }
-  function roomPanel() {
-    return `${chipsTop()}
-      <p class="cz-note">Free chips only, topped up every day.</p>
-      <div class="cz-games">
-        <button class="cz-play" data-game="slots">Chog Slots</button>
-        ${table ? '<button class="cz-play" data-game="roulette">Roulette</button>' : ''}
-      </div>
-      ${edgesList(null)}`;
+  el.tokens.addEventListener('click', (e) => {
+    const b = e.target.closest('.cz-token');
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'reel') spin(picking, Number(b.dataset.i));
+    else if (act === 'cancel') (picking = null), render();
+    else if (act === 'reroll' || act === 'nudge') (picking = act), render();
+    else if (act === 'free' || act === 'wild') spin(act);
+    else if (act === 'back') takeBack(mode === 'slots' ? last.paid : lostTotal());
+    else if (act === 'second') spinWheel('second');
+  });
+  // The chip in hand: at the roulette what a tap puts down, at the slots the bet.
+  function hold(v) {
+    if (!BETS.includes(v)) return;
+    if (mode === 'slots') bet = v;
+    else chip = v;
+    if (table?.aimed) aimAt(table.aimed);
+    render();
   }
+  el.chips.forEach((b) => b.addEventListener('click', () => hold(Number(b.dataset.v))));
+  // Arrow keys move along the rack, as a radio group does.
+  ui.querySelector('.cz-rack').addEventListener('keydown', (e) => {
+    const d = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const now = BETS.indexOf(mode === 'slots' ? bet : chip);
+    hold(BETS[Math.max(0, Math.min(BETS.length - 1, now + d))]);
+    el.chips.find((b) => b.classList.contains('on'))?.focus();
+  });
+  el.undo.addEventListener('click', () => takeOff());
+  el.clear.addEventListener('click', () => (staked() ? clearBets() : rebet()));
+  el.spin.addEventListener('click', () => (mode === 'slots' ? spin() : spinWheel()));
+  el.leave.addEventListener('click', () => {
+    if (mode) stepBack();
+    // In the room: out of the casino, the way the Back button goes (src/main.js).
+    else document.getElementById('btn-back')?.click();
+  });
+  ui.querySelectorAll('.cz-go').forEach((b) => b.addEventListener('click', () => goPlay(b.dataset.game)));
+  q$('.cz-signin')?.addEventListener('click', () => document.getElementById('btn-signin')?.click());
+
   function render() {
     if (!who) return;
-    panel.classList.toggle('at-slots', mode === 'slots');
-    panel.classList.toggle('at-roulette', mode === 'roulette');
-    panel.innerHTML = mode === 'slots' ? slotsPanel() : mode === 'roulette' ? roulettePanel() : roomPanel();
-    const on = (sel, fn) => panel.querySelectorAll(sel).forEach((b) => b.addEventListener('click', () => fn(b)));
-    on('.cz-play', (b) => goPlay(b.dataset.game));
-    on('.cz-leave', () => stepBack());
-    panel.querySelector('.cz-edges')?.addEventListener('toggle', (e) => (edgesOpen[e.target.dataset.key] = e.target.open));
-    if (mode === 'slots') {
-      on('.cz-spin', () => spin());
-      on('.cz-bet', (b) => {
-        bet = BETS[Math.min(BETS.length - 1, Math.max(0, BETS.indexOf(bet) + Number(b.dataset.d)))];
-        render();
-      });
-      on('.cz-free', () => spin('free'));
-      on('.cz-wild', () => spin('wild'));
-      on('.cz-pick-re', () => ((picking = 'reroll'), render()));
-      on('.cz-pick-nu', () => ((picking = 'nudge'), render()));
-      on('.cz-cancel', () => ((picking = null), render()));
-      on('.cz-reel', (b) => spin(picking, Number(b.dataset.i)));
-      on('.cz-back', () => takeBack(last.paid));
+    ui.classList.toggle('at-slots', mode === 'slots');
+    ui.classList.toggle('at-roulette', mode === 'roulette');
+    ui.classList.toggle('at-room', !mode);
+    ui.classList.toggle('guest', who.key === 'guest');
+    // Who's playing, and its edges at this game.
+    const bk = `${who.key}|${mode}`;
+    if (bk !== badgeFor) {
+      badgeFor = bk;
+      el.img.src = who.image;
+      el.name.textContent = who.name;
+      buildBadges();
     }
-    if (mode === 'roulette') {
-      on('.cz-spin', () => spinWheel());
-      on('.cz-bet', (b) => {
-        chip = BETS[Math.min(BETS.length - 1, Math.max(0, BETS.indexOf(chip) + Number(b.dataset.c)))];
-        render();
-      });
-      // A tap adds a chip; holding a bet takes one back off it (and the tap that ends the hold doesn't count).
-      // How long it was held is read off the events' own times too, so a hold counts even when the page
-      // was busy while the finger was down.
-      panel.querySelectorAll('.cz-q').forEach((b) => {
-        let timer = 0, held = false, downAt = 0;
-        const HOLD = 420;
-        const cancel = () => clearTimeout(timer);
-        b.addEventListener('pointerdown', (e) => {
-          held = false;
-          downAt = e.timeStamp;
-          timer = setTimeout(() => {
-            held = true;
-            takeOff(b.dataset.k);
-          }, HOLD);
-        });
-        b.addEventListener('pointerup', (e) => {
-          cancel();
-          if (!held && e.timeStamp - downAt >= HOLD) {
-            held = true;
-            takeOff(b.dataset.k);
-          }
-        });
-        for (const ev of ['pointerleave', 'pointercancel']) b.addEventListener(ev, cancel);
-        b.addEventListener('contextmenu', (e) => e.preventDefault());
-        b.addEventListener('click', () => {
-          if (held) return;
-          placeBet(b.dataset.k);
-        });
-      });
-      on('.cz-undo', () => takeOff());
-      on('.cz-clear', () => clearBets());
-      on('.cz-rebet', () => rebet());
-      on('.cz-second', () => spinWheel('second'));
-      on('.cz-back', () => takeBack(lostTotal()));
+    const n = mode ? badgeEls.length : who.perks.list.length;
+    el.sub.textContent = mode ? `${n} edge${n === 1 ? '' : 's'} at the ${mode}` : `${n} edge${n === 1 ? '' : 's'} here · pick a game`;
+    updateBadges();
+    // The chips in hand.
+    const held = mode === 'slots' ? bet : chip;
+    for (const b of el.chips) {
+      const v = Number(b.dataset.v);
+      b.classList.toggle('on', v === held);
+      b.setAttribute('aria-checked', String(v === held));
+      b.tabIndex = v === held ? 0 : -1;
+      b.classList.toggle('poor', v > state.chips);
     }
+    el.bankLabel.textContent = mode === 'slots' ? `Bet ${bet} a spin` : 'Your chips';
+    el.bankN.textContent = fmt(shownChips);
+    el.leaveText.textContent = mode ? 'Step back' : 'Leave';
+    el.leave.setAttribute('aria-label', mode ? 'Step back from the game' : 'Leave the casino');
+    // Undo, and Clear (Rebet once the felt is bare).
+    const on = mode === 'roulette' ? staked() : 0;
+    el.undo.disabled = !!wheel || !on;
+    const again = !on && !!lastBets;
+    el.clear.classList.toggle('again', again);
+    el.clear.disabled = !!wheel || (!on && !lastBets);
+    el.clear.title = again ? 'Rebet' : 'Clear';
+    el.clear.setAttribute('aria-label', again ? 'Put the last bets down again' : 'Clear the felt');
+    el.clear.querySelector('use').setAttribute('href', again ? '#czi-rebet' : '#czi-clear');
+    // SPIN, with a light running round its ring while the reels or the wheel turn.
+    const turning = mode === 'slots' ? !!spinning : !!wheel;
+    el.spin.disabled = turning || !!show || (mode === 'slots' && !!picking);
+    el.spin.classList.toggle('busy', turning);
+    el.felt.hidden = !on;
+    el.feltN.textContent = on >= TABLE_MAX ? `${fmt(on)} · table max` : fmt(on);
+    // What just happened, or how to play.
+    const hint = !message ? (mode ? (hinted[mode] ? '' : HINT[mode]) : 'Free chips only, topped up every day.') : '';
+    const text = message || hint;
+    el.say.hidden = !text;
+    el.say.classList.toggle('quiet', !message);
+    if (text !== said) {
+      said = text;
+      el.say.textContent = text;
+      el.say.classList.remove('pop');
+      if (message) {
+        void el.say.offsetWidth;
+        el.say.classList.add('pop');
+      }
+    }
+    el.tokens.innerHTML = mode ? tokens() : '';
+    el.tokens.hidden = !el.tokens.innerHTML;
   }
 
   function goPlay(game = 'slots') {
@@ -1634,7 +1858,9 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     mode = game;
     picking = null;
     message = '';
+    hideTip();
     if (game === 'slots') {
+      table?.aim(null);
       playView();
       rig.idleSpin = false;
       rig.go('casino-play', 1.2);
@@ -1650,6 +1876,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     mode = null;
     picking = null;
     message = '';
+    table?.aim(null);
+    hideTip();
     rig.go(r.id, 1.0);
     document.body.classList.toggle('cz-playing', false);
     render();
@@ -1672,14 +1900,22 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     if (show) endShow();
   }
 
+  // Keys: Space or Enter spins, 1 to 5 pick a chip, Backspace takes the last chip back, Esc steps back.
   window.addEventListener('keydown', (e) => {
-    if (panel.hidden || !mode || e.repeat || e.target.tagName === 'INPUT') return;
+    if (ui.hidden || !mode || e.repeat || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || show) return;
     if (e.code === 'Space' || e.key === 'Enter') {
-      // A button in the panel has the key itself.
-      if (document.activeElement?.closest?.('.casino-panel')) return;
+      // A focused button has the key itself.
+      if (document.activeElement?.closest?.('.cz-ui button')) return;
       e.preventDefault();
       if (mode === 'slots') spin();
       else spinWheel();
+    } else if (/^[1-5]$/.test(e.key)) hold(BETS[Number(e.key) - 1]);
+    else if (e.key === 'Backspace' && mode === 'roulette') {
+      e.preventDefault();
+      takeOff();
+    } else if (e.key === 'Escape') {
+      if (tipFor) hideTip();
+      else stepBack();
     }
   });
 
@@ -1690,11 +1926,11 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     room: r,
     _speed: 1,
     get open() {
-      return !panel.hidden;
+      return !ui.hidden;
     },
-    /** Whether you're in the casino (and no cutscene is playing): the panel shows. */
+    /** Whether you're in the casino (and no cutscene is playing): the controls show. */
     show(inside) {
-      if (inside && panel.hidden) {
+      if (inside && ui.hidden) {
         identify();
         board.refresh();
       }
@@ -1702,9 +1938,11 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
         finishNow();
         mode = null;
         picking = null;
+        table?.aim(null);
         render();
       }
-      panel.hidden = !inside;
+      if (!inside) hideTip();
+      ui.hidden = !inside;
       document.body.classList.toggle('in-casino', inside);
       // Seated at a game: the walking controls can step aside (A's HUD).
       document.body.classList.toggle('cz-playing', inside && !!mode);
@@ -1733,15 +1971,14 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       fx.win = Math.max(0, fx.win - dt / 2.6);
       fx.jackpot = Math.max(0, fx.jackpot - dt / 5.5);
       look.update?.(t, dt, fx);
-      if (!panel.hidden) identify();
+      if (!ui.hidden) identify();
       // Walking in, the machines' lights come on one after another, a ripple along each.
       wake = entering() || wake > 0 ? wake + dt : 3;
       // The chips counter runs up to what you have.
       if (state && shownChips !== state.chips) {
         const gap = state.chips - shownChips;
         shownChips = Math.abs(gap) < 1 ? state.chips : shownChips + gap * Math.min(1, dt * 5);
-        const el = panel.querySelector('.cz-chips b');
-        if (el) el.textContent = fmt(shownChips);
+        el.bankN.textContent = fmt(shownChips);
       }
       // The reels.
       if (spinning) {
@@ -1787,6 +2024,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
           table.ball.position.copy(table.wheelAt).add(bv);
         }
         if (backAt > 0 && (backAt -= dt) <= 0 && mode === 'roulette' && !wheel) goTable('bet');
+        table.stepAim(dt, t);
       }
       stepChips(dt);
       stepSparks(dt);
@@ -1798,11 +2036,11 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
         show.t += dt;
         show.flight.pose(camera, Math.min(show.t, show.flight.duration));
         if (show.t >= show.flight.duration) endShow();
-      } else if (mode === 'slots' && !panel.hidden) {
+      } else if (mode === 'slots' && !ui.hidden) {
         push += ((spinning ? 1 : 0) - push) * Math.min(1, dt * (spinning ? 3 : 2));
         if (push > 0.001) camera.position.lerp(machine.reels[1].getWorldPosition(new THREE.Vector3()), push * 0.06);
       }
-      if (!show && shake > 0 && mode && !panel.hidden) {
+      if (!show && shake > 0 && mode && !ui.hidden) {
         shake = Math.max(0, shake - dt);
         const a = shake * 0.06;
         camera.position.x += Math.sin(t * 71) * a;

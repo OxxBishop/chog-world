@@ -129,10 +129,34 @@ function blank() {
   };
 }
 
+// What an edge does, read off the totals it changes: the casino's badges count down the day's charges
+// it gives and light up when one fires.
+const TAG_OF = {
+  daily: 'daily', cashback: 'cashback', 'slots.free': 'free', 'slots.wild.n': 'wild', 'slots.rerolls': 'rerolls',
+  'slots.nudges': 'nudges', 'slots.streak': 'streak', 'slots.twoChogs': 'pays:two',
+  'roulette.luckyBig': 'luckyBig', 'roulette.anyBig': 'anyBig', 'roulette.shield': 'shield', 'roulette.second': 'second',
+  'roulette.near': 'near', 'roulette.colour.red': 'red', 'roulette.colour.black': 'black', 'roulette.even': 'even',
+  'roulette.dozen': 'dozen', aura: 'aura',
+};
+function flat(o, pre = '', out = {}) {
+  for (const [k, v] of Object.entries(o)) {
+    if (k === 'list') continue;
+    if (v && typeof v === 'object') flat(v, `${pre}${k}.`, out);
+    else out[`${pre}${k}`] = v;
+  }
+  return out;
+}
 // One edge: what it does to the totals, and its line on the panel.
 function edge(p, trait, name, text, game, apply) {
+  const before = flat(p);
   apply(p);
-  p.list.push({ trait, name, text, game });
+  const tags = [];
+  for (const [k, v] of Object.entries(flat(p))) {
+    if (before[k] === v) continue;
+    const tag = k.startsWith('slots.three.') ? `pays:${k.slice(12)}` : TAG_OF[k];
+    if (tag && !tags.includes(tag)) tags.push(tag);
+  }
+  p.list.push({ trait, name, text, game, tags });
 }
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const S = 'slots', R = 'roulette', BOTH = 'both';
@@ -314,7 +338,7 @@ export function perksFor(traits = {}, id = 7) {
   // Everyone has a lucky number at the roulette, and it saves a losing spin once a day.
   const r = p.roulette;
   r.lucky ??= id % 37;
-  p.list.push({ trait: `#${id}`, name: `Lucky ${r.lucky}`, text: `once a day, when ${r.lucky} comes up, every bet you lost on that spin comes back`, game: R });
+  p.list.push({ trait: `#${id}`, name: `Lucky ${r.lucky}`, text: `once a day, when ${r.lucky} comes up, every bet you lost on that spin comes back`, game: R, tags: ['luckySave'] });
   return p;
 }
 

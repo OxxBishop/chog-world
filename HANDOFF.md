@@ -27,6 +27,23 @@ are real but free.
 
 ## Log
 
+### 2026-10-18 · B · The casino's controls: "Chips in hand", built (B26)
+- **The user's pick, in the game** (`src/casino.js`, the casino section of `src/style.css`). The panel is gone, and so are the `?czui` looks and the edges card from B's branch (they never reached main).
+  - **Along the bottom:** your chips as a big gold count, a rack of five chips (5, 10, 25, 50, 100), Undo and Clear as small round keys, and SPIN, a domed coral button in a gold ring (104 px on a laptop, 82 on a phone). While the reels or the wheel turn, bulbs chase round SPIN's ring.
+    - The chip you hold lifts out of the rack with a white glow. At the roulette, a tap on the felt puts it down. At the slots it is your bet.
+    - Clear turns into Rebet once the felt is bare and there was a last spin.
+    - Above the rack: what just happened (or how to play, until you have), the power-ups as gold tokens (free and wild spins, re-roll, nudge, a second spin, a lost bet back), and "On the felt N".
+  - **The felt:** a soft gold glow round the spot a chip would land on, with the chip in your hand hovering over that spot's stack. It follows the mouse; on a phone it shows under your finger and stays a moment after the tap. It turns coral where the chip can't go (table max, not enough chips). Hold a bet to take a chip off it (one per hold); on a laptop a right click does the same.
+  - **Your Chog's edges:** its portrait and name at the top left, and under them a round gold badge for each edge at this game, with a pink count of what's left today. A used-up badge greys out. A tap (or a hover with a mouse) shows a tip: the trait, the edge, one line, and how many are left.
+    - **A badge flares the moment its edge fires:** Red or Black saving a bet, Lucky N saving a spin, Second sight, a lost bet back, a wild or free spin, a re-roll, a nudge, the hot streak, a symbol that pays more. `casinoperks.js` now tags each edge with what it changes (`tags`), so the right badge lights.
+  - **In the room:** your chips and the two games as big buttons, and "Free chips only, topped up every day" (A asked what the old sign meant).
+  - **Leaving:** a round key at the top right: "Step back" from a game, "Leave" in the room (it presses the world's Back). In the casino the world's clock bar, the focus bar, Sign in and the Chog chip step aside. A guest gets "Sign in for your Chog's edges" under the name.
+  - **Keys:** 1 to 5 pick a chip, Space or Enter spins, Backspace takes the last chip back, Esc steps back.
+- **The views, centred** now there's no panel on the right: the whole table to bet on a laptop, the wheel alone while the ball runs, the machine in the middle at the slots. On a phone the felt sits in the middle of the space between the badges and the rack (`view()` in `src/roulette.js`, `playView()` in `src/casino.js`).
+- **The chips on the felt are the rack's colours** (`CHIP_COLOURS` in `src/roulette.js`): the 50 is purple now, not gold.
+- Seen on the laptop (1366 x 768) and a phone (390 x 844, and on its side) by mouse and by touch: betting, undo, hold to take off, rebet, spin, settle, a badge firing, tips, the slots with their tokens, the room, a guest; and the whole way through on the laptop (the walk-in cutscene, the room, Leave flying back out to the Hub with its bar and clock back). No console errors.
+- **For the next B:** tests on a held clock now hold page timers too (`setTimeout`), or a 2.4 s glow is over before a SwiftShader frame is drawn. CSS animations don't advance in that harness: pause them at a chosen time before a screenshot (`document.getAnimations()`). What worked best: one page loaded once (about 90 s), then driven step by step over a small local HTTP server, so each look costs a few frames and not a fresh five-minute load. The dev server for it runs on a copy of `src` with `hmr: false`, so edits only arrive on a reload you choose.
+
 ### 2026-10-18 · A · The user's fourth look: faces, hands, the wave, greetings, grass and the portal pads
 - **Faces** (the user: "what are those ridges in my chog's face"): Tripo sculpted the face it was given
   (closed eyes, lashes, mouth) into the mesh and its normal map, so the drawn eyes sat over old ridges.
