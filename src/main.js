@@ -761,7 +761,10 @@ function enterRoom(r) {
   // From outside, the Hub's rooms are flown into through their doors; anything else fades.
   if (entry.can(r) && !space.active) {
     $('focus-bar').hidden = true;
-    entry.enter(r).then(() => inRoom?.room === r && showBar(r.name));
+    // Walked up to its door (src/travel.js): your Chog goes in itself, the camera behind it.
+    const t = travel?.state;
+    const walker = t?.chog && t.lastDoor?.room === r ? { chog: t.chog, own: t.own, home: t.chog.root.parent, exit: t.lastDoor } : null;
+    entry.enter(r, { walker }).then(() => inRoom?.room === r && showBar(r.name));
     return;
   }
   fadeThrough(() => {
@@ -870,6 +873,9 @@ function frame() {
   frameDt = dt;
   // Out walking, your Chog has the camera; otherwise the rig does (rooms, cutscenes, space).
   if (!travel?.update(dt)) rig.update(dt);
+  // Out walking the camera is outdoors, whatever dome the rig last framed (your own Chog sets off from
+  // its dome, and the Hub's doors only open from outside every room and dome).
+  else if (rig.room && !(rig.room instanceof RoomBox)) rig.room = null;
   demo?.update();
   space?.update();
   entry?.update(dt);

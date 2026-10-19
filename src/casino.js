@@ -1920,6 +1920,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   });
 
   const tmp = new THREE.Color();
+  const camIn = new THREE.Vector3();
+  let unlit = 0;
   const { on: ons, off: offs, hot } = look.bulbs;
   const Y = new THREE.Vector3(0, 1, 0), bv = new THREE.Vector3();
   const api = {
@@ -1955,6 +1957,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       roomView();
       if (!r.room.group.visible) {
         wake = 0;
+        unlit = 0;
         return;
       }
       // No windows: the casino is as bright at night as by day (the lamps make up for the sky).
@@ -1966,6 +1969,12 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
         sky.hemi.intensity = look.light.intensity;
         sky.light.intensity *= look.light.sun ?? 0;
       }
+      // Nor does its light on shiny things: by day the bright sky's reflections washed the room out
+      // in a lilac haze. Shut out once the camera is inside, as dark as the night sky leaves it.
+      g.worldToLocal(camIn.copy(camera.position));
+      const inside = Math.abs(camIn.x) < r.room.w / 2 && Math.abs(camIn.z) < r.room.d / 2 && camIn.y < r.room.h;
+      unlit += ((inside ? 1 : 0) - unlit) * Math.min(1, dt * 6);
+      if (sky?.scene && unlit > 0.001) sky.scene.environmentIntensity *= 1 - unlit * (1 - (env?.night ?? 0));
       // The room joins in with the games.
       fx.spin += ((spinning || wheel ? 1 : 0) - fx.spin) * Math.min(1, dt * 3);
       fx.win = Math.max(0, fx.win - dt / 2.6);
