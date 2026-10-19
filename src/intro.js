@@ -379,6 +379,11 @@ export function createIntro(el) {
     close({ keepHud = false } = {}) {
       current = 'closed';
       runner.stop();
+      // Nothing left on it as it goes: the running Chog and the words are gone at once.
+      stage.hidden = true;
+      sub.hidden = true;
+      loader.hidden = true;
+      loaderRun(false);
       el.classList.add('leaving');
       return new Promise((resolve) =>
         setTimeout(() => {

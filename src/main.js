@@ -51,6 +51,8 @@ const BASE_DPR = Math.min(window.devicePixelRatio, WEAK_GPU ? 1 : { low: 1, ultr
 renderer.setPixelRatio(BASE_DPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = QUALITY !== 'low';
+// The sliding doors hide what's slid into the wall with clipping planes (src/hub.js slidingDoor).
+renderer.localClippingEnabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.NoToneMapping;
@@ -395,7 +397,7 @@ async function init() {
   // The Chogs about town, each once its model is in; ?npcs shows every slot, with stand-ins. They load
   // with the rest, so the first one drawn (the singer) is drawn behind the loader: every rigged Chog
   // shares its shader, which Intel builds on the first draw.
-  const npcsIn = buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs') || !!SHOTS[params.get('demo')], prewarm: warmUp, quality: QUALITY })
+  const npcsIn = buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs') || !!SHOTS[params.get('demo')], prewarm: warmUp, quality: QUALITY, bridges: island.bridges })
     .then((n) => (npcs = n))
     .catch((err) => console.warn('Chogs about town:', err));
   load.set('build', 1);
@@ -902,6 +904,7 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
+  travel?.setEnv?.(env);
   entry?.apply(env, renderer);
   session?.update(dt);
   casino?.show(!entry?.active && rig.room === casino.room.pod);

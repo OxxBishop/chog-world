@@ -468,6 +468,8 @@ export function buildRoulette(room, x, z, rot, style) {
     spotAt,
     /** The chips on the felt: [{ key, amount, lift }]. */
     setStacks,
+    /** The spots that have chips on them now. */
+    stacked: () => [...tops.keys()],
     /** The dolly on n's spot, or away (null). */
     mark(n) {
       dolly.visible = n !== null;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { piece, repaint, carve } from './kaykit.js';
-import { hingedLeaf, vestibule, sunScaled, NO_SUN, doorMats, doorSun, shadeHalls, shadeRoomDoor } from './hub.js';
+import { hingedLeaf, vestibule, sunScaled, NO_SUN, doorMats, doorSun, shadeHalls, shadeRoomDoor, slidingDoor } from './hub.js';
 import { buildHomeRoom } from './interior.js';
 import { createGlows } from './glows.js';
 import { DOME_R, WORLD } from './layout.js';
@@ -287,6 +287,7 @@ diffuseColor.a = mix(0.07, 0.8, fres);
       this.group.add(l);
       return l;
     });
+    const slide = slidingDoor(leaves);
     const hallLamps = [];
     const hallFloor = vestibule(this.group, {
       x: 0, half: PD.half, top: PD.top - 0.05, zOut: PD.z - 0.12, zIn: roomFront, sill: PD.bottom, floorIn: 0.2,
@@ -301,10 +302,10 @@ diffuseColor.a = mix(0.07, 0.8, fres);
       at: () => L(0, PD.bottom, PD.z + 0.3),
       inside: () => L(0, PD.bottom, PD.z - 0.9),
       outward: () => L(0, 0, 1).sub(L(0, 0, 0)).normalize(),
-      // Swings its two panels: 0 shut, 1 open. Open, they are in the hall's shade.
+      // Parts its two panels, sliding into the wall (src/hub.js slidingDoor): 0 shut, 1 open. Open, the
+      // hall's in shade.
       open(k) {
-        const a = THREE.MathUtils.smootherstep(k, 0, 1) * 1.6;
-        for (const l of leaves) l.rotation.y = l.userData.dir * a;
+        slide(k);
         doorSun(door, k);
       },
     };
