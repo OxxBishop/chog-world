@@ -27,6 +27,11 @@ are real but free.
 
 ## Log
 
+### 2026-10-19 · B · WalletConnect in sign-in, and Open in MetaMask on phones (B29)
+- **The user: "add wallet connect in the sign in options, because of mobile users".** `src/chain.js` (A's, small and self-contained): `findWallets()` adds a WalletConnect option when the site has a project id, so both sign-in screens show it with no other change. It opens WalletConnect's own window (a QR code on a laptop, the wallet apps on a phone) and asks for Monad testnet only (the wallet can add it). `@walletconnect/ethereum-provider` 2.26.0 downloads only when the option is tapped; the main bundle grows 9 KB.
+- **Needs the user:** a free project id from dashboard.reown.com (create a project, allow `chog-world.vercel.app`), set in Vercel as `VITE_WALLETCONNECT_PROJECT_ID`, then redeploy. Until then the option doesn't show. Not tried end to end yet (no id, no wallet app here).
+- **Works now:** on a phone with no wallet in its browser, the first screen's top button is **Open in MetaMask**, which reopens the site inside MetaMask's own browser, where signing in works as on a laptop. Seen on a phone-sized screen by touch emulation: Open in MetaMask, Try a demo Chog, Explore as a guest.
+
 ### 2026-10-19 · B · Your Chog walks into the rooms, the camera behind it (B26), and the casino by day
 - **The walk-in is on main** (`src/entry.js`; `src/main.js` passes travel's Chog as `walker`, four lines in `enterRoom`). Out walking, walk up to the bar, the casino or the lobby door: your Chog goes in itself and the camera follows behind it, through the outside doors, down the hall and through the room's door. On the last steps before the door it comes down from its outdoor size (1.7) to its room size, with the camera's distance coming down with it, so on screen only the door grows. It stops at A's room spot (`spotIn`), the camera comes on through to the room's view and it turns to face you. Leaving, the same backwards: it grows back once the camera is out of the doors.
 - **Fixed since the branch:**
