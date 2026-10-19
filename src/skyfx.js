@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ISLANDS, BRIDGES, roadDistance } from './layout.js';
+import { ISLANDS, BRIDGES } from './layout.js';
 import { edgeR, heightAt, islandAt, undersidePoint } from './terrain.js';
 import { info } from './assets.js';
 import { fbm, noise2, clamp, smoothstep } from './util.js';
@@ -36,6 +36,7 @@ export function buildBridges(scene) {
   const deckMat = new THREE.MeshLambertMaterial({ map: planks() });
   const steel = new THREE.MeshStandardMaterial({ color: '#eceaf3', roughness: 0.32, metalness: 0.75 });
   const globeMat = new THREE.MeshStandardMaterial({ color: '#fff3dd', emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.2 });
+  const stone = new THREE.MeshLambertMaterial({ color: '#d9c6ad' });
   const glowSpots = [];
   const group = new THREE.Group();
   const up = new THREE.Vector3(0, 1, 0);
@@ -52,47 +53,75 @@ export function buildBridges(scene) {
     const len = Math.hypot(br.bx - br.ax, br.bz - br.az);
     const ux = (br.bx - br.ax) / len, uz = (br.bz - br.az) / len;
     const nx = -uz, nz = ux;
-    const rise = br.by - br.ay;
-    // The deck's height along the way (its middle; its top is 0.15 higher). Each end lies on the island's
-    // grass, following it, up to where the island's walkable ground ends; between, the span climbs or
-    // steps from one landing to the other. (It used to start 6 m inside each island 0.7 to 1.4 m under
-    // the grass, so a Chog walking on followed the buried deck down into the ground: the user, 10-18.)
-    // The walking surface there: the grass, or the paving a few cm over it (as travel.js surfaceAt).
-    const landAt = (d) => {
-      const x = br.ax + ux * d, z = br.az + uz * d;
-      const isl = islandAt(x, z);
-      if (!isl || isl.k >= 0.955) return null;
-      const r = roadDistance(x, z);
-      return heightAt(x, z) + (r < -0.22 ? 0.065 : r < 0.22 ? 0.14 : 0);
-    };
+    // The deck's height along the way (its middle; its top is 0.15 higher). Each end starts on its
+    // island's level ground and stays level out past the island's sloping rim to its cliff, then the
+    // span climbs or steps across the gap. (The span used to start where the walkable ground ends, a few
+    // metres short of the cliff, so its stairs dug into the rim and a Chog walked through the deck: the
+    // user, 10-18 and 10-19.)
+    const half = br.width / 2;
+    const P = (d, s) => [br.ax + ux * d + nx * s, br.az + uz * d + nz * s];
+    const ACROSS = [-half, -half / 2, 0, half / 2, half];
+    // The island's k (0 middle, 1 its edge) under the deck at d, the lowest across it: 1 once the island
+    // has gone from under all of it.
+    const kLo = (d) => Math.min(...ACROSS.map((s) => islandAt(...P(d, s))?.k ?? 9));
     const STEP = 0.25;
-    let s0 = 0, s1 = len;
-    while (s0 < len / 2 && landAt(s0) !== null) s0 += STEP;
-    while (s1 > len / 2 && landAt(s1) !== null) s1 -= STEP;
-    // The deck's top 2 cm over the ground it lies on (its middle is 0.15 under its top).
-    const ON_GRASS = -0.13;
-    const y0 = (landAt(Math.max(0, s0 - STEP)) ?? br.ay + 0.25) + ON_GRASS;
-    const y1 = (landAt(Math.min(len, s1 + STEP)) ?? br.by + 0.25) + ON_GRASS;
-    const steep = Math.abs(y1 - y0) / Math.max(1, s1 - s0) > 0.12;
-    const hump = steep ? 0.8 : 2.4;
-    const n = Math.ceil(len / STEP);
-    const table = new Float32Array(n + 1);
-    for (let i = 0; i <= n; i++) {
-      const d = Math.min(len, i * STEP);
-      const g = d < s0 || d > s1 ? landAt(d) : null;
-      if (g !== null) table[i] = g + ON_GRASS;
-      else {
-        const u = clamp((d - s0) / Math.max(0.01, s1 - s0), 0, 1);
-        table[i] = y0 + (y1 - y0) * u + Math.sin(u * Math.PI) * hump;
+    let cA = 0, cB = len;
+    while (cA < len / 2 && kLo(cA) < 1) cA += STEP;
+    while (cB > len / 2 && kLo(cB) < 1) cB -= STEP;
+    cA = Math.min(len / 2, cA + 0.6);
+    cB = Math.max(len / 2, cB - 0.6);
+    // A landing's height: the highest ground anywhere under it (the deck counts as paving, as travel.js
+    // has it: 6.5 cm over the land), so no part of it is buried.
+    const landing = (d0, d1, fallback) => {
+      let top = -Infinity;
+      for (let d = d0; d <= d1; d += 0.5) {
+        for (const s of ACROSS) {
+          const [x, z] = P(d, s);
+          if ((islandAt(x, z)?.k ?? 9) < 1) top = Math.max(top, heightAt(x, z));
+        }
       }
-    }
-    const deckY = (t) => {
-      const f = clamp(t, 0, 1) * (len / STEP);
-      const i = Math.min(n - 1, Math.floor(f));
-      return table[i] + (table[i + 1] - table[i]) * (f - i);
+      return Number.isFinite(top) ? top + 0.065 : fallback;
     };
+    // The deck's top 2 cm over the landing (its middle is 0.15 under its top).
+    const y0 = landing(0, cA, br.ay + 1.6) - 0.13;
+    const y1 = landing(cB, len, br.by + 1.6) - 0.13;
+    const steep = Math.abs(y1 - y0) / Math.max(1, cB - cA) > 0.12;
+    const hump = steep ? 0.8 : 2.4;
+    const deckAt = (d) => {
+      if (d <= cA) return y0;
+      if (d >= cB) return y1;
+      const u = (d - cA) / (cB - cA);
+      return y0 + (y1 - y0) * u + Math.sin(u * Math.PI) * hump;
+    };
+    const deckY = (t) => deckAt(clamp(t, 0, 1) * len);
     const at = (t, side = 0, dy = 0) => new THREE.Vector3(br.ax + ux * len * t + nx * side, deckY(t) + dy, br.az + uz * len * t + nz * side);
+    const s0 = cA, s1 = cB;
     paths.push({ ...br, len, deckY, s0, s1 });
+    // Under each landing, where the rim falls away below it, a stone abutment down to the ground.
+    for (const [a, b, y] of [[0, cA, y0], [cB, len, y1]]) {
+      let lo = Infinity, from = null, to = null;
+      for (let d = a; d <= b; d += 0.5) {
+        let g = Infinity;
+        for (const s of ACROSS) {
+          const [x, z] = P(d, s);
+          const h = (islandAt(x, z)?.k ?? 9) < 1 ? heightAt(x, z) : y - 2.2;
+          g = Math.min(g, h);
+        }
+        if (g < y - 0.2) {
+          from ??= d;
+          to = d;
+          lo = Math.min(lo, g);
+        }
+      }
+      if (from === null) continue;
+      const d0 = Math.max(a, from - 0.5), d1 = Math.min(b, to + 0.5);
+      const bottom = Math.max(lo - 0.6, y - 3.2), topY = y - 0.15;
+      const blk = new THREE.Mesh(new THREE.BoxGeometry(br.width - 0.3, topY - bottom, d1 - d0), stone);
+      blk.position.set(br.ax + ux * (d0 + d1) / 2, (topY + bottom) / 2, br.az + uz * (d0 + d1) / 2);
+      blk.rotation.y = Math.atan2(ux, uz);
+      blk.castShadow = blk.receiveShadow = true;
+      group.add(blk);
+    }
 
     // Deck: short boards following the arch, or level treads stepping down a stair.
     const N = 28;
@@ -124,16 +153,18 @@ export function buildBridges(scene) {
       group.add(tube);
       for (let i = 0; i <= N; i += 2) strut(at(i / N, s, 0.1), at(i / N, s, 1.1), 0.05, steel);
       // Steel arch underneath, springing from the cliffs and rising to meet the deck mid-span.
+      // Across the gap only, springing from under each cliff.
       const arch = [];
+      const ta = s0 / len, tb = s1 / len;
       for (let i = 0; i <= N; i++) {
-        const t = i / N;
-        const p = at(t, s * 0.8, 0);
-        p.y = br.ay + rise * t - 9 + Math.sin(t * Math.PI) * 8.6;
+        const u = i / N;
+        const p = at(ta + (tb - ta) * u, s * 0.8, 0);
+        p.y = deckY(ta) + (deckY(tb) - deckY(ta)) * u - 9 + Math.sin(u * Math.PI) * 8.6;
         arch.push(p);
       }
       group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(arch), 64, 0.28, 8), steel));
       for (let i = 2; i <= N - 2; i += 2) {
-        const top = at(i / N, s * 0.8, -0.15);
+        const top = at(ta + ((tb - ta) * i) / N, s * 0.8, -0.15);
         if (top.y - arch[i].y > 0.4) strut(arch[i], top, 0.06, steel);
       }
       // Lamps every few metres, alternating sides.
