@@ -267,6 +267,8 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   forest.build(scene, renderer);
   props.build(scene, { shadows: true, chunk: 64 });
   const lowMeshes = low.build(scene, { shadows: false, chunk: 40 });
+  // Where the flowers stand, for the little monsters that flit about them (src/birds.js; build empties it).
+  const flowerSpots = [...bloom.items.values()].flat().map((m) => new THREE.Vector3(m.elements[12], m.elements[13], m.elements[14]));
   const bloomMeshes = bloom.build(scene, { shadows: false, chunk: 70 });
   // What a walking Chog goes round (src/travel.js; A, the user 10-17: Chogs walked through flowers and
   // things): each tree by its trunk, rocks, bushes and the taller flowers by their footprint. Grass and low
@@ -343,6 +345,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
     plaza: plaza.group,
     terrain,
     forest,
+    flowers: flowerSpots,
     hub,
     setQuality(q) {
       forest.lodDist = [45, 65, 90][q];

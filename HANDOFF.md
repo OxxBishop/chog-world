@@ -27,6 +27,29 @@ are real but free.
 
 ## Log
 
+### 2026-10-19 · B · The birds are in (B35, the user's pick)
+- New `src/birds.js`, wired in `src/main.js` (created with the world, updated after the Chogs about town). All CC0 from Quaternius, packed with meshopt into `public/creatures/` (about 320 KB in all; `public/creatures/LICENSE.txt`, `scripts/pack-creatures.mjs`). They load 2.5 s after the island is up, so the start is no slower.
+  - **Little monsters** (the striped bee and the horned flyer) hang about the flowers nearest your Chog, or clear air a few metres off to the side of the camera when there are none, and dart off when it walks up.
+  - **Puff birds** (magenta and teal) and a one-eyed **Glub** sit on the treetops nearest you, one to a tree, hop between trees and take off when you walk under them. Left behind, they fly in from about 40 m off instead of crossing the island.
+  - **Sky mantas**: flights of two or three high over the islands; now and then a big one swoops past the island's edge close by, rolling its back toward you.
+  - **The sky whale**: rarely, far out over the clouds.
+  - Hidden in rooms and in space. `?birds=now` brings the swoop and the whale round in seconds. Counts drop at `?q=low` (2 little ones, 3 tree birds, 1 flight).
+- `src/island.js` (A's, small edit): returns `flowers`, the flower spots taken before the flowers are built (building empties the list, which is why no little monsters showed at first).
+- How to see it: walk anywhere with trees and flowers and look about; stand at an island's edge facing out for the swoop.
+
+### 2026-10-19 · B · One door into the Hub's rooms, a 2 s walk in and out; hoverboards are stepped onto, and tip with the stairs
+- **The user:** "why's there a 6 seconds+ cutscene for the chog walking to its position? it can literally just stand next to the camera ... why are there even 2 doors? it's unnecessary". `src/entry.js` walkIn and walkOut are new:
+  - The outside door slides open by itself as your Chog walks up to it facing it (`autoDoors`), so you see it open. The camera swings about 45 degrees round so the doorway shows beside your Chog, it steps through, a quick dip (`#fade`, stepped with the world), and it is standing at its spot by the room's view. About 2 s.
+  - Out: a dip, and outside the door slides open on your Chog standing just inside. It walks out past the camera, which comes round behind it, the door closes, and travel carries on from that very view (no camera jump). About 3 s.
+  - The rooms' own doors are gone (hidden at load): through the open outside door you see down the short hall into the lit room. The hall and the old room door are never in shot now, so the flickering hall walls from the user's video can't show.
+  - Seeing the casino through its open door costs about 180 draw calls at `?q=low`, only for the second or two the door is open. It opens only within 6 m, facing it.
+  - The fly-in without a Chog out walking (the old views, `?demo=entry`) is unchanged.
+- `src/travel.js` (A's, small edits): `resume()` takes the place and view the walk out ended on (`lastDoor.resume`); `main.js` passes your Chog to `entry.update` for the doors.
+- **Hoverboards** (the user: "it should climb onto it", and its nose dug into a bridge's stairs). `src/travel.js` rideStep/hopStep, `src/hoverboard.js`:
+  - On: the board floats round to meet your Chog end on and sinks low; your Chog walks up and steps onto it, and the board rises with a little bob. Off: the board sinks, your Chog walks off the front (or a clear side) and steps down, and the board rises back to wait.
+  - Riding, the board tips to the slope under its nose and tail and lifts clear of a stair's treads; your Chog leans into a climb and back going down. No hopping off halfway up a stair (the button hides there).
+- Seen on the laptop and a phone: casino, bar (your own Chog joins the counter chat as before), lobby; boarding, riding up and down the steepest stair, getting off. No console errors.
+
 ### 2026-10-19 · B · Portal trips take about 1.3 s, not 19 (the user: "1-1.5 seconds max")
 - `src/fx/teleport.js`: the swirl snaps open a stride in front of your Chog (it no longer shuffles to the middle of the pad first), it takes two brisk strides through (`STRIDE`, its walk sped up to match), a blink of light (`flash(on, quick)` in `src/travel.js`, `.tv-flash.quick` in `src/style.css`), and it strides out of the other swirl onto the pad. Each gate shuts on its own afterwards without holding you up. No pillar of light at the far pad. The effect's clock no longer runs slow on a laptop drawing 10 frames a second (dt held to 0.1 s, was 0.05). Measured on the test clock: 1.4 s from the tap to walking again.
 
