@@ -346,6 +346,8 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
     terrain,
     forest,
     flowers: flowerSpots,
+    // The street lamps along the walks, [x, z] in the world (src/roads.js), for what a walker bumps into.
+    lamps: roads.lamps ?? [],
     hub,
     setQuality(q) {
       forest.lodDist = [45, 65, 90][q];

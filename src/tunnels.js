@@ -86,9 +86,12 @@ outgoingLight += mix(vec3(1.0, 0.62, 0.92), vec3(0.55, 0.9, 1.0), fres) * fres *
   };
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
   const lines = [];
+  // Each bridge's hoops, for what can't pass through them (src/travel.js): where they stand along it.
+  const corridors = [];
   for (const br of paths) {
     const ux = (br.bx - br.ax) / br.len, uz = (br.bz - br.az) / br.len;
     const count = Math.max(2, Math.round((br.len - 1.2) / SPACING));
+    corridors.push({ br, ux, uz, hw: hw(br), first: 0.6, last: br.len - 0.6, step: (br.len - 1.2) / count });
     q.setFromAxisAngle(Y, Math.atan2(ux, uz));
     for (let k = 0; k <= count; k++) {
       // From just inside one end of the deck to just inside the other.
@@ -140,12 +143,67 @@ outgoingLight += mix(vec3(1.0, 0.62, 0.92), vec3(0.55, 0.9, 1.0), fres) * fres *
   group.add(lineMesh);
   scene.add(group);
 
+  // Where p is against a bridge's hoops: its bridge, how far along and out to the side, and its height
+  // over the deck. Null away from them.
+  const locate = (p) => {
+    for (const c of corridors) {
+      const dx = p.x - c.br.ax, dz = p.z - c.br.az;
+      const along = dx * c.ux + dz * c.uz;
+      if (along < c.first - 1.2 || along > c.last + 1.2) continue;
+      const lat = -dx * c.uz + dz * c.ux;
+      if (Math.abs(lat) > c.br.width / 2 + 6) continue;
+      return { c, along, lat, y: p.y - (c.br.deckY(THREE.MathUtils.clamp(along / c.br.len, 0, 1)) + 0.15) };
+    }
+    return null;
+  };
+  const inner = (c, m) => [c.hw - BAND / 2 - m, RISE - BAND / 2 - m];
+
   let clock = 0;
   return {
     group,
     look: 'glass',
-    // Open to the sky: the camera is never inside anything here (travel.js asks).
-    inside: () => false,
+    /**
+     * Inside a bridge's hoops (under their arch, between its gateways). strict, for the camera: whether
+     * it is clear of them, under the arch by half a metre, or anywhere away from them.
+     */
+    inside(p, strict = false) {
+      const at = locate(p);
+      if (!at) return strict;
+      const [a, b] = inner(at.c, strict ? 0.5 : 0.1);
+      const y = Math.max(0, at.y);
+      return (at.lat / a) ** 2 + (y / b) ** 2 < 1;
+    },
+    /** Which way the bridge whose hoops p is under runs (a yaw), or null. */
+    axisAt(p) {
+      const at = locate(p);
+      return at ? Math.atan2(at.c.ux, at.c.uz) : null;
+    },
+    /**
+     * Keeps a body (a column r round, h tall from its feet) clear of a bridge's hoops, rails and lamps,
+     * moving it from `from` to p: on the bridge, in under the arch as far out as the band at its head
+     * allows; beside the bridge (on the land by a landing), out past the rails. Moves p.
+     */
+    keepOff(from, p, r, h) {
+      const at = locate(p);
+      if (!at) return false;
+      const c = at.c;
+      if (at.along < c.first - DEPTH / 2 - r || at.along > c.last + DEPTH / 2 + r) return false;
+      const gate = at.along < c.first + c.step / 2 || at.along > c.last - c.step / 2;
+      const hwk = c.hw + (gate ? 0.25 : 0), rise = RISE + (gate ? 1.2 : 0);
+      const top = Math.min(Math.max(0.1, at.y + h), rise * 0.95);
+      // (Its head is narrower than its middle: a little less room kept round it up there.)
+      const inLim = (hwk - BAND / 2) * Math.sqrt(1 - (top / rise) ** 2) - r * 0.7;
+      const outLim = Math.max(hwk + BAND / 2, c.br.width / 2 + 0.3) + r;
+      const fl = -(from.x - c.br.ax) * c.uz + (from.z - c.br.az) * c.ux;
+      const inside = Math.abs(fl) <= (inLim + outLim) / 2;
+      const a = Math.abs(at.lat);
+      const want = inside ? Math.min(a, inLim) : Math.max(a, outLim);
+      if (want === a) return false;
+      const shift = (want - a) * Math.sign(at.lat || fl || 1);
+      p.x += -c.uz * shift;
+      p.z += c.ux * shift;
+      return true;
+    },
     update(env, renderer, dt = 0.016) {
       clock += dt;
       uniforms.uTime.value = clock;
