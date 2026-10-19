@@ -210,10 +210,14 @@ export function createRider({ chog, groundAt }) {
     legs: ['L', 'R'].map((s) => ({ thigh: bone('Thigh' + s), shin: bone('Shin' + s), foot: bone('Foot' + s) })),
     arms: ['L', 'R'].map((s) => ({ s: s === 'L' ? 1 : -1, up: bone('UpperArm' + s), fore: bone('ForeArm' + s), hand: bone('Hand' + s) })),
   };
-  // His measures, standing, in metres from his feet.
+  // His measures, standing, in metres from his feet, at his own size: the chopper is built for that and
+  // the whole ride scaled up to the size he is out here (built at his outdoor size as it was, it came
+  // out a toy under him).
+  const size = chog.root.scale.x;
   const keep = { p: chog.root.position.clone(), r: chog.root.rotation.clone() };
   chog.root.position.set(0, 0, 0);
   chog.root.rotation.set(0, 0, 0);
+  chog.root.scale.setScalar(1);
   chog.root.updateMatrixWorld(true);
   const W = (o) => o.getWorldPosition(new THREE.Vector3());
   const hipY = W(B.hips).y;
@@ -239,6 +243,8 @@ export function createRider({ chog, groundAt }) {
   const group = new THREE.Group();
   group.name = 'rider';
   const lean = new THREE.Group();
+  lean.scale.setScalar(size);
+  ride.pool.scale.multiplyScalar(size);
   group.add(lean, ride.pool);
   lean.add(ride.group, chog.root);
   chog.root.position.set(0, hipAt - hipY, 0);

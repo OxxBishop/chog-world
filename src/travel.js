@@ -552,7 +552,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const next = state.pos.clone().addScaledVector(state.vel, dt);
     collide(state.pos, next);
     const g = groundAt(next.x, next.z, state.pos.y);
-    const climbable = (gy, x, z) => gy - state.pos.y < STEP_UP && (gy - state.pos.y < 0.12 || (gy - state.pos.y) / Math.max(Math.hypot(x - state.pos.x, z - state.pos.z), 1e-3) < MAX_SLOPE);
+    // (A small step it just steps up at a walk: the domes' doors have a 14 cm sill, which stopped a walking
+    // Chog at Cosmo's door and only let a running one through.)
+    const climbable = (gy, x, z) => gy - state.pos.y < STEP_UP && (gy - state.pos.y < 0.25 || (gy - state.pos.y) / Math.max(Math.hypot(x - state.pos.x, z - state.pos.z), 1e-3) < MAX_SLOPE);
     if (g && (g.on === 'pad' || climbable(g.y, next.x, next.z))) {
       next.y = g.y;
       state.pos.copy(next);

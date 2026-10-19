@@ -949,7 +949,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         tick: (tt, dt) => {
           drift(tt, dt);
           // Floating with him, the camera can drift right up to him: he fades out of its way.
-          const k = lastCamera ? THREE.MathUtils.smoothstep(lastCamera.position.distanceTo(pivot.getWorldPosition(at)), 1.4, 3.0) : 1;
+          const k = lastCamera ? THREE.MathUtils.smoothstep(lastCamera.position.distanceTo(pivot.getWorldPosition(at)), 2.0, 3.4) : 1;
           if (Math.abs(k - faded) > 0.01) astro.setFade?.((faded = k));
         },
       };
