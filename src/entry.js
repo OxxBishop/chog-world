@@ -52,8 +52,10 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
   // phone's narrow view it isn't a wall beside the camera.
   const setRoomDoor = (r, k) => {
     const h = r.room.doorway.hinge;
-    h.rotation.y = h.userData.dir * smooth(clamp01(k)) * 2.0;
+    h.userData.k = clamp01(k);
+    h.rotation.y = h.userData.dir * smooth(h.userData.k) * 2.0;
   };
+  const doorOf = (r) => r.room.doorway.hinge.userData.k ?? 0;
   const swing = (r, from, to, seconds) => {
     for (let i = swings.length - 1; i >= 0; i--) if (swings[i].r === r) swings.splice(i, 1);
     swings.push({ r, from, to, t: 0, seconds });
@@ -364,8 +366,11 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
         fovK: () => (me.stage === 'settle' ? 1 : clamp01((sCam - (sDoor - 2.5)) / 3.5)),
         doors: () => {
           e.open(clamp01((me.s - (sDoor - 3.2)) / 1.6) - clamp01((sCam - (sDoor + 1.2)) / 1.4));
-          setRoomDoor(r, clamp01((me.s - (sRoom - 4.4)) / 1.8));
+          setRoomDoor(r, Math.min(clamp01((me.s - (sRoom - 4.4)) / 1.8), me.shut));
         },
+        // The room's door shuts as the camera starts its last glide, if the camera is well into the room
+        // then: the room's view can stand where the open door does (the casino's, on a tall screen).
+        shut: 1,
         step(dt) {
           if (me.stage === 'walk') {
             sc = sizeAt(me.s);
@@ -389,11 +394,16 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
               chog.play('idle');
               chog.setPace?.(1);
               me.flight = flightIn(c, r, camera.position.clone(), me.look.clone(), sCam, root);
+              // Behind it (the camera faces into the room) and out of the door's sweep: further from its
+              // wall than the leaf is wide, and a margin.
+              const local = r.room.group.worldToLocal(camera.position.clone());
+              me.shutting = local.z < r.room.d / 2 - (r.room.doorway.w + 0.6);
             }
           } else {
             // There: the camera comes on through the room's door to the room's view, and your Chog turns
             // round to face it.
             me.flightT += dt;
+            if (me.shutting) me.shut = Math.max(0, me.shut - dt / 0.6);
             const face = yawOf(r.view.pos.clone().sub(root.getWorldPosition(feet)).setY(0).normalize());
             root.rotation.y = turnTowards(root.rotation.y, face, 1 - Math.exp(-dt * 4));
             me.look.copy(me.flight.pose(camera, Math.min(me.flightT, me.flight.duration)));
@@ -415,7 +425,7 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
           rig.views.entry = { pos: r.view.pos.clone(), target: r.view.target.clone(), enter: true };
           rig.jump('entry');
           e.open(0);
-          swing(r, 1, 0, 0.9);
+          if (doorOf(r) > 0) swing(r, doorOf(r), 0, 0.9 * doorOf(r));
         },
         skipTo() {
           me.s = path.total;
