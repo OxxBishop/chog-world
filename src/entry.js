@@ -1,21 +1,23 @@
 import * as THREE from 'three';
 import { createFlight } from './flight.js';
 import { CHOG_HEIGHT } from './chog.js';
+import { setGlowFov } from './glows.js';
 
 /*
- * Walking into a room (the Hub's lobby and bar; the casino once it opens) as one unbroken move, no
- * fade. The camera flies up to the building's door, the doors swing open and it glides through,
- * down the short hall behind them and in through the room's own door. A slow sweep shows the room,
- * then the view settles and turns to the door as your Chog comes through it (session.walkIn, A10),
- * follows it to its spot and settles back on the room's view once it faces you (in the bar, on it
- * and its partner). A guest's view settles on whoever is there (session.focusIn), or the sweep is the
- * ending. Leaving runs it the other way: the camera watches your Chog walk out of the room's door
- * (session.walkOut), then goes out after it through the hall, and the doors close behind as it pulls
- * back to the building. A tap or Esc skips to the end.
+ * Going into the Hub's rooms (the lobby, the bar, the casino) and out again.
  *
- * Every room the cutscene can reach has an entrance (src/hub.js): its outside door, the hall's floor
- * and the room's door, all real geometry, so nothing has to be hidden by a cut. Nothing here builds a
- * shader: the rooms are compiled with the world at load.
+ * Out walking as your Chog (src/travel.js), it goes in itself: the building's door slides open as it
+ * walks up, it steps through, a quick dip, and it is standing at its spot in the room by the room's
+ * view. Out again: a dip, the door slides open on it just inside, and it walks out past the camera,
+ * which comes round behind it, to where travel takes over (walkIn, walkOut below).
+ *
+ * Without a Chog out walking (the old framed views, the demo shots), the camera flies the whole way
+ * instead: up to the building's door, through it and down the short hall behind, in through the room's
+ * own door and round to the room's view as your Chog comes in after it (session.walkIn, A10); leaving,
+ * the other way. A tap or Esc skips to the end of either.
+ *
+ * Every room has an entrance (src/hub.js): its outside door, the hall's floor and the room's door, all
+ * real geometry. Nothing here builds a shader: the rooms are compiled with the world at load.
  */
 
 // The camera's eye height as a share of the outside doorway's.
@@ -38,6 +40,10 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
   let run = null;
   // Doors still swinging after a cutscene ends (the room's door closing behind your Chog).
   const swings = [];
+  // One door into each building, its outside one (the user, 10-19: "why are there even 2 doors? it's
+  // unnecessary"). The room's own door at the end of the hall is left out: an open doorway, and through
+  // the outside door the room shows beyond the hall (apply()).
+  for (const h of hub.rooms) if (h.entrance && h.room?.doorway?.hinge) h.room.doorway.hinge.visible = false;
 
   const H = (x, y, z) => hub.group.localToWorld(new THREE.Vector3(x, y, z));
   const arr = (v) => v.toArray();
@@ -162,24 +168,65 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
     return out;
   }
 
-  // ---------- walking in and out (the user's ask, 10-16) ----------
-  // Out walking (src/travel.js), your Chog goes in itself: on through the doors, down the hall and in
-  // through the room's door to a spot a few steps inside, the camera following behind it; once it's
-  // there the camera comes on in after it to the room's view. Leaving, it walks back out the same way
-  // with the camera behind, and is handed back to travel a few steps outside the door.
-  //
-  // Out walking it is 1.7 times the size it is in rooms (travel's SCALE), too tall for the doors. On
-  // the last steps to the door it comes down to its room size, and the camera's distance and height
-  // come down with it, so on screen it stays the same and only the door grows; out again, the other way.
-  const WALK_V = 3.4; // metres a second at its outdoor size (travel walks at 3.6)
-  // The camera behind it, in its own heights at the size it is: back along the path, up, and a little
-  // to the side so the doorway ahead shows past its head; looking ahead of it, about level with its
-  // shoulders.
-  const BACK = 1.55, UP = 1.2, SIDE = 0.3, AHEAD = 1.5, AIM = 0.72;
-  const resident = new Map(); // room id -> { walker } while your Chog is in there
+  // ---------- walking in and out (the user, 10-19: one door, no long walk) ----------
+  // Out walking (src/travel.js), your Chog goes in itself. The building's door slides open as it walks
+  // up (they open by themselves for it, like a shop's: autoDoors), the camera swings round to the side
+  // so the doorway shows beside it, and it steps through. Once it's in, a quick dip, and it stands at
+  // its spot in the room, by the room's view. Leaving is the other way round: a dip, and outside the
+  // door slides open on it standing just inside; it walks out past the camera, which comes round behind
+  // it, the door closes after it, and travel takes over from that very view. The hall behind the door
+  // and the room's own door never show (the user: "why are there even 2 doors? it's unnecessary").
+  const WALK_V = 3.5; // metres a second at its outdoor size (travel walks at 3.6)
+  const DIP_OUT = 0.18, DIP_IN = 0.3; // the dip: down to dusk, and back
+  const DOOR_S = 0.85; // seconds for the outside door to slide all the way
+  const OUT_LEN = 5.5; // the walk out ends this far out from travel's mark at the door
+  const resident = new Map(); // room id -> { walker, route, chat } while your Chog is in there
   // Out again: the camera eases from where the walk left it into travel's, which has taken over.
   let handoff = null;
   const HANDOFF_S = 0.9;
+
+  // The dip, on the page's own fade (#fade), stepped with the world rather than by a timer.
+  const fadeEl = document.getElementById('fade');
+  let dipIn = null, dipOn = false;
+  function setDip(k) {
+    if (!fadeEl || (k === null && !dipOn)) return;
+    dipOn = k !== null;
+    fadeEl.style.transition = dipOn ? 'none' : '';
+    fadeEl.style.opacity = dipOn ? String(clamp01(k)) : '';
+  }
+  // A cut's lens, at once (main.js eases toward entry.fov(), which would show as a zoom).
+  function lens(fov) {
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+    setGlowFov(fov);
+  }
+
+  // The outside doors: 0 shut to 1 open (the door eases it). They open by themselves as your Chog walks
+  // up to one, facing it, and close once it has gone or turned away.
+  const doorK = new Map();
+  const setDoor = (e, k) => {
+    k = clamp01(k);
+    if (doorK.get(e) === k) return;
+    doorK.set(e, k);
+    e.open(k);
+  };
+  const _p = new THREE.Vector3(), _f = new THREE.Vector3(), _q = new THREE.Quaternion();
+  function autoDoors(dt, chogRoot) {
+    for (const h of hub.rooms) {
+      const e = h.entrance;
+      if (!e || run?.e === e) continue;
+      let want = 0;
+      if (chogRoot) {
+        const p = hub.group.worldToLocal(chogRoot.getWorldPosition(_p));
+        const ahead = p.z - e.z, off = Math.abs(p.x - e.x);
+        // Which way it faces, in the hub's space (the door is toward -z from out front).
+        chogRoot.getWorldDirection(_f).applyQuaternion(hub.group.getWorldQuaternion(_q).invert());
+        want = ahead > -0.6 && ahead < 6 && off < e.half + 1.6 && (-_f.z > 0.6 || ahead < 2.4) ? 1 : 0;
+      }
+      const k = doorK.get(e) ?? 0;
+      if (k !== want) setDoor(e, k + Math.sign(want - k) * Math.min(Math.abs(want - k), dt / DOOR_S));
+    }
+  }
 
   // A path through points: where along it (s, metres) is which point, and which way it runs there.
   function polyline(pts) {
@@ -205,7 +252,7 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
       dir(s, out = new THREE.Vector3()) {
         return out.copy(seg(s).dir);
       },
-      // How far along the point nearest p is (for the doors' marks).
+      // How far along the point nearest p is.
       sAt(p) {
         let best = 0, bd = Infinity;
         for (const x of segs) {
@@ -217,15 +264,10 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
       },
     };
   }
-  // The feet's way in, in the world: from where it stands to the outside door, through it, down the
-  // hall, through the room's door and on through the room to where it stands (`route`, room space, its
-  // last point the spot). Out is the same, backwards, to `exit`.
-  function feetPath(r, e, from, route) {
-    const L = (x, y, z) => r.room.group.localToWorld(new THREE.Vector3(x, y, z));
-    const { d } = r.room;
-    const mid = (e.z + e.zIn) / 2;
-    const inside = rounded([[0, d / 2 - 1.2], ...route], 0.4).map(([x, z]) => L(x, 0, z));
-    // Up the steps to the sill: on the level to each riser, then up it (the ones still ahead of it).
+  // The feet's way in at the door, in the world: from `from` out front, up the steps to the sill (on the
+  // level to each riser, then up it, for the ones still ahead of it), through the door and `inside`
+  // metres on. Out is the same, backwards.
+  function doorPts(e, from, inside) {
     const at = hub.group.worldToLocal(from.clone());
     const steps = [];
     let low = at.y;
@@ -234,53 +276,27 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
       low = top;
     }
     if (!steps.length) steps.push(H(e.x, e.sill, Math.min(at.z - 0.3, e.z + 0.6)));
-    const pts = [
-      from.clone(),
-      ...steps,
-      H(e.x, e.floor(e.z - 0.8), e.z - 0.8),
-      H(e.x, e.floor(mid), mid),
-      H(e.x, e.floor(e.zIn + 0.6), e.zIn + 0.6),
-      ...inside,
-    ];
-    // A first point barely apart from the next (it stopped right at the door) would turn it sharply.
+    const pts = [from.clone(), ...steps, H(e.x, e.floor(e.z - 0.8), e.z - 0.8), H(e.x, e.floor(e.z - inside), e.z - inside)];
+    // A first point barely apart from the next (it stopped right at the steps) would turn it sharply.
     if (pts[0].distanceTo(pts[1]) < 0.6) pts.splice(1, 1);
-    return { pts, outside: H(e.x, e.sill, e.z), roomDoor: L(0, 0, d / 2) };
+    return pts;
   }
-  // A route's corners rounded off (up to `rad` metres from each corner), so its turns are curves: the
-  // camera behind it keeps to the path, and a sharp corner would swing it across.
-  function rounded(pts, rad = 0.7, steps = 5) {
-    if (pts.length < 3) return pts;
-    const out = [pts[0]];
-    for (let i = 1; i < pts.length - 1; i++) {
-      const [px, pz] = pts[i - 1], [cx, cz] = pts[i], [nx, nz] = pts[i + 1];
-      const l0 = Math.hypot(cx - px, cz - pz), l1 = Math.hypot(nx - cx, nz - cz);
-      const k0 = Math.min(rad, l0 / 2) / l0, k1 = Math.min(rad, l1 / 2) / l1;
-      const a = [cx + (px - cx) * k0, cz + (pz - cz) * k0], b = [cx + (nx - cx) * k1, cz + (nz - cz) * k1];
-      for (let s = 0; s <= steps; s++) {
-        const t = s / steps, u = 1 - t;
-        out.push([u * u * a[0] + 2 * u * t * cx + t * t * b[0], u * u * a[1] + 2 * u * t * cz + t * t * b[1]]);
-      }
-    }
-    out.push(pts[pts.length - 1]);
-    return out;
-  }
-  // Where your Chog stands in each room, and its way there from just inside the room's door, round the
-  // tables and chairs (room space, metres; the last point is the spot). Found offline on a walkable grid
-  // of each room, keeping 0.62 m clear of the furniture (a big Chog's mane and arms; 0.33 let one clip
-  // the roulette table: the user, 10-19): the clear bit of floor nearest A's spot (src/session.js spotIn) in full view of the
-  // room's framing, above the casino's controls on a phone. The bar has two more: its counter's two
-  // places for the Chog-to-Chog chat (src/barchat.js LAYOUTS), where your own Chog joins in.
+  // Where your Chog stands in each room (room space, metres; the last point of each), found offline on a
+  // walkable grid of each room, 0.62 m clear of the furniture: the clear bit of floor nearest A's spot
+  // (src/session.js spotIn) in full view of the room's framing, above the casino's controls on a phone.
+  // The bar has two more: its counter's two places for the Chog-to-Chog chat (src/barchat.js LAYOUTS),
+  // where your own Chog joins in.
   const ROUTES = {
     bar: {
-      tall: { guest: [[3.92, 3.92], [4.17, 3.67], [4.67, 0.17], [4.67, -0.58], [4.42, -0.83], [3.67, -1.08], [1.35, -1.55]], a: [[3.92, 3.92], [4.17, 3.67], [4.67, 0.17], [4.67, -0.58], [4.42, -0.83], [0.42, -2.08], [0.2, -2.3]], b: [[3.92, 3.92], [4.17, 3.67], [4.67, 0.17], [4.67, -0.58], [2.3, -2.3]] },
-      wide: { guest: [[3.92, 3.92], [4.17, 3.67], [4.67, 0.17], [4.67, -0.58], [4.42, -0.83], [1.35, -1.85]], a: [[3.92, 3.92], [4.17, 3.67], [4.67, 0.17], [4.67, -0.58], [4.42, -0.83], [0.17, -2.08], [0, -2.3]], b: [[3.92, 3.92], [4.17, 3.67], [4.67, 0.17], [4.67, -0.58], [2.6, -2.3]] },
+      tall: { guest: [[1.35, -1.55]], a: [[0.2, -2.3]], b: [[2.3, -2.3]] },
+      wide: { guest: [[1.35, -1.85]], a: [[0, -2.3]], b: [[2.6, -2.3]] },
     },
-    casino: { tall: { guest: [[0.42, 0.42], [-0.08, -0.83], [-2.55, -2.45]] }, wide: { guest: [[0.42, 0.42], [0.15, -1.85]] } },
+    casino: { tall: { guest: [[-2.55, -2.45]] }, wide: { guest: [[0.15, -1.85]] } },
     lobby: { tall: { guest: [[0.65, -0.35]] }, wide: { guest: [[0.65, -0.35]] } },
   };
 
-  // Your Chog's way in (room space): to its place for the bar's chat if it's yours and the bar has one,
-  // else to the room's spot; A's spot for a room without a route.
+  // Your Chog's spot (room space): its place for the bar's chat if it's yours and the bar has one, else
+  // the room's spot; A's spot for a room without one.
   function routeFor(r, walker) {
     const by = ROUTES[r.id]?.[window.innerWidth < window.innerHeight ? 'tall' : 'wide'];
     const ses = session();
@@ -299,68 +315,28 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
   const turnTowards = (from, to, k) => from + (((((to - from) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * k;
 
   // Your Chog's height at the size it has in rooms (1).
-  // (Measured, it takes in what floats over your own Chog, its heart badge, which put the camera far
-  // back and out to the side of it, into door frames: no more than a Chog's height and a little.)
+  // (Measured, it takes in what floats over your own Chog, its heart badge: no more than a Chog's height
+  // and a little.)
   const heightOf = (root) => Math.min(CHOG_HEIGHT * 1.15, (new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).y || 5) / (root.getWorldScale(new THREE.Vector3()).x || 1));
-
-  // What a walk needs to know of the way: its path, where the doors are on it, the heights the camera
-  // keeps under (the outside doorway and the hall, then the room's lower door, with room to spare),
-  // and the side it keeps to (the room's view's, so coming in it is already on its way there).
-  function course(r, e, pts, outside, roomDoor, root) {
-    const path = polyline(pts);
-    const h = heightOf(root);
-    const sDoor = path.sAt(outside), sRoom = path.sAt(roomDoor);
-    const hallClear = e.top - e.sill - 0.55, doorClear = Math.min(hallClear, (r.room.doorway?.h ?? Infinity) - 0.5);
-    // The room's door is lower than the hall: the camera comes down to go under it (it does only on
-    // the way into the room's view, or on the way out at the start).
-    const clear = (sCam) => THREE.MathUtils.lerp(hallClear, doorClear, smooth(clamp01((2.4 - Math.abs(sCam - sRoom)) / 1.5)));
-    const d = path.dir(sRoom);
-    const right = new THREE.Vector3(-d.z, 0, d.x);
-    const side = Math.sign(right.dot(r.view.pos.clone().sub(roomDoor))) || 1;
-    // How far to the side the camera may stand going through each doorway: inside it, clear of its frame
-    // (behind a big Chog it stands well out to the side, which put it in the jamb).
-    const reach = (sx) => {
-      const room = Math.max(0, Math.abs(sx - sRoom) - 0.8) * 1.6 + (r.room.doorway?.w ?? 3) / 2 - 0.6;
-      const out = Math.max(0, Math.abs(sx - sDoor) - 0.8) * 1.6 + e.half - 0.6;
-      return Math.max(0.2, Math.min(room, out));
-    };
-    return { path, h, clear, side, sDoor, sRoom, reach };
-  }
-
-  // The camera following a walk, for your Chog at s on the path at size sc.
-  const _d = new THREE.Vector3();
-  function followPose(c, s, sc, pos, look, dir = 1) {
-    const { path, h, clear } = c;
-    const back = BACK * h * sc;
-    const sCam = s - back * dir;
-    path.at(sCam, pos);
-    path.dir(sCam, _d).multiplyScalar(dir);
-    // Nearer the middle down the hall, clear of its wall lamps.
-    const a = Math.min(c.sDoor, c.sRoom), b = Math.max(c.sDoor, c.sRoom);
-    const hall = smooth(clamp01((sCam - a + 0.5) / 1.2)) * smooth(clamp01((b + 0.5 - sCam) / 1.2));
-    const lim = c.reach(sCam);
-    const side = THREE.MathUtils.clamp(SIDE * h * sc * c.side * dir * (1 - 0.65 * hall), -lim, lim);
-    pos.x += -_d.z * side;
-    pos.z += _d.x * side;
-    pos.y += Math.min(UP * h * sc, clear(sCam));
-    path.at(s + AHEAD * h * sc * dir, look);
-    path.dir(s, _d).multiplyScalar(dir);
-    look.x += -_d.z * side * 0.35;
-    look.z += _d.x * side * 0.35;
-    look.y += AIM * h * sc;
-    // Round a turn the way ahead swings off to the side while the camera is still on the leg behind:
-    // it looks back to your Chog by as much as the way turns, so it never leaves the frame.
-    path.at(s, _chest);
-    _chest.y += AIM * h * sc;
-    _a.subVectors(_chest, pos).setY(0).normalize();
-    _b.subVectors(look, _chest).setY(0).normalize();
-    const turn = clamp01((1 - _a.dot(_b)) * 3);
-    if (turn > 0) look.lerp(_chest, turn);
-    return sCam;
-  }
-  const _chest = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
+  // Where travel's camera looks on your Chog at size sc (travel.js CAM.look), so a walk hands its view
+  // straight on.
+  const lookH = (sc) => CHOG_HEIGHT * sc * 0.72;
   // Its pace, so its feet keep to the ground at the size it is.
   const paceFor = (chog, v, sc) => THREE.MathUtils.clamp(v / ((chog.speedOf?.('walk') || 1) * sc), 0.7, 1.7);
+
+  // The camera round a point c: th radians round from `back` (behind your Chog) toward `side` (+1 or
+  // -1), dist away, pitched up by pitch. And the other way, where a camera at pos stands round c.
+  function orbitAt(c, back, side, th, dist, pitch, out) {
+    const hz = Math.cos(pitch) * dist, px = back.z * side, pz = -back.x * side;
+    return out.set(c.x + (back.x * Math.cos(th) + px * Math.sin(th)) * hz, c.y + Math.sin(pitch) * dist, c.z + (back.z * Math.cos(th) + pz * Math.sin(th)) * hz);
+  }
+  function orbitOf(c, back, side, pos) {
+    const rel = pos.clone().sub(c);
+    const dist = Math.max(0.5, rel.length());
+    const px = back.z * side, pz = -back.x * side;
+    return { th: Math.atan2(rel.x * px + rel.z * pz, rel.x * back.x + rel.z * back.z), dist, pitch: Math.asin(THREE.MathUtils.clamp(rel.y / dist, -1, 1)) };
+  }
+  const lerp = THREE.MathUtils.lerp;
 
   function walkIn(r, walker) {
     handoff = null;
@@ -369,260 +345,216 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
     const root = chog.root;
     const from = root.getWorldPosition(new THREE.Vector3());
     const way = routeFor(r, walker);
-    const { pts, outside, roomDoor } = feetPath(r, e, from, way.pts);
-    const c = course(r, e, pts, outside, roomDoor, root);
-    const { path, sDoor, sRoom } = c;
+    const path = polyline(doorPts(e, from, 2.6));
+    const sDoor = path.sAt(H(e.x, e.sill, e.z));
     const sc0 = root.scale.x;
-    // Down to its room size on the last steps before the door, done before it reaches it.
-    const shrink0 = Math.max(0, sDoor - 4.6);
-    const shrink1 = Math.max(shrink0 + 1.8, sDoor - 1.2);
-    const sizeAt = (s) => sc0 + (1 - sc0) * smooth(clamp01((s - shrink0) / (shrink1 - shrink0)));
-    // From where travel's camera is, looking at your Chog (the rig's own aim is stale while you walk).
-    const cam0 = { pos: camera.position.clone(), look: from.clone().add(new THREE.Vector3(0, c.h * sc0 * 0.55, 0)) };
+    // Through the door at its size out walking where it fits; a big one comes down to what fits on the
+    // last steps before it.
+    const fit = Math.min(sc0, (e.top - e.sill - 0.3) / heightOf(root));
+    const sizeAt = (s) => sc0 + (fit - sc0) * smooth(clamp01((s - (sDoor - 3)) / 2.2));
+    const out = H(e.x, 0, e.z + 1).sub(H(e.x, 0, e.z)).setY(0).normalize();
+    const centre = new THREE.Vector3(), chest = new THREE.Vector3(), feet = new THREE.Vector3(), pos = new THREE.Vector3();
+    path.at(0, centre).y += lookH(sc0);
+    // From travel's camera behind it, round to about 45 degrees off behind on the side it is already
+    // on, so the doorway shows beside your Chog as the door opens.
+    const side = orbitOf(centre, out, 1, camera.position).th < 0 ? -1 : 1;
+    const o0 = orbitOf(centre, out, side, camera.position);
+    const th1 = THREE.MathUtils.clamp(o0.th, 0.75, 1.1), dist1 = THREE.MathUtils.clamp(o0.dist, 7.5, 10), pitch1 = 0.24;
+    // The gaze: from where travel's camera looks, onto your Chog.
+    const look0 = camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(o0.dist));
+    const k0 = doorK.get(e) ?? 0;
     chog.play('walk');
-    let yaw = root.rotation.y;
-    let sc = sc0;
-    let sCam = -Infinity;
-    const pos = new THREE.Vector3(), look = new THREE.Vector3(), feet = new THREE.Vector3();
-    // Your own Chog in the bar: A's chat holds its scene until it gets to its place at the counter.
+    let yaw = root.rotation.y, v = WALK_V;
+    // Your own Chog in the bar: A's chat holds its scene until it's at its place at the counter.
     let arrived = null;
     if (way.chat) session()?.bar?.expect?.(new Promise((ok) => (arrived = ok)));
     return new Promise((resolve) => {
       const me = {
-        r, e, t: 0, resolve, mode: 'walkin', stage: 'walk', s: 0, path, walker, flight: null, flightT: 0, arrived: () => (arrived?.(), (arrived = null)),
+        r, e, t: 0, resolve, mode: 'walkin', s: 0, walker, dip: -1,
         look: new THREE.Vector3(),
-        // Where the walk last put the camera (the doors go by it: before the walk's step each frame the
-        // camera is still wherever the rig left it).
-        cam: cam0.pos.clone(),
-        showRoom: () => me.s > sDoor - 4,
-        // The room's lens as the camera comes up to the door and through it.
-        fovK: () => (me.stage === 'settle' ? 1 : clamp01((sCam - (sDoor - 2.5)) / 3.5)),
-        doors: () => {
-          // Each door is wide open well before your Chog gets to it (it used to swing open in its face).
-          // The outside one slides shut once the camera is well down the hall: by how far it really is
-          // past the door (along the path the steps add their height, and it closed on the camera).
-          const past = e.z - hub.group.worldToLocal(_cam.copy(me.cam)).z;
-          e.open(Math.min(clamp01(me.t / 0.7), clamp01((me.s - (sDoor - 5.2)) / 2.2)) - clamp01((past - 2.0) / 1.2));
-          setRoomDoor(r, clamp01((me.s - (sRoom - 6.2)) / 2.4));
-        },
+        showRoom: () => false,
+        fovK: () => 0,
+        inRoom: () => false,
+        doors: () => setDoor(e, k0 + me.t / DOOR_S),
         step(dt) {
-          if (me.stage === 'walk') {
-            sc = sizeAt(me.s);
-            const v = WALK_V * (0.5 + (0.5 * sc) / sc0);
-            chog.setPace?.(paceFor(chog, v, sc));
-            me.s = Math.min(path.total, me.s + v * dt);
-            sc = sizeAt(me.s);
-            root.scale.setScalar(sc);
-            path.at(me.s, feet);
-            yaw = turnTowards(yaw, yawOf(path.dir(me.s)), 1 - Math.exp(-dt * 9));
-            root.position.copy(root.parent ? root.parent.worldToLocal(feet.clone()) : feet);
-            root.rotation.y = yaw;
-            sCam = followPose(c, me.s, sc, pos, look);
-            // Out of travel's camera and onto the path behind it, in the first moments.
-            const k = smooth(clamp01(me.t / 0.9));
-            camera.position.copy(cam0.pos).lerp(pos, k);
-            me.look.copy(cam0.look).lerp(look, k);
-            if (me.s >= path.total) {
-              me.stage = 'settle';
-              me.arrived();
-              chog.play('idle');
-              chog.setPace?.(1);
-              me.flight = flightIn(c, r, camera.position.clone(), me.look.clone(), sCam, root);
-            }
-          } else {
-            // There: the camera comes on through the room's door to the room's view, and your Chog turns
-            // round to face it.
-            me.flightT += dt;
-            const face = yawOf(r.view.pos.clone().sub(root.getWorldPosition(feet)).setY(0).normalize());
-            root.rotation.y = turnTowards(root.rotation.y, face, 1 - Math.exp(-dt * 4));
-            me.look.copy(me.flight.pose(camera, Math.min(me.flightT, me.flight.duration)));
-            me.cam.copy(camera.position);
-            return me.flightT >= me.flight.duration;
-          }
+          // It waits short of the door if that isn't open enough yet (it opens as it comes up, so it seldom
+          // has to).
+          const cap = (doorK.get(e) ?? 0) < 0.7 ? sDoor - 1.0 : Infinity;
+          v += (Math.min(WALK_V, Math.max(0, cap - me.s) * 4) - v) * (1 - Math.exp(-dt * 10));
+          me.s = Math.min(path.total, me.s + v * dt);
+          const sc = sizeAt(me.s);
+          chog.setPace?.(paceFor(chog, v, sc));
+          root.scale.setScalar(sc);
+          path.at(me.s, feet);
+          yaw = turnTowards(yaw, yawOf(path.dir(me.s)), 1 - Math.exp(-dt * 9));
+          root.position.copy(root.parent ? root.parent.worldToLocal(feet.clone()) : feet);
+          root.rotation.y = yaw;
+          // The camera swings round over its first steps, and stays out front as it goes in.
+          const u = smooth(clamp01(me.t / 0.9));
+          path.at(Math.min(me.s, sDoor - 0.4), centre).y += lookH(sc);
+          orbitAt(centre, out, side, lerp(o0.th, th1, u), lerp(o0.dist, dist1, u), lerp(o0.pitch, pitch1, u), pos);
+          camera.position.copy(pos);
+          chest.copy(feet).y += lookH(sc) * 0.9;
+          me.look.copy(look0).lerp(chest, smooth(clamp01(me.t / 0.5)));
           camera.lookAt(me.look);
           camera.updateMatrixWorld();
-          me.cam.copy(camera.position);
-          return false;
+          // Half through the door, the dip; and it's in.
+          if (me.dip < 0 && (me.s >= sDoor + 0.4 || me.t > 5)) me.dip = 0;
+          if (me.dip < 0) return false;
+          me.dip += dt;
+          setDip(me.dip / DIP_OUT);
+          return me.dip >= DIP_OUT;
         },
         finish: () => {
-          // Your Chog stays in the room (in its group, so it shows and hides with it) till you leave.
-          r.room.group.attach(root);
+          // At its spot by the room's view, facing it. It stays in the room (in its group, so it shows and
+          // hides with it) till you leave.
+          const g = r.room.group;
+          g.attach(root);
+          const [x, z] = way.pts.at(-1);
+          const view = g.worldToLocal(r.view.pos.clone());
           root.scale.setScalar(1);
-          root.rotation.set(0, root.rotation.y, 0);
+          root.position.set(x, 0, z);
+          root.rotation.set(0, Math.atan2(view.x - x, view.z - z), 0);
           resident.set(r.id, { walker: { ...walker, scale: sc0 }, route: way.pts, chat: way.chat });
-          me.arrived();
+          arrived?.();
+          arrived = null;
           chog.play('idle');
           chog.setPace?.(1);
           rig.views.entry = { pos: r.view.pos.clone(), target: r.view.target.clone(), enter: true };
           rig.jump('entry');
-          e.open(0);
-          if (doorOf(r) > 0) swing(r, doorOf(r), 0, 0.9 * doorOf(r));
-        },
-        skipTo() {
-          me.s = path.total;
-          path.at(me.s, feet);
-          root.scale.setScalar(1);
-          root.position.copy(root.parent ? root.parent.worldToLocal(feet.clone()) : feet);
-          root.rotation.y = yawOf(r.view.pos.clone().sub(feet).setY(0).normalize());
           camera.position.copy(r.view.pos);
           camera.lookAt(r.view.target);
           camera.updateMatrixWorld();
+          lens(fovs.indoor());
+          setDoor(e, 0);
+          setRoomDoor(r, 0);
+          setDip(1);
+          dipIn = { t: 0 };
         },
-        inRoom: () => me.stage === 'settle' || sCam > sRoom - 0.5,
+        skipTo() {
+          me.s = path.total;
+        },
       };
       run = me;
     });
   }
 
-  // From behind your Chog, standing at its spot, on along the path through the room's door and round
-  // to the room's view, the gaze going from it to what the view looks at.
-  function flightIn(c, r, pos, look, sCam, root) {
-    const { path, h, clear, sRoom } = c;
-    const mid = root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, h * 0.6, 0));
-    const keys = [{ t: 0, pos: pos.clone(), look: look.clone() }];
-    let t = 0;
-    let at = pos;
-    // Under the room's door first, if the camera isn't through it yet, on the side it keeps to: down to
-    // just before it, and on through.
-    const onPath = (sx) => {
-      const p = path.at(sx);
-      path.dir(sx, _d);
-      const lim = c.reach(sx);
-      const side = THREE.MathUtils.clamp(SIDE * h * c.side, -lim, lim);
-      p.x += -_d.z * side;
-      p.z += _d.x * side;
-      p.y += Math.min(UP * h, clear(sx));
-      return p;
-    };
-    if (sCam < sRoom - 0.7) {
-      const p = onPath(sRoom - 0.7);
-      t += Math.max(0.35, p.distanceTo(at) / 3.0);
-      keys.push({ t, pos: p, look: mid.clone().lerp(look, 0.5) });
-      at = p;
-    }
-    if (sCam < sRoom + 0.7) {
-      const p = onPath(sRoom + 0.7);
-      t += Math.max(0.45, p.distanceTo(at) / 3.0);
-      keys.push({ t, pos: p, look: mid.clone() });
-      at = p;
-    }
-    t += Math.max(1.0, r.view.pos.distanceTo(at) / 2.4);
-    keys.push({ t, pos: r.view.pos.clone(), look: r.view.target.clone() });
-    return createFlight({ keys: keys.map((k) => ({ t: k.t, pos: arr(k.pos), look: arr(k.look) })) });
-  }
-
   function walkOut(r, place) {
     handoff = null;
     const e = hubRooms.get(r.id).entrance;
-    const { walker, route, chat } = resident.get(r.id);
+    const { walker, chat } = resident.get(r.id);
     resident.delete(r.id);
     // Out of the bar's chat first: the regular stays at the counter.
     if (chat) session()?.bar?.release?.();
     const chog = walker.chog;
     const root = chog.root;
-    const here = root.getWorldPosition(new THREE.Vector3());
-    // Back out the way it came, to a few steps outside the door: where travel takes over (its resume()
-    // puts your Chog 9.5 m out from the door it went in by, so the walk ends right there).
-    const h = heightOf(root);
-    // Far enough out that travel's camera, 8.6 m behind your Chog, is clear of the building (at 6.5 m it
-    // hit the wall and snapped in close: the user, 10-19). travel.js puts it back at the same spot.
-    const outLen = walker.exit ? 9.5 : Math.max(9.5, BACK * h + 3.4);
-    const exit = walker.exit ? walker.exit.at.clone().addScaledVector(walker.exit.out, outLen) : H(e.x, e.sill, e.z + outLen);
-    // The way it came in, backwards, from wherever it stands now (the bar's chat may have nudged it).
-    const local = r.room.group.worldToLocal(here.clone());
-    const { pts, outside, roomDoor } = feetPath(r, e, exit, [...route.slice(0, -1), [local.x, local.z]]);
-    pts.reverse();
-    const c = course(r, e, pts, outside, roomDoor, root);
-    const { path, sDoor, sRoom } = c;
     const sc1 = walker.scale ?? 1.7;
-    // Back up to its outdoor size once the camera is out of the doors behind it.
-    const grow0 = sDoor + BACK * h + 0.3;
-    const grow1 = Math.min(path.total - 0.3, grow0 + 2.2);
-    const sizeAt = (s) => 1 + (sc1 - 1) * smooth(clamp01((s - grow0) / Math.max(0.5, grow1 - grow0)));
-    // Where along the path the camera is when the walk ends (it keeps back behind your Chog).
-    const camEnd = path.total - BACK * h * sc1;
-    // It holds the room's view, turning to watch your Chog go, till its place behind it comes level with
-    // the view: from a view by the door (the casino's, the lobby's) it used to swing back into the room
-    // behind your Chog and then out again, a whip of the camera.
-    // (And all of that glide in the room: once its place is near the door, a straight glide to it from a
-    // view off to the side would cut through the wall beside the doorway.)
-    const sView = path.sAt(r.view.pos.clone().setY(path.at(0).y));
-    const blend0 = Math.max(-0.5, Math.min(sView - 1.2, sRoom - 3.6));
-    const chest = new THREE.Vector3();
-    const cam0 = { pos: camera.position.clone(), look: rig.target.clone() };
-    // Out of the room's group and back where travel keeps it, still where it stands.
-    (walker.home ?? root.parent).attach(root);
-    let yaw = root.rotation.y;
-    let sCam = -Infinity;
-    const pos = new THREE.Vector3(), look = new THREE.Vector3(), feet = new THREE.Vector3();
+    const out = H(e.x, 0, e.z + 1).sub(H(e.x, 0, e.z)).setY(0).normalize();
+    const back = out.clone().negate();
+    // From just inside the door out to a few steps out front, where travel takes over (with the view
+    // the walk ends on: walker.exit.resume, read by travel.js resume()).
+    const exit = walker.exit ? walker.exit.at.clone().addScaledVector(walker.exit.out, OUT_LEN) : H(e.x, 0, e.z + 0.6 + OUT_LEN);
+    const path = polyline(doorPts(e, exit, 1.3).reverse());
+    const sDoor = path.sAt(H(e.x, e.sill, e.z));
+    // The camera out front, off to the side toward the Hub's middle, low, looking in at the door; round
+    // behind your Chog as it walks out past, to travel's own height and distance behind it.
+    const side = hub.group.worldToLocal(H(e.x, 0, e.z)).x < -1 ? -1 : 1;
+    const tall = camera.aspect < 1;
+    const A = { th: 2.7, dist: tall ? 11 : 9.5, pitch: 0.12 }, B = { th: 1.05, dist: 8.6, pitch: 0.3 };
+    const centre = new THREE.Vector3(), feet = new THREE.Vector3(), pos = new THREE.Vector3();
+    let yaw = 0, v = 0, closeT = -1;
     return new Promise((resolve) => {
       const me = {
-        r, e, t: 0, resolve, mode: 'walkout', stage: 'walk', s: 0, path, walker,
+        r, e, t: 0, resolve, mode: 'walkout', s: 0, walker, cut: false, walking: false,
         look: new THREE.Vector3(),
-        cam: cam0.pos.clone(),
-        started: false,
-        showRoom: () => sCam < sDoor + 1,
-        // Back to the outdoor lens as the camera comes out of the doors, all the way by the walk's end.
-        fovK: () => 1 - clamp01((sCam - (sDoor - 0.5)) / Math.max(0.6, camEnd - (sDoor - 0.5))),
+        showRoom: () => false,
+        fovK: () => (me.cut ? 0 : 1),
+        inRoom: () => !me.cut,
         doors: () => {
-          // Open before your Chog gets there; each slides shut behind the camera once it is well past
-          // (by how far it really is past, as on the way in).
-          const pastRoom = r.room.group.worldToLocal(_cam.copy(me.cam)).z - r.room.d / 2;
-          const pastOut = hub.group.worldToLocal(_cam.copy(me.cam)).z - e.z;
-          setRoomDoor(r, Math.min(clamp01((me.t - 1.0) / 0.8), clamp01((me.s - (sRoom - 5.2)) / 2.2)) - clamp01((pastRoom - 2.0) / 1.2));
-          e.open(clamp01((me.s - (sDoor - 5.2)) / 2.2) - clamp01((pastOut - 1.8) / 1.2));
+          if (!me.cut) return;
+          // Open as the dip lifts (it stands there as the leaves part); shut once it's well out.
+          if (closeT < 0 && me.s > sDoor + 2.2) closeT = 0;
+          setDoor(e, closeT >= 0 ? Math.min(doorK.get(e) ?? 1, 1 - closeT / DOOR_S) : (me.t - DIP_OUT) / DOOR_S);
+        },
+        // Outside: your Chog back where travel keeps it, at its outdoor size, just inside the door.
+        goOut() {
+          me.cut = true;
+          (walker.home ?? root.parent).attach(root);
+          root.scale.setScalar(sc1);
+          path.at(0, feet);
+          yaw = yawOf(path.dir(0.5));
+          root.position.copy(root.parent.worldToLocal(feet.clone()));
+          root.rotation.set(0, yaw, 0);
+          chog.play('idle');
+          chog.setPace?.(1);
+          setRoomDoor(r, 0);
+          setDoor(e, 0);
+          lens(fovs.outdoor());
         },
         step(dt) {
-          if (!me.started) {
-            me.started = true;
+          if (!me.cut) {
+            // Down to dusk on the room's view first.
+            setDip(me.t / DIP_OUT);
+            if (me.t < DIP_OUT) return false;
+            me.goOut();
+          }
+          const tc = me.t - DIP_OUT;
+          setDip(tc < DIP_IN ? 1 - tc / DIP_IN : null);
+          // It sets off once the door is half open, and slows as it gets to the end.
+          if (!me.walking && tc > DOOR_S * 0.38) {
+            me.walking = true;
             chog.play('walk');
           }
-          // A moment to turn to the door before it sets off.
-          const go = me.t > 0.35;
-          let sc = sizeAt(me.s);
-          const v = WALK_V * (0.5 + (0.5 * sc) / sc1);
-          chog.setPace?.(paceFor(chog, v, sc));
-          if (go) me.s = Math.min(path.total, me.s + v * dt);
-          sc = sizeAt(me.s);
-          root.scale.setScalar(sc);
+          if (me.walking) {
+            v += (WALK_V * THREE.MathUtils.clamp((path.total - me.s) / 1.2, 0.3, 1) - v) * (1 - Math.exp(-dt * 8));
+            me.s = Math.min(path.total, me.s + v * dt);
+            chog.setPace?.(paceFor(chog, v, sc1));
+          }
+          if (closeT >= 0) closeT += dt;
           path.at(me.s, feet);
-          yaw = turnTowards(yaw, yawOf(path.dir(me.s + 0.5)), 1 - Math.exp(-dt * (go ? 9 : 6)));
+          yaw = turnTowards(yaw, yawOf(path.dir(me.s + 0.5)), 1 - Math.exp(-dt * 9));
           root.position.copy(root.parent.worldToLocal(feet.clone()));
           root.rotation.y = yaw;
-          sCam = followPose(c, me.s, sc, pos, look);
-          // The camera leaves the room's view once its place behind your Chog is level with it; till then
-          // it watches your Chog from there, the gaze on it at once.
-          const k = smooth(clamp01(Math.min(me.t / 1.2, (sCam - blend0) / 2.0)));
-          camera.position.copy(cam0.pos).lerp(pos, k);
-          path.at(me.s, chest);
-          chest.y += AIM * h * sc;
-          me.look.copy(cam0.look).lerp(chest.lerp(look, k), smooth(clamp01(me.t / 0.7)));
+          const u = smooth(me.s / path.total);
+          path.at(me.s, centre).y += lookH(sc1);
+          orbitAt(centre, back, side, lerp(A.th, B.th, u), lerp(A.dist, B.dist, u), lerp(A.pitch, B.pitch, u), pos);
+          camera.position.copy(pos);
+          me.look.copy(centre);
           camera.lookAt(me.look);
           camera.updateMatrixWorld();
-          me.cam.copy(camera.position);
+          // Out of the room for the rig too, the moment the camera is.
+          if (rig.room) {
+            rig.views.exit = { pos: camera.position.clone(), target: me.look.clone() };
+            rig.jump('exit');
+          }
           return me.s >= path.total;
         },
         finish: () => {
-          e.open(0);
+          setDip(null);
           setRoomDoor(r, 0);
           root.scale.setScalar(sc1);
-          // The lens is all but outdoor by now; main.js eases the rest (a set here would show as a jump).
           chog.play('idle');
           chog.setPace?.(1);
-          // Out of the room for the rig too; travel takes it from here (and the camera). Without
-          // travel, the place's framed view.
+          // Out of the room for the rig too; travel takes it from here (and the camera). Without travel,
+          // the place's framed view.
           rig.views.exit = { pos: camera.position.clone(), target: me.look.clone() };
           rig.jump('exit');
           if (!walker.exit && place) rig.focusOn(place, { instant: true });
-          // Travel puts its own camera behind your Chog: glide into it rather than cut.
-          if (walker.exit) handoff = { t: 0, pos: camera.position.clone(), quat: camera.quaternion.clone() };
+          if (walker.exit) {
+            // Travel picks up right here, its camera where this one is (it eases the last of the way).
+            const rel = camera.position.clone().sub(me.look);
+            walker.exit.resume = { pos: feet.clone(), yaw, camYaw: Math.atan2(rel.x, rel.z), camPitch: Math.asin(THREE.MathUtils.clamp(rel.y / rel.length(), -1, 1)) };
+            handoff = { t: 0, pos: camera.position.clone(), quat: camera.quaternion.clone() };
+          }
         },
         skipTo() {
+          if (!me.cut) me.goOut();
+          me.t = Math.max(me.t, DIP_OUT + DIP_IN);
+          me.walking = true;
           me.s = path.total;
-          me.t = 99;
           me.step(0);
+          setDoor(e, 0);
         },
-        inRoom: () => sCam < sRoom + 1,
       };
       run = me;
     });
@@ -677,7 +609,7 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
           inside: 0,
           // The outside doors open as the camera comes up the steps; the room's door as it crosses the hall.
           doors: (t) => {
-            e.open(clamp01((t - (t1 - 0.45)) / 1.2) - clamp01((t - (t1 + 2.6)) / 1.2));
+            setDoor(e, clamp01((t - (t1 - 0.45)) / 1.2) - clamp01((t - (t1 + 2.6)) / 1.2));
             setRoomDoor(r, (t - (t1 + 0.7)) / 0.9);
           },
           // The room shows from when the doors start to open.
@@ -700,7 +632,7 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
             const look = me.look.lengthSq() ? me.look.clone() : r.view.target.clone();
             rig.views.entry = { pos: r.view.pos.clone(), target: look, enter: true };
             rig.jump('entry');
-            e.open(0);
+            setDoor(e, 0);
             // The room's door closes once your Chog is through it.
             const w = me.walk;
             if (w && !w.done) Promise.resolve(w.promise).finally(() => swing(r, 1, 0, 0.9));
@@ -737,12 +669,12 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
           doors: (t) => {
             const open = me.root ? clamp01(me.doorK + t / 0.6) : clamp01((t - 0.2) / 0.8);
             setRoomDoor(r, open - clamp01((t - 2.4) / 0.8));
-            e.open(clamp01((t - 1.0) / 0.9) - clamp01((t - 3.4) / 1.1));
+            setDoor(e, clamp01((t - 1.0) / 0.9) - clamp01((t - 3.4) / 1.1));
           },
           showRoom: (t) => t < 2.6,
           fovK: (t) => 1 - clamp01((t - 1.5) / 1.0),
           finish: () => {
-            e.open(0);
+            setDoor(e, 0);
             setRoomDoor(r, 0);
             camera.fov = fovs.outdoor();
             camera.updateProjectionMatrix();
@@ -770,8 +702,15 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
       end();
     },
 
-    // Called after rig.update: puts the camera on the cutscene's path.
-    update(dt) {
+    // Called after rig.update: puts the camera on the cutscene's path. chogRoot: your Chog out walking
+    // (the outside doors open for it).
+    update(dt, chogRoot = null) {
+      autoDoors(Math.min(dt, 1 / 20), chogRoot);
+      if (dipIn) {
+        dipIn.t += Math.min(dt, 1 / 20);
+        setDip(1 - dipIn.t / DIP_IN);
+        if (dipIn.t >= DIP_IN) (dipIn = null), setDip(null);
+      }
       for (let i = swings.length - 1; i >= 0; i--) {
         const s = swings[i];
         s.t = Math.min(1, s.t + dt / s.seconds);
@@ -823,6 +762,12 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
 
     // Called after the world's own update: shows the room while the camera is still outside it.
     apply(env, renderer) {
+      // The room draws only with the camera in it (src/island.js); through its open outside door, too.
+      for (const h of hub.rooms) {
+        if (!h.entrance || !h.room || h.room.group.visible || !(doorK.get(h.entrance) > 0)) continue;
+        h.room.group.visible = true;
+        h.room.update?.(env, renderer);
+      }
       if (!run || !run.showRoom(run.t)) return;
       const room = run.r.room;
       if (!room.group.visible) {

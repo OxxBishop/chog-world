@@ -45,7 +45,8 @@ export function buildHoverboards(scene, groundAt) {
     fragmentShader: 'uniform float uStrength; varying vec2 vUv; void main() { vec2 p = (vUv - 0.5) * 2.0; float d = dot(p, p); gl_FragColor = vec4(vec3(0.62, 0.45, 1.0) * exp(-d * 3.2) * 0.55 * uStrength, 1.0); }',
   });
 
-  const list = spots().map((s, i) => ({ ...s, y: groundAt(s.x, s.z, null), parked: true, k: i * 1.7, roll: 0, lift: BOARD.hover, carried: null }));
+  // rise: a parked board's middle over the ground, easing back to its hover after you step off it.
+  const list = spots().map((s, i) => ({ ...s, y: groundAt(s.x, s.z, null), parked: true, k: i * 1.7, roll: 0, pitch: 0, lift: BOARD.hover, rise: BOARD.hover, carried: null }));
   const n = list.length;
   const mk = (geo, mat, count, shadow = false) => {
     const m = new THREE.InstancedMesh(geo, mat, count);
@@ -66,8 +67,9 @@ export function buildHoverboards(scene, groundAt) {
   let t = 0;
   const place = (b, i) => {
     // The deck's middle: under your Chog's feet (lift over the ground), or bobbing where it's parked.
-    const y = b.parked ? b.y + BOARD.hover + Math.sin(t * 1.8 + b.k) * 0.05 : b.carried.y + b.lift - T / 2;
-    e.set(b.parked ? Math.sin(t * 1.3 + b.k) * 0.02 : 0, b.yaw, b.parked ? Math.sin(t * 1.1 + b.k) * 0.025 : b.roll, 'YXZ');
+    const y = b.parked ? b.y + b.rise + Math.sin(t * 1.8 + b.k) * 0.05 : b.carried.y + b.lift - T / 2;
+    // (Riding, it tips with the way: up and down a bridge's stair its nose dug into the steps.)
+    e.set(b.parked ? Math.sin(t * 1.3 + b.k) * 0.02 : b.pitch, b.yaw, b.parked ? Math.sin(t * 1.1 + b.k) * 0.025 : b.roll, 'YXZ');
     base.compose(v.set(b.parked ? b.x : b.carried.x, y, b.parked ? b.z : b.carried.z), q.setFromEuler(e), one);
     deck.setMatrixAt(i, base);
     stripe.setMatrixAt(i, base);
@@ -101,26 +103,31 @@ export function buildHoverboards(scene, groundAt) {
       list[i].parked = false;
       list[i].carried = new THREE.Vector3(list[i].x, list[i].y, list[i].z);
     },
-    /** It moves with your Chog: ground is its feet's point on the ground, lift how high it rides. */
-    carry(i, ground, yaw, roll, lift) {
+    /** It moves with your Chog: ground is its point on the ground, lift how high its deck's top is over
+     * that, pitch its nose down (radians; up is negative). */
+    carry(i, ground, yaw, roll, lift, pitch = 0) {
       const b = list[i];
       b.carried.copy(ground);
       b.yaw = yaw;
       b.roll = roll;
       b.lift = lift;
+      b.pitch = pitch;
     },
-    /** Left where it is. */
-    park(i, at, yaw) {
+    /** Left where it is; from lift (its deck's top over the ground) it eases back up to its hover. */
+    park(i, at, yaw, lift = BOARD.hover + T / 2) {
       const b = list[i];
       b.parked = true;
       b.x = at.x;
       b.z = at.z;
       b.y = groundAt(at.x, at.z, at.y);
       b.yaw = yaw;
+      b.rise = lift - T / 2;
+      b.pitch = 0;
       b.carried = null;
     },
     update(dt, env) {
       t += dt;
+      for (const b of list) if (b.parked) b.rise += (BOARD.hover - b.rise) * (1 - Math.exp(-dt * 5));
       list.forEach(place);
       for (const m of [deck, stripe, rings, glows, pools]) m.instanceMatrix.needsUpdate = true;
       const night = env?.night ?? 0;

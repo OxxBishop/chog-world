@@ -196,8 +196,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     float: 0, // in zero g (Cosmo's dome): 0 on the ground to 1 floating
     board: -1, // the hoverboard you ride (src/hoverboard.js), or -1
     roll: 0,
-    hop: null, // stepping onto or off a board: { from, to, t, on }
+    hop: null, // stepping onto or off a board (rideStep)
     rideYaw: 0,
+    ridePitch: 0,
     floatT: 0,
     lift: 0,
     floating: false,
@@ -587,14 +588,17 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     chog.root.position.copy(state.pos);
     state.lift = fk * (2.4 + Math.sin(state.floatT * 0.9) * 0.35) + rideLift;
     chog.root.position.y += state.lift;
-    chog.root.rotation.x = Math.sin(state.floatT * 0.7) * 0.22 * fk;
+    // (Yaw, then its own pitch and roll: on a board it leans into a climb and back going down, by some of
+    // the board's own tip, so it rides the stair rather than standing stiff on a ramp.)
+    chog.root.rotation.order = 'YXZ';
+    chog.root.rotation.x = Math.sin(state.floatT * 0.7) * 0.22 * fk - (state.board >= 0 && !state.hop ? state.ridePitch * 0.4 : 0);
     chog.root.rotation.z = Math.sin(state.floatT * 0.53) * 0.3 * fk + state.roll;
     if (state.floating !== fk > 0.05) {
       state.floating = fk > 0.05;
       chog.float?.(state.floating);
     }
     pushGrass(chog);
-    animate(chog, state.float > 0.5 || state.board >= 0 || state.hop ? 0 : speed, walkV, runV, walkFeet, runFeet);
+    animate(chog, state.hop ? state.hop.speed : state.float > 0.5 || state.board >= 0 ? 0 : speed, walkV, runV, walkFeet, runFeet);
     if (!state.own) chog.update(dt, camera);
 
     // The camera swings round behind you as you go (unless you've just turned it yourself).
@@ -616,7 +620,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     }
     // The hoverboard's button: by a parked board, or while riding one.
     const nearBoard = state.board >= 0 ? state.board : state.busy || state.hop ? -1 : boards.nearest(state.pos, 3.6);
-    const showRide = nearBoard >= 0 && !state.busy;
+    const showRide = nearBoard >= 0 && !state.busy && !(state.board >= 0 && Math.abs(state.ridePitch) > 0.2);
     if (hud.ride.hidden === showRide) hud.ride.hidden = !showRide;
     const rideLabel = state.board >= 0 ? 'Hop off' : 'Ride the hoverboard';
     if (showRide && hud.ride.textContent !== rideLabel) hud.ride.textContent = rideLabel;
@@ -650,24 +654,27 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     }
   }
   // ---------- hoverboards (B, src/hoverboard.js; the user, 10-19) ----------
-  // Each frame: stepping onto or off a board, the board carried under your Chog, its lean into the turns.
+  // Each frame: stepping onto or off a board, the board carried under your Chog, its lean into the turns
+  // and its tip with the way (up and down a bridge's stair its nose dug into the steps: the user, 10-19).
   // Returns how far over the ground it puts your Chog's feet.
+  const RIDE_TOP = BOARD.hover + BOARD.thick; // the deck's top over the ground, ridden
+  const KNEEL = 0.34; // and sunk low to be stepped onto or off
+  const STEP_V = 2.4; // stepping on and off: a careful walk, metres a second
   function rideStep(dt, speed) {
-    const H = BOARD.hover + BOARD.thick;
-    let lift;
-    if (state.hop) {
-      const h = state.hop;
-      h.t = Math.min(1, h.t + dt / 0.42);
-      const k = h.t * h.t * (3 - 2 * h.t);
-      state.pos.x = h.from.x + (h.to.x - h.from.x) * k;
-      state.pos.z = h.from.z + (h.to.z - h.from.z) * k;
-      const g = groundAt(state.pos.x, state.pos.z, state.pos.y);
-      if (g) state.pos.y = g.y;
-      state.yaw = h.yaw0 + wrap(h.yaw1 - h.yaw0) * k;
-      state.vel.set(0, 0, 0);
-      lift = (h.on ? k : 1 - k) * H + Math.sin(Math.PI * h.t) * 0.7;
-      if (h.t >= 1) state.hop = null;
-    } else lift = state.board >= 0 ? H : 0;
+    let lift = state.board >= 0 ? RIDE_TOP : 0;
+    let pitch = 0;
+    if (state.hop) lift = hopStep(state.hop, dt);
+    else if (state.board >= 0) {
+      // Tipped to the ground under its nose and tail, and lifted clear of a stair's treads (each stands
+      // up to a tread's rise over the smooth slope a Chog walks on: src/skyfx.js).
+      const fx = Math.sin(state.yaw), fz = Math.cos(state.yaw), half = BOARD.len / 2;
+      const gF = groundAt(state.pos.x + fx * half, state.pos.z + fz * half, state.pos.y)?.y ?? state.pos.y;
+      const gB = groundAt(state.pos.x - fx * half, state.pos.z - fz * half, state.pos.y)?.y ?? state.pos.y;
+      const slope = THREE.MathUtils.clamp((gF - gB) / BOARD.len, -1.2, 1.2);
+      state.ridePitch += (-Math.atan(slope) - state.ridePitch) * (1 - Math.exp(-dt * 10));
+      pitch = state.ridePitch;
+      lift += Math.max(0, (gF + gB) / 2 - state.pos.y) + Math.max(0, 0.85 * Math.abs(slope) - 0.3);
+    }
     // The lean: how fast it's turning, at speed.
     const turn = wrap(state.yaw - state.rideYaw) / Math.max(dt, 1e-3);
     state.rideYaw = state.yaw;
@@ -676,36 +683,132 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     state.roll += (want - state.roll) * (1 - Math.exp(-dt * 5));
     if (riding) {
       lift += Math.sin(state.floatT * 2.2) * 0.04;
-      boards.carry(state.board, state.pos, state.yaw, state.roll, lift);
+      boards.carry(state.board, state.pos, state.yaw, state.roll, lift, pitch);
     }
     boards.update(dt, lastEnv);
     return lift;
+  }
+  // Stepping on: the board floats round to meet your Chog, end on, and sinks low; your Chog walks up and
+  // steps onto it, and the board rises with it. Off: the board sinks, your Chog walks off its front (or a
+  // side, if that's in the way) and steps down, and the board rises back to wait. (It used to be lifted
+  // on as if by invisible hands: the user, 10-19.)
+  function hopStep(h, dt) {
+    h.t += dt;
+    const b = h.b;
+    state.vel.set(0, 0, 0);
+    const walk = (to) => {
+      h.v += (STEP_V - h.v) * (1 - Math.exp(-dt * 8));
+      h.s = Math.min(h.len, h.s + h.v * dt);
+      state.pos.x = h.from.x + h.dir.x * h.s;
+      state.pos.z = h.from.z + h.dir.z * h.s;
+      const g = groundAt(state.pos.x, state.pos.z, state.pos.y);
+      if (g) state.pos.y = g.y;
+      state.yaw += wrap(Math.atan2(h.dir.x, h.dir.z) - state.yaw) * (1 - Math.exp(-dt * 10));
+      return h.s >= to;
+    };
+    if (h.on) {
+      // The board: from where it waited to end on in front of your Chog, turning and sinking.
+      const k = smooth(0, 0.5, h.t);
+      h.at.lerpVectors(h.c0, h.c1, k);
+      const yaw = h.yaw0 + wrap(h.yaw1 - h.yaw0) * k;
+      let top = RIDE_TOP - 0.1 + (KNEEL - RIDE_TOP + 0.1) * k;
+      let feet = 0;
+      if (h.phase === 'walk') {
+        // A moment for the board to come round, then up to it and onto it as its feet cross its tail.
+        if (h.t > 0.2 && walk(h.len)) (h.phase = 'rise'), (h.t2 = 0);
+        feet = top * smooth(h.sTail - 0.15, h.sTail + 0.3, h.s);
+      }
+      if (h.phase === 'rise') {
+        // On: up it comes to riding height, a little past it and back.
+        h.t2 += dt;
+        const u = Math.min(1, h.t2 / 0.45);
+        top = KNEEL + (RIDE_TOP - KNEEL) * (1 + 3 * Math.pow(u - 1, 3) + 2 * Math.pow(u - 1, 2));
+        feet = top;
+        h.v = 0;
+        if (u >= 1) {
+          state.hop = null;
+          state.ridePitch = 0;
+        }
+      }
+      boards.carry(b, h.at, yaw, 0, top, 0);
+      h.speed = h.phase === 'walk' && h.t > 0.2 ? h.v : 0;
+      return feet;
+    }
+    // Off: down it sinks, then off your Chog walks.
+    if (h.phase === 'sink') {
+      const k = smooth(0, 0.3, h.t);
+      const top = RIDE_TOP + (KNEEL - RIDE_TOP) * k;
+      boards.carry(b, h.from, h.yaw, 0, top, 0);
+      h.speed = 0;
+      if (k >= 1) h.phase = 'walk';
+      return top;
+    }
+    walk(h.len);
+    const feet = KNEEL * (1 - smooth(h.sEdge - 0.1, h.sEdge + 0.3, h.s));
+    // Once its feet are off, the board rises back to wait.
+    if (!h.parked && h.s > h.sEdge + 0.3) {
+      h.parked = true;
+      boards.park(b, h.from, h.yaw, KNEEL);
+    } else if (!h.parked) boards.carry(b, h.from, h.yaw, 0, KNEEL, 0);
+    h.speed = h.v;
+    if (h.s >= h.len) {
+      if (!h.parked) boards.park(b, h.from, h.yaw, KNEEL);
+      state.hop = null;
+    }
+    return feet;
   }
   function takeBoard() {
     if (state.busy || state.hop || state.board >= 0 || !state.on) return;
     const b = boards.nearest(state.pos, 3.6);
     if (b < 0) return;
     const bd = boards.boards[b];
+    const c0 = new THREE.Vector3(bd.x, bd.y, bd.z);
+    const d = Math.hypot(c0.x - state.pos.x, c0.z - state.pos.z);
+    // Toward the board (or the way your Chog faces, if it's standing on it).
+    const dir = d > 0.3 ? new THREE.Vector3(c0.x - state.pos.x, 0, c0.z - state.pos.z).normalize() : new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
+    // It comes to rest end on, half a step beyond its tail; either end will do (it's the same both ways).
+    const c1 = state.pos.clone().addScaledVector(dir, BOARD.len / 2 + 0.5);
+    // (Not into a dome's glass or a tree, if it has to back off to make room.)
+    collide(state.pos, c1);
+    c1.y = groundAt(c1.x, c1.z, state.pos.y)?.y ?? state.pos.y;
+    const len = Math.max(BOARD.len / 2 + 0.2, Math.hypot(c1.x - state.pos.x, c1.z - state.pos.z));
+    const along = Math.atan2(dir.x, dir.z);
+    const yaw1 = Math.abs(wrap(along - bd.yaw)) <= Math.PI / 2 ? along : along + Math.PI;
     state.board = b;
     boards.take(b);
-    state.hop = { from: state.pos.clone(), to: new THREE.Vector3(bd.x, bd.y, bd.z), t: 0, on: true, yaw0: state.yaw, yaw1: bd.yaw };
+    state.hop = { on: true, phase: 'walk', b, t: 0, s: 0, v: 0, speed: 0, from: state.pos.clone(), dir, len, sTail: len - BOARD.len / 2, c0, c1, at: c0.clone(), yaw0: bd.yaw, yaw1 };
   }
-  // Off: the board waits where it is, and your Chog hops down beside it. quick (a door, a portal): straight
+  // Off: the board waits where it is, and your Chog steps down off it. quick (a door, a portal): straight
   // down, the board left a step to its side.
   function leaveBoard(quick = false) {
     if (state.board < 0) return;
+    // Not on a stair: there's nowhere level to step down to, or to leave it.
+    if (!quick && !state.hop && Math.abs(state.ridePitch) > 0.2) return;
     const b = state.board;
     state.board = -1;
+    state.ridePitch = 0;
     const side = new THREE.Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
-    if (quick) {
+    if (quick || state.hop) {
       state.hop = null;
       boards.park(b, state.pos.clone().addScaledVector(side, 2.4), state.yaw);
       return;
     }
-    boards.park(b, state.pos, state.yaw);
-    const to = state.pos.clone().addScaledVector(side, 2.1);
-    collide(state.pos, to);
-    state.hop = { from: state.pos.clone(), to, t: 0, on: false, yaw0: state.yaw, yaw1: state.yaw };
+    // Off the front, or else whichever side is clear (somewhere to stand, nothing in the way).
+    const fwd = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
+    const ways = [[fwd, BOARD.len / 2], [side, BOARD.wide / 2], [side.clone().negate(), BOARD.wide / 2], [fwd.clone().negate(), BOARD.len / 2]];
+    let pick = ways[0];
+    for (const w of ways) {
+      const to = state.pos.clone().addScaledVector(w[0], w[1] + 0.8);
+      const g = groundAt(to.x, to.z, state.pos.y);
+      const pushed = to.clone();
+      collide(state.pos, pushed);
+      if (g && Math.abs(g.y - state.pos.y) < 0.6 && pushed.distanceTo(to) < 0.05) {
+        pick = w;
+        break;
+      }
+    }
+    const [dir, edge] = pick;
+    state.hop = { on: false, phase: 'sink', b, t: 0, s: 0, v: 0, speed: 0, from: state.pos.clone(), dir, len: edge + 0.8, sEdge: edge, yaw: state.yaw, parked: false };
   }
 
   function animate(chog, speed, walkV, runV, walkFeet = walkV, runFeet = runV) {
@@ -1212,11 +1315,15 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const d = state.lastDoor ?? (state.lastRoom?.id?.startsWith('home') ? homeDoor(state.lastRoom) : null);
     state.lastRoom = null;
     if (d) {
-      const p = d.at.clone().addScaledVector(d.out, /^(bar|casino|lobby)$/.test(d.room?.id ?? '') ? 9.5 : 6.5);
+      // Where the Hub's walk out (src/entry.js) left it, with its view, if it walked out.
+      const w = d.resume;
+      delete d.resume;
+      const p = w?.pos ?? d.at.clone().addScaledVector(d.out, /^(bar|casino|lobby)$/.test(d.room?.id ?? '') ? 9.5 : 6.5);
       const g = groundAt(p.x, p.z, p.y) ?? { y: heightAt(p.x, p.z) };
       state.pos.set(p.x, g.y, p.z);
-      state.yaw = Math.atan2(d.out.x, d.out.z);
-      state.camYaw = state.yaw + Math.PI;
+      state.yaw = w?.yaw ?? Math.atan2(d.out.x, d.out.z);
+      state.camYaw = w?.camYaw ?? state.yaw + Math.PI;
+      if (w) state.camPitch = THREE.MathUtils.clamp(w.camPitch, CAM.pitchMin, CAM.pitchMax);
       state.lastDoor = null;
     }
     state.vel.set(0, 0, 0);

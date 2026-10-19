@@ -880,7 +880,7 @@ function frame() {
   else if (rig.room && !(rig.room instanceof RoomBox)) rig.room = null;
   demo?.update();
   space?.update();
-  entry?.update(dt);
+  entry?.update(dt, travel?.active ? travel.chog?.root : null);
   arrival?.update(dt);
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
   // Warp speed (B25) has the lens to itself.
