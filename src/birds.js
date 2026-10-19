@@ -28,7 +28,7 @@ import { info } from './assets.js';
 
 const BASE = import.meta.env.BASE_URL;
 const NOW = typeof location !== 'undefined' && /[?&]birds=now\b/.test(location.search);
-const COUNTS = { low: { flit: 2, perch: 3, flights: 1 }, medium: { flit: 4, perch: 5, flights: 2 }, high: { flit: 5, perch: 6, flights: 2 } };
+const COUNTS = { low: { flit: 1, perch: 2, flights: 1 }, medium: { flit: 1, perch: 3, flights: 1 }, high: { flit: 2, perch: 3, flights: 2 } };
 const UP = new THREE.Vector3(0, 1, 0);
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -181,7 +181,7 @@ export function createBirds({ scene, island, quality = 'high', prewarm = null })
   // Mantas: flights overhead and the odd swoop; the whale.
   const flights = [];
   let swoop = null, whale = null;
-  let swoopIn = NOW ? 3 : rand(30, 50), flightIn = NOW ? 1 : rand(6, 12), whaleIn = NOW ? 6 : rand(50, 80);
+  let swoopIn = NOW ? 3 : rand(50, 80), flightIn = NOW ? 1 : rand(15, 30), whaleIn = NOW ? 6 : rand(80, 140);
 
   async function load() {
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -258,38 +258,53 @@ export function createBirds({ scene, island, quality = 'high', prewarm = null })
       .filter((p) => !away || p.distanceTo(away) > 3.5)
       .sort((a, b) => a.distanceTo(focus) - b.distanceTo(focus))
       .slice(0, 6);
-    if (fl.length && Math.random() < 0.6) return { at: pick(fl).clone(), lift: rand(0.9, 1.6) };
+    if (fl.length && Math.random() < 0.6) return { at: pick(fl).clone(), lift: rand(2.6, 4.0) };
     camera.getWorldDirection(_fwd).setY(0).normalize();
     const base = Math.atan2(_fwd.x, _fwd.z);
     for (let i = 0; i < 10; i++) {
       // Off to one side or the other: straight ahead your Chog itself is in the way.
-      const a = base + (Math.random() < 0.5 ? -1 : 1) * rand(0.45, 1.05), r = rand(4.5, 8.5);
+      const a = base + (Math.random() < 0.5 ? -1 : 1) * rand(0.45, 1.05), r = rand(6, 11);
       const x = focus.x + Math.sin(a) * r, z = focus.z + Math.cos(a) * r;
-      if ((!away || Math.hypot(x - away.x, z - away.z) > 3.5) && clearAt(x, z)) return { at: new THREE.Vector3(x, heightAt(x, z), z), lift: rand(1.8, 3.4) };
+      if ((!away || Math.hypot(x - away.x, z - away.z) > 3.5) && clearAt(x, z)) return { at: new THREE.Vector3(x, heightAt(x, z), z), lift: rand(3.8, 5.8) };
     }
-    return fl.length ? { at: pick(fl).clone(), lift: rand(0.9, 1.6) } : null;
+    return fl.length ? { at: pick(fl).clone(), lift: rand(2.6, 4.0) } : null;
   }
   // A flitter: hovers by a flower, wandering a little, now and then darts to another; darts off from you.
   function flitStep(c, dt, focus, me, camera) {
     c.t += dt;
-    if (c.mode === 'off' || c.home.distanceTo(focus) > 30) {
+    // Now and then one comes by for a while, then flies off up and away (all the time, they were pests:
+    // the user, 10-19).
+    if (c.mode === 'off' || c.mode === 'away') {
+      c.wait = (c.wait ?? rand(8, 40)) - dt;
+      if (c.mode === 'away') leaveStep(c, dt);
+      if (c.wait > 0) return;
       const h = homeNear(focus, camera);
-      if (!h) return hide(c);
+      if (!h) return hide(c), (c.wait = rand(8, 16));
       c.home = h.at;
-      // In from a way off, not popping up by the flowers.
-      const a = rand(0, Math.PI * 2), r = rand(16, 22);
-      c.pos.copy(c.home).add(_v.set(Math.cos(a) * r, rand(7, 11), Math.sin(a) * r));
+      // In from a way off, high, not popping up by the flowers.
+      const a = rand(0, Math.PI * 2), r = rand(18, 24);
+      c.pos.copy(c.home).add(_v.set(Math.cos(a) * r, rand(9, 13), Math.sin(a) * r));
       c.mode = 'hover';
-      c.next = rand(2, 5);
+      c.next = rand(3, 6);
       c.lift = h.lift;
+      c.stay = rand(10, 18);
       c.obj.visible = true;
     }
+    c.stay -= dt;
+    if (c.stay <= 0 || c.home.distanceTo(focus) > 30) {
+      // Off it goes, up and away.
+      c.mode = 'away';
+      c.wait = rand(35, 70);
+      const a = rand(0, Math.PI * 2);
+      c.away = c.pos.clone().add(_v.set(Math.cos(a) * 34, rand(16, 22), Math.sin(a) * 34));
+      return;
+    }
     c.next -= dt;
-    const scared = me && me.distanceTo(c.pos) < 3;
+    const scared = me && me.distanceTo(c.pos) < 3.2;
     if (c.next <= 0 || scared) {
       const h = homeNear(focus, camera, me);
       if (h) (c.home = h.at), (c.lift = h.lift);
-      c.next = rand(2.5, 6);
+      c.next = rand(4, 8);
     }
     // Where it hangs: over the flower, drifting in loops.
     _v.set(Math.sin(c.t * 1.3) * 0.5 + Math.sin(c.t * 2.9) * 0.15, c.lift + Math.sin(c.t * 2.1) * 0.2, Math.cos(c.t * 1.1) * 0.5).add(c.home);
@@ -301,6 +316,18 @@ export function createBirds({ scene, island, quality = 'high', prewarm = null })
     blendFly(c, far > 1.2 ? 1 : 0, dt);
     pose(c);
   }
+  // Flying off: on toward its way out, gone once it's there.
+  function leaveStep(c, dt) {
+    if (!c.obj.visible || !c.away) return;
+    _w.subVectors(c.away, c.pos);
+    if (_w.length() < 2) return hide(c), (c.mode = 'away');
+    c.vel.lerp(_w.normalize().multiplyScalar(7), Math.min(1, dt * 2));
+    c.pos.addScaledVector(c.vel, dt);
+    steer(c, c.vel, dt, 0.3);
+    blendFly(c, 1, dt);
+    pose(c);
+  }
+
 
   // A perched bird: sits on a treetop, hops to another now and then, takes off from you.
   function perchStep(c, dt, focus, me) {
@@ -348,7 +375,7 @@ export function createBirds({ scene, island, quality = 'high', prewarm = null })
       blendFly(c, k < 0.85 ? 1 : 0, dt);
       if (k >= 1) {
         c.mode = 'sit';
-        c.next = rand(6, 16);
+        c.next = rand(14, 30);
         c.look = Math.atan2(c.seat.x - c.tree.x, c.seat.z - c.tree.z) + rand(-0.6, 0.6);
       }
     }
@@ -481,14 +508,14 @@ export function createBirds({ scene, island, quality = 'high', prewarm = null })
       for (const c of perch) perchStep(c, dt, focus, me);
       if ((flightIn -= dt) <= 0) {
         startFlight(focus);
-        flightIn = rand(18, 34);
+        flightIn = rand(60, 110);
       }
       for (const c of flights) if (c.mode !== 'off') glide(c, dt);
-      if ((swoopIn -= dt) <= 0) swoopIn = startSwoop(focus, camera) ? (NOW ? 25 : rand(55, 95)) : 6;
+      if ((swoopIn -= dt) <= 0) swoopIn = startSwoop(focus, camera) ? (NOW ? 25 : rand(100, 160)) : 8;
       if (swoop.mode !== 'off') glide(swoop, dt);
       if ((whaleIn -= dt) <= 0 && whale.mode === 'off') {
         startWhale(focus);
-        whaleIn = NOW ? 40 : rand(120, 200);
+        whaleIn = NOW ? 40 : rand(200, 320);
       }
       if (whale.mode !== 'off') glide(whale, dt);
       // Their wings: the near ones every frame, the far ones every other.

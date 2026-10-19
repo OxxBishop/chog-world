@@ -123,11 +123,20 @@ function spaceRocks(dome) {
   }
   mesh.count = rocks.length;
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s = new THREE.Vector3();
-  const place = (t) => {
+  // A rock right by the camera filled the screen, and one by your Chog floated through it: near either,
+  // a rock shrinks away to nothing (avoid: [camera, Chog's middle], dome space, either may be null).
+  const away = (rk, p, near, far, squash) => {
+    if (!p) return 1;
+    const dy = (v.y - p.y) * squash;
+    const d = Math.hypot(v.x - p.x, dy, v.z - p.z) - rk.size;
+    return THREE.MathUtils.smoothstep(d, near, far);
+  };
+  const place = (t, avoid = []) => {
     rocks.forEach((rk, i) => {
       q.setFromAxisAngle(rk.axis, rk.k + t * rk.spin);
       v.set(rk.x, rk.y + Math.sin(t * rk.beat + rk.k) * rk.bob, rk.z);
-      mesh.setMatrixAt(i, m4.compose(v, q, s.setScalar(rk.size)));
+      const k = Math.min(away(rk, avoid[0], 0.8, 2.6, 1), away(rk, avoid[1], 1.3, 2.8, 0.55));
+      mesh.setMatrixAt(i, m4.compose(v, q, s.setScalar(rk.size * Math.max(k, 1e-3))));
     });
     mesh.instanceMatrix.needsUpdate = true;
   };
@@ -144,17 +153,33 @@ export function buildCosmoDome(dome) {
   let t = 0;
   const local = new THREE.Vector3();
   const centre = new THREE.Vector3();
+  dome.group.getWorldPosition(centre);
+  // What the rocks keep out of the way of (world points): the camera, and your Chog floating by.
+  const avoid = [], camLocal = new THREE.Vector3(), chogLocal = new THREE.Vector3();
   return {
     dome,
+    centre,
+    /** A floating Chog's middle (world), or null: the rocks shrink away from it. */
+    avoid(p) {
+      avoid[1] = p ? dome.group.worldToLocal(chogLocal.copy(p)) : null;
+    },
     /** Whether a point (world) is where Chogs float: inside the glass, clear of the pod and the doorway. */
     zeroG(p) {
       local.copy(p);
       dome.group.worldToLocal(local);
       const r = Math.hypot(local.x, local.z);
-      if (r > R - 1.6 || local.z > R - 2.8 || local.y < -2 || local.y > R) return false;
-      // Not in his pod (its room is a room like any other).
-      const h = dome.home;
-      return !(Math.abs(local.x) < h.halfW + 0.8 && local.z > dome.homeZ + h.back - 0.8 && local.z < dome.homeZ + h.front + 0.8);
+      // (Right up to the glass: its float comes down where the glass does, src/travel.js.)
+      if (r > R - 0.7 || local.z > R - 2.8 || local.y < -2 || local.y > R) return false;
+      // Not in his pod (its room is a room like any other): clear of it by a step, all round it, behind
+      // and beside it too (a box round it took in the whole back of the dome: the user, 10-19).
+      return Math.hypot(local.x, local.z - dome.home.center) > 7.8 + 0.35;
+    },
+    /** How far the glass is above a point (world), straight up: a floating Chog keeps its head under it. */
+    headroom(p) {
+      local.copy(p);
+      dome.group.worldToLocal(local);
+      const r2 = local.x * local.x + local.z * local.z;
+      return Math.sqrt(Math.max(0, R * R - r2)) - local.y;
     },
     /** Whether a point (world) is under the glass, margin metres in from it (the camera keeps in while
      * you float). */
@@ -167,7 +192,8 @@ export function buildCosmoDome(dome) {
       t += dt;
       dome.group.getWorldPosition(centre);
       if (camera && camera.position.distanceTo(centre) > 150) return;
-      rocks.place(t);
+      avoid[0] = camera ? dome.group.worldToLocal(camLocal.copy(camera.position)) : null;
+      rocks.place(t, avoid);
     },
   };
 }

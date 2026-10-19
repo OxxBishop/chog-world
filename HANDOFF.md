@@ -27,6 +27,24 @@ are real but free.
 
 ## Log
 
+### 2026-10-19 · B · Things are solid now, hoverboards glide clean, fewer birds, and zero g is a swim
+- **Collision** (the user: "the chog and the hoverboard kept phasing through everything"). `src/travel.js` `collide`/`pushOut` now also keeps your Chog out of a new list of props (`props`, binned like the obstacles):
+  - the street lamps (`island.lamps`, from `src/roads.js` via a one-line export in `src/island.js`, A's file);
+  - in front of the Hub: the welcome arch's posts, the Chog statue, the banner poles, the bar's awning and yard posts, its terrace tables with their stools, the casino's and the bar's front trim (the wings' corners stood out past their round footprint), and the lobby's front steps (its door now reaches 4.8 m out, past them);
+  - at every dome: the lamp by the home's door, the entrance arch's posts, and the glass either side of the arch;
+  - the singer's stage takes in its fairy-light posts;
+  - the parked hoverboards.
+  - Riding, the board's nose and tail are kept clear too, not just your Chog's middle.
+  - **Bridges** (`src/tunnels.js` `keepOff`): on a bridge you stay in under the hoops' arch (about 3.5 to 3.8 m either side of the middle, less riding high on a stair). Beside a landing, you stay out past the rails, lamps and hoop legs. Under the hoops the camera stays inside their arch too (`tunnels.inside(p, true)`). When it's squeezed out at the side it swings round to look along the bridge, instead of passing through the glass.
+  - Seen: walking into a lamp, the statue, an arch post, a bar table, a banner pole, the casino's corner, a dome lamp and a dome arch; each stops at its edge. Riding a board nose first into a lamp also stops at the edge.
+- **Hoverboard on slopes** (the user: a clean hover, no leaning): your Chog stays upright. The board tips at most about 17 degrees and rides higher over a stair so its nose and tail clear the treads, easing up and down (`rideRise`).
+- **Birds** (`src/birds.js`; the user: too frequent, too low): the little monsters come by now and then, 10 to 18 s at a time, then fly off up and away for 35 to 70 s. They hang 3 to 6 m up, above your Chog's head. There are fewer at once (2 at most, 1 at medium and low) and one less tree bird; mantas cross about once a minute or two; the swoop and the whale come round about half as often.
+- **Zero g in Cosmo's dome** (`src/travel.js` `zeroGStep`, `src/cosmo.js`):
+  - Moving, your Chog swims: stretched out along its way, slow strokes. Still, it bobs and sways, and every 5 to 9 s turns a lazy trick with its arms up: a somersault, a slow spin or a roll. All of it turns about its middle, not its feet.
+  - It floats everywhere under the glass but his pod, behind and beside the pod too; a box round the pod used to take in the whole back of the dome. Near the glass it floats lower, keeping its head under it.
+  - Coming in at the door, the camera eases in under the glass over about a second; it used to snap to your Chog's head. By the glass it swings round to the dome's middle side and tips up.
+  - The floating rocks shrink away from the camera and from your Chog, instead of filling the screen or passing through it.
+
 ### 2026-10-19 · B · The birds are in (B35, the user's pick)
 - New `src/birds.js`, wired in `src/main.js` (created with the world, updated after the Chogs about town). All CC0 from Quaternius, packed with meshopt into `public/creatures/` (about 320 KB in all; `public/creatures/LICENSE.txt`, `scripts/pack-creatures.mjs`). They load 2.5 s after the island is up, so the start is no slower.
   - **Little monsters** (the striped bee and the horned flyer) hang about the flowers nearest your Chog, or clear air a few metres off to the side of the camera when there are none, and dart off when it walks up.
