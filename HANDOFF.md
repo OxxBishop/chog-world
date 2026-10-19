@@ -27,6 +27,9 @@ are real but free.
 
 ## Log
 
+### 2026-10-19 · B · Portal trips take about 1.3 s, not 19 (the user: "1-1.5 seconds max")
+- `src/fx/teleport.js`: the swirl snaps open a stride in front of your Chog (it no longer shuffles to the middle of the pad first), it takes two brisk strides through (`STRIDE`, its walk sped up to match), a blink of light (`flash(on, quick)` in `src/travel.js`, `.tv-flash.quick` in `src/style.css`), and it strides out of the other swirl onto the pad. Each gate shuts on its own afterwards without holding you up. No pillar of light at the far pad. The effect's clock no longer runs slow on a laptop drawing 10 frames a second (dt held to 0.1 s, was 0.05). Measured on the test clock: 1.4 s from the tap to walking again.
+
 ### 2026-10-19 · B · The user's morning notes are fixed (B32, B33, B34): loader, roulette, the walk-in, sliding doors, bridges, Cosmo's dome, Patrol's hover chopper, hoverboards, the wormhole
 - **The loader** (`src/intro.js`, `src/style.css`): the pixel Chog froze in a band over the planet because the tear-away ran as a clip-path on the main thread. The tear is transform and opacity now, and the running Chog and the words hide the moment the intro closes.
 - **Roulette** (`src/casino.js`, `src/roulette.js` `stacked()`): Clear and Rebet are two buttons (Clear only clears now). After a spin, once the camera is back on the felt, the chips are swept off with a sparkle (`sweepFelt`); Rebet glows while there's a last bet to repeat.

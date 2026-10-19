@@ -793,22 +793,23 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const chog = state.chog;
     chog.play('idle');
     state.move = 'idle';
-    // Onto the middle of the pad, facing the camera, while the runes charge.
-    const start = state.pos.clone();
-    await tween(0.55, (t) => {
-      state.pos.lerpVectors(start, from.centre, THREE.MathUtils.smootherstep(t, 0, 1));
-      chog.root.position.copy(state.pos);
-      from.charge = t;
-    });
-    // Up into the light, from the feet (or B's effect, once it's in).
+    // B's wormhole (src/fx/teleport.js) takes it from where it stands: the whole trip is about 1.3 s (the
+    // user, 10-19: 19 s was far too long). Without it, onto the middle of the pad and up into the light.
+    from.charge = 1;
     if (teleportFx?.departs) await teleportFx.departs({ chog, pad: from, scene, camera });
-    else
-      await tween(1.15, (t) => {
+    else {
+      const start = state.pos.clone();
+      await tween(0.3, (t) => {
+        state.pos.lerpVectors(start, from.centre, THREE.MathUtils.smootherstep(t, 0, 1));
+        chog.root.position.copy(state.pos);
+      });
+      await tween(0.6, (t) => {
         from.beam = Math.sin(t * Math.PI) + t * 0.4;
         chog.setBeam?.(THREE.MathUtils.smoothstep(t, 0, 1) * 1.1, 1);
       });
+    }
     chog.root.visible = false;
-    await flash(true);
+    await flash(true, true);
     // There: the camera comes round behind the pad, looking out across the place.
     state.pos.copy(to.centre);
     state.yaw = to.facing;
@@ -819,8 +820,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     from.charge = 0;
     from.beam = 0;
     to.charge = 1;
-    to.beam = 1.4;
-    await flash(false);
+    // (No pillar of light with the wormhole: its swirl is already open there.)
+    to.beam = teleportFx?.arrives ? 0 : 1.4;
+    await flash(false, true);
     chog.root.visible = true;
     // Down out of the light, from the head.
     if (teleportFx?.arrives) {
@@ -852,9 +854,11 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       tick();
     });
   }
-  function flash(on) {
+  // quick: a blink, for the portal trip.
+  function flash(on, quick = false) {
     hud.flash.classList.toggle('on', on);
-    return new Promise((r) => setTimeout(r, on ? 260 : 220));
+    hud.flash.classList.toggle('quick', quick);
+    return new Promise((r) => setTimeout(r, quick ? (on ? 90 : 100) : on ? 260 : 220));
   }
 
   // ---------- the HUD ----------
