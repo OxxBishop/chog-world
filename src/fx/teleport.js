@@ -21,13 +21,14 @@ import { CHOG_HEIGHT } from '../chog.js';
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---------- time ----------
-// One loop on the browser's frames for whatever is running (dt from the clock, held to 50 ms).
+// One loop on the browser's frames for whatever is running (dt from the clock, held to 100 ms).
 const jobs = new Set();
 let looping = false;
 let last = 0;
 function loop() {
   const now = performance.now();
-  const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+  // (Held to 0.1 s: held to 0.05, a laptop drawing 10 frames a second ran a trip at half speed.)
+  const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
   last = now;
   for (const j of [...jobs]) j(dt);
   if (jobs.size) requestAnimationFrame(loop);
@@ -377,9 +378,9 @@ function warm(scene) {
 // Each trip's number: a trip started while the last one's gate is still shutting takes the gate and the
 // Chog over, and the old one's timeline leaves both alone from then on.
 let tripId = 0;
-function setup({ chog, pad, scene, camera }) {
+function setup({ chog, pad, scene, camera, from = null }) {
   const id = ++tripId;
-  const at = pad.centre.clone();
+  const at = (from ?? pad.centre).clone();
   run(scene, at);
   const hold = holdChog(chog);
   const toward = at.clone().sub(camera.position).setY(0);
@@ -403,10 +404,11 @@ const turnTo = (from, to) => from + ((((to - from) % (Math.PI * 2)) + Math.PI * 
 const PAD_W = 5.4;
 
 // The swirl gate: it opens just beyond your Chog (as the camera sees it), pulls it in spinning, and shuts.
-const GATE_R = 3.1;
+// (A stride from your Chog it frames it without filling the view.)
+const GATE_R = 2.7;
 function gateAt(ctx, dir) {
-  // Its foot just over the pad's far edge, standing taller than the Chog, so its swirl frames it.
-  return ctx.at.clone().addScaledVector(dir, 3.0).add(new THREE.Vector3(0, GATE_R * 0.87 + 0.12, 0));
+  // A stride past your Chog, standing taller than it, so its swirl frames it.
+  return ctx.at.clone().addScaledVector(dir, FACE).add(new THREE.Vector3(0, GATE_R * 0.87 + 0.12, 0));
 }
 function showGate(dir, centreLocal, open, flare, pull) {
   const g = fx.gate;
@@ -447,69 +449,77 @@ function gateSparks(ctx, centre, dir, n, inward = true) {
   }
 }
 
-// Its walk, in metres a second at its size: the clip at its own rate.
-const walkSpeed = (ctx) => THREE.MathUtils.clamp((ctx.chog.speedOf?.('walk') || 1) * ctx.hold.scale, 1.6, 3.6);
-// The gate's face is this far past the pad's middle.
-const FACE = 3.0;
+// A trip is quick (the user, 10-19: "19 seconds is way too much, that should be at 1-1.5 seconds max"):
+// the swirl snaps open a stride in front of your Chog, it takes two brisk strides through it, a blink of
+// light, and it strides out of the other one onto the pad. About 1.3 s door to door; each gate shuts on
+// its own after, without holding you up.
+// The face of the swirl, this far past where your Chog stands (or ends up).
+const FACE = 1.15;
+// Its stride through, metres a second, its walk sped up to match.
+const STRIDE = 4.0;
+const stridePace = (ctx) => THREE.MathUtils.clamp(STRIDE / ((ctx.chog.speedOf?.('walk') || 1) * ctx.hold.scale), 1, 2.4);
 
 async function gateDeparts(args) {
-  const ctx = setup(args);
+  // From where it stands on the pad (it no longer shuffles to the middle first).
+  const ctx = setup({ ...args, from: args.chog.root.getWorldPosition(new THREE.Vector3()) });
   const { pad, chog } = ctx;
-  // Past the pad as the camera sees it: your Chog walks away from the camera into it.
+  // Past it as the camera sees it: your Chog strides away from the camera into it.
   const dir = ctx.toward;
   const G = gateAt(ctx, dir);
   const Gl = local(ctx, G);
   const yaw0 = ctx.hold.yaw;
   const yaw1 = turnTo(yaw0, Math.atan2(dir.x, dir.z));
-  const v = walkSpeed(ctx);
-  const walkFrom = 0.7;
-  const through = FACE + 1.3;
-  // Easing into its stride costs a quarter second over walking flat out.
-  const walkEnd = walkFrom + through / v + 0.25;
-  const T = walkEnd + 0.6;
+  const walkFrom = 0.08;
+  const through = FACE + 0.7;
+  // Into its stride over the first 0.12 s (costing 0.06 s over striding flat out).
+  const walkEnd = walkFrom + through / STRIDE + 0.06;
+  const T = walkEnd + 0.4;
   fx.ground.visible = true;
   fx.ground.scale.setScalar(PAD_W);
   pad.beam = 0;
-  let fed = 0;
-  let walking = false, gone = false, touched = -1;
+  chog.play('walk');
+  chog.setPace?.(stridePace(ctx));
+  let gone = false, touched = -1, fed = 0;
+  let through0 = null;
+  const goneP = new Promise((r) => (through0 = r));
   const feet = new THREE.Vector3();
-  await timeline(T, (t, dt) => {
+  timeline(T, (t, dt) => {
     if (!ctx.live()) return;
-    const open = t < walkEnd + 0.05 ? backOut(seg(t, 0, 0.6), 1.3) : 1 - easeIn(seg(t, walkEnd + 0.05, walkEnd + 0.5));
-    const flare = bump(seg(t, walkEnd - 0.2, walkEnd + 0.3)) * 0.7;
+    const open = t < walkEnd ? backOut(seg(t, 0, 0.22), 1.3) : 1 - easeIn(seg(t, walkEnd, T));
+    const flare = bump(seg(t, walkEnd - 0.15, walkEnd + 0.2)) * 0.8;
     showGate(dir, Gl, Math.max(0, open), flare, 0.25);
     fx.ground.material.uniforms.uGlow.value = 0.6 * Math.max(0, open) + flare * 0.6;
     pad.charge = 1 - seg(t, walkEnd, T);
-    // Turned to it, then walking: easing into its stride over the first half second.
-    const turn = smooth(seg(t, 0.1, 0.65));
+    const turn = smooth(seg(t, 0, 0.2));
     const w = Math.max(0, t - walkFrom);
-    const d = Math.min(through, v * (w < 0.5 ? (w * w) / 1.0 : w - 0.25));
-    if (t >= walkFrom && !walking) {
-      walking = true;
-      chog.play('walk');
-    }
+    const d = Math.min(through, STRIDE * (w < 0.12 ? (w * w) / 0.24 : w - 0.06));
     feet.copy(ctx.at).addScaledVector(dir, d);
     if (!gone) ctx.hold.set(feet, yaw0 + (yaw1 - yaw0) * turn, 1);
     // Its nose meets the face: the ripple. All of it through: gone.
-    if (touched < 0 && d > FACE - 0.6) touched = t;
-    fx.gate.vortexMat.uniforms.uRipple.value = touched < 0 ? 0 : seg(t, touched, touched + 1.1);
+    if (touched < 0 && d > FACE - 0.5) touched = t;
+    fx.gate.vortexMat.uniforms.uRipple.value = touched < 0 ? 0 : seg(t, touched, touched + 0.8);
     if (!gone && d >= through - 0.01) {
       gone = true;
       chog.root.visible = false;
+      through0();
     }
-    // A little light drifting into it all the while; a puff as it shuts.
-    fed += dt * (t < walkEnd ? 40 : 0);
+    fed += dt * (t < walkEnd ? 60 : 0);
     while (fed >= 1) {
       gateSparks(ctx, Gl, dir, 1, true);
       fed -= 1;
     }
-    if (t >= walkEnd + 0.05 && t - dt < walkEnd + 0.05) gateSparks(ctx, Gl, dir, 40, false);
-    if (t >= T - 0.05) fx.gate.group.visible = false;
-  });
-  fx.ground.visible = false;
-  fx.gate.vortexMat.uniforms.uRipple.value = 0;
+    if (t >= walkEnd && t - dt < walkEnd) gateSparks(ctx, Gl, dir, 40, false);
+    if (t >= T - 0.02) {
+      fx.gate.group.visible = false;
+      fx.ground.visible = false;
+      fx.gate.vortexMat.uniforms.uRipple.value = 0;
+    }
+  }).then(() => done());
+  await goneP;
+  // Travel hides it now and takes it to the other pad; the gate shuts on its own.
+  fx.users++;
   chog.play('idle');
-  // Travel hides it now and takes it to the other pad.
+  chog.setPace?.(1);
   finish(ctx, yaw1);
   chog.root.visible = false;
 }
@@ -517,43 +527,38 @@ async function gateDeparts(args) {
 async function gateArrives(args) {
   const ctx = setup(args);
   const { pad, chog } = ctx;
-  // Travel's camera is behind the pad looking out across the place (pad.facing): the gate opens past the
-  // pad facing it, and your Chog walks out of it toward the camera.
+  // Travel's camera is behind the pad looking out across the place (pad.facing): the gate stands just
+  // past the pad facing it, open as the light clears, and your Chog strides out of it toward the camera.
   const fwd = new THREE.Vector3(Math.sin(pad.facing), 0, Math.cos(pad.facing));
   const G = gateAt(ctx, fwd);
   const Gl = local(ctx, G);
   const back = fwd.clone().negate();
   const yaw = arrivedYaw(pad);
-  const v = walkSpeed(ctx);
-  const from = FACE + 1.3;
-  const walkFrom = 0.45;
-  // At its walk, then easing to a stop over the last quarter (see d below).
-  const walkEnd = walkFrom + (from * 1.1429) / v;
-  const T = walkEnd + 0.7;
+  const from = FACE + 0.45;
+  const walkFrom = 0.05;
+  // At its stride, then easing to a stop over the last quarter (see d below).
+  const walkEnd = walkFrom + (from * 1.1429) / STRIDE;
+  const T = walkEnd + 0.45;
   pad.beam = 0;
-  // Behind the gate, out of sight until it's open.
+  // Just behind the swirl's face, out of sight.
   chog.root.visible = false;
   ctx.hold.set(ctx.at.clone().addScaledVector(fwd, from), yaw, 1);
+  chog.play('walk');
+  chog.setPace?.(stridePace(ctx));
   fx.ground.visible = true;
   fx.ground.scale.setScalar(PAD_W);
   const feet = new THREE.Vector3();
   let landed = null;
   const landedP = new Promise((r) => (landed = r));
-  let walking = false, stopped = false, out = -1;
-  let fed = 0;
+  let stopped = false, out = -1, fed = 0;
   timeline(T, (t, dt) => {
     if (!ctx.live()) return;
-    const open = t < walkEnd + 0.1 ? backOut(seg(t, 0, 0.45), 1.3) : 1 - easeIn(seg(t, walkEnd + 0.1, walkEnd + 0.6));
-    const flare = bump(seg(t, 0.35, 0.7)) * 0.7;
+    const open = t < walkEnd ? backOut(seg(t, 0, 0.12), 1.3) : 1 - easeIn(seg(t, walkEnd, T));
+    const flare = bump(seg(t, 0, 0.3)) * 0.8;
     showGate(back, Gl, Math.max(0, open), flare, 0.25);
     fx.ground.material.uniforms.uGlow.value = 0.6 * Math.max(0, open) + flare * 0.6;
     pad.charge = 1 - seg(t, walkEnd, T);
-    if (t >= 0.3) chog.root.visible = true;
-    // Walking out of it to the pad's middle, easing to a stop there.
-    if (t >= walkFrom && !walking) {
-      walking = true;
-      chog.play('walk');
-    }
+    if (!stopped) chog.root.visible = true;
     const k = seg(t, walkFrom, walkEnd);
     const p = k < 0.75 ? 1.1429 * k : 1 - 2.2857 * (1 - k) * (1 - k);
     const d = from * (1 - p);
@@ -563,10 +568,11 @@ async function gateArrives(args) {
     if (k >= 1 && !stopped) {
       stopped = true;
       chog.play('idle');
+      chog.setPace?.(1);
     }
-    if (out < 0 && d < FACE + 0.6) out = t;
-    fx.gate.vortexMat.uniforms.uRipple.value = out < 0 ? 0 : seg(t, out, out + 1.1);
-    fed += dt * (t > 0.1 && t < walkEnd ? 30 : 0);
+    if (out < 0 && d < FACE + 0.5) out = t;
+    fx.gate.vortexMat.uniforms.uRipple.value = out < 0 ? 0 : seg(t, out, out + 0.8);
+    fed += dt * (t < walkEnd ? 50 : 0);
     while (fed >= 1) {
       gateSparks(ctx, Gl, back, 1, false);
       fed -= 1;
@@ -575,7 +581,7 @@ async function gateArrives(args) {
       landed();
       landed = null;
     }
-    if (t >= T - 0.05) {
+    if (t >= T - 0.02) {
       fx.gate.group.visible = false;
       fx.ground.visible = false;
       fx.gate.vortexMat.uniforms.uRipple.value = 0;

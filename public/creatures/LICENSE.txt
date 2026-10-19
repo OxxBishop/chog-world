@@ -1,0 +1,11 @@
+The island's wildlife (src/birds.js). All CC0 1.0 Universal (public domain):
+https://creativecommons.org/publicdomain/zero/1.0/
+
+armabee.glb, goleling.glb, glub.glb, puff.glb (the Pigeon)
+  Ultimate Monsters pack by Quaternius (https://quaternius.com)
+manta.glb (the Manta Ray), whale.glb
+  Animated Fish pack by Quaternius (https://quaternius.com)
+
+Each was turned to face +z, sized to 1 m on its longest side, trimmed to the animations the birds use
+and compressed (scripts/pack-creatures.mjs). The puff birds, the mantas and the whale are recoloured in
+src/birds.js.

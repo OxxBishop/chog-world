@@ -1126,6 +1126,8 @@ body.walking .places-toggle, body.walking #places, body.walking .nav-hint, body.
 .tv-full-note { margin: 0; font-size: 12px; color: var(--muted); text-align: center; }
 .tv-flash { position: absolute; inset: 0; background: radial-gradient(circle, #f4fdff, #bff3ff 60%, #8fdcff); opacity: 0; transition: opacity 0.25s ease; }
 .tv-flash.on { opacity: 1; }
+/* The portal trip's blink (B, the user 10-19: a trip in about 1.4 s). */
+.tv-flash.quick { transition-duration: 0.08s; }
 .tv-pick { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(12, 6, 30, 0.45); backdrop-filter: blur(6px); opacity: 0; transition: opacity 0.35s ease; padding: 16px; }
 .tv-pick.on { opacity: 1; }
 .tv-pick-card { width: min(720px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 22px; padding: 20px; display: grid; gap: 8px; }

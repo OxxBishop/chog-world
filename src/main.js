@@ -28,6 +28,7 @@ import { createIntro } from './intro.js';
 import { createArrival } from './arrival.js';
 import { createCasino } from './casino.js';
 import { createTravel } from './travel.js';
+import { createBirds } from './birds.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -325,6 +326,9 @@ let intro = null;
 let arrival = null;
 let casino = null;
 let npcs = null;
+// The island's wildlife (B35, src/birds.js).
+let birds = null;
+const birdFocus = new THREE.Vector3(), birdMe = new THREE.Vector3();
 let debug = null;
 // Walking your Chog round the islands (src/travel.js), and the last frame's step for its tweens.
 let travel = null;
@@ -397,6 +401,7 @@ async function init() {
   // The Chogs about town, each once its model is in; ?npcs shows every slot, with stand-ins. They load
   // with the rest, so the first one drawn (the singer) is drawn behind the loader: every rigged Chog
   // shares its shader, which Intel builds on the first draw.
+  birds = createBirds({ scene, island, quality: QUALITY, prewarm: warmUp });
   const npcsIn = buildNpcs({ scene, plaza: island.plaza, standees: params.has('npcs') || !!SHOTS[params.get('demo')], prewarm: warmUp, quality: QUALITY, bridges: island.bridges })
     .then((n) => (npcs = n))
     .catch((err) => console.warn('Chogs about town:', err));
@@ -605,7 +610,7 @@ async function init() {
       });
     }
   }
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: one of the demo video's shots (src/shots.js), with the interface hidden. What a shot
@@ -880,7 +885,7 @@ function frame() {
   else if (rig.room && !(rig.room instanceof RoomBox)) rig.room = null;
   demo?.update();
   space?.update();
-  entry?.update(dt);
+  entry?.update(dt, travel?.active ? travel.chog?.root : null);
   arrival?.update(dt);
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
   // Warp speed (B25) has the lens to itself.
@@ -910,6 +915,11 @@ function frame() {
   casino?.show(!entry?.active && rig.room === casino.room.pod);
   casino?.update(dt, env);
   npcs?.update(dt, camera, env, renderer, travel?.active ? travel.chog?.root : null);
+  // Near your Chog out walking, else near what the camera looks at; hidden in rooms and in space.
+  if (birds) {
+    const me = travel?.active && travel.chog ? travel.chog.root.getWorldPosition(birdMe) : null;
+    birds.update(dt, camera, env, { focus: me ? birdFocus.copy(me) : birdFocus.copy(rig.target), me, outdoors: !(rig.room instanceof RoomBox) && !space?.active });
+  }
   // On a lighter look, settled in a room, the clouds fade out: they show only through its windows and
   // cost nearly half a frame. They come back as you leave, before the doors open.
   // In the casino (no windows) they never show, so they stop there on every machine.
