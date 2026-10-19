@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { makeChog, CHOG_HEIGHT } from './chog.js';
 import { surfaceAt } from './travel.js';
 import { chogInfo } from './chogdata.js';
-import { HOODS, roadDistance, nearDome } from './layout.js';
+import { HOODS, DOMES, DOWNTOWN, roadDistance, nearDome } from './layout.js';
+import { COSMO_DOME } from './cosmo.js';
+import { createRider } from './rider.js';
 import { islandAt } from './terrain.js';
 import { angleLerp } from './util.js';
 
@@ -14,7 +16,7 @@ import { angleLerp } from './util.js';
  *            and one by the lobby door
  *   sniffer  out on the tree island, nose in its flowers
  *   runner   the dino lapping the loop on the beacon island with a toy block over its head
- *   walker   an astronaut walking the loop on the middle island
+ *   walker   the astronaut, floating in zero g in his own dome on the middle island (src/cosmo.js)
  *
  * The bar's bartender and regulars are in src/barchat.js. Each Chog here is its own rigged model from
  * public/models/npcs/ (C's cast); ?npcs shows every slot even before it is near.
@@ -363,7 +365,7 @@ const WAVE_FOR = 2.6;
  * slot, ?npcs). plaza is the plaza group (its origin is the square's). quality 'low' has a smaller crowd.
  * prewarm(obj) compiles a set's shaders before it shows.
  */
-export async function buildNpcs({ scene, plaza, standees = false, prewarm, quality = 'high' }) {
+export async function buildNpcs({ scene, plaza, standees = false, prewarm, quality = 'high', bridges = null }) {
   const actors = [];
   const sets = [];
   // The light of the moment (night, the canvas), for the stage's bulbs.
@@ -726,7 +728,8 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       if (crowdLook === 'skins' || crowdLook === 'cast') {
         const skins = ['#f7cdd6', '#8fb6ef', '#93d48c', '#f2d56b', '#e0705f'];
         for (let i = 0; i < plain; i++) who[i].tint = new THREE.Color('#ffffff').lerp(new THREE.Color(skins[i % skins.length]), 0.7);
-        if (crowdLook === 'cast') [124, 52, 56].slice(0, plain - 2).forEach((id, i) => (who[i] = { glb: M(`chog-${id}`), id }));
+        // Patrol rides his hover chopper round the islands now (below), so two of the cast join in.
+        if (crowdLook === 'cast') [124, 52].slice(0, plain - 2).forEach((id, i) => (who[i] = { glb: M(`chog-${id}`), id }));
       }
       const crowd = await Promise.all(who.map((w) => npc(w.glb, w.id ?? null, w.tint ?? null)));
       const spots = [0.5, -0.5, 0.95, -0.95, 1.4, -1.4, 1.8].slice(0, crowd.length);
@@ -909,46 +912,81 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     },
   );
 
-  // ---------- the astronaut, walking the loop on the middle island ----------
+  // ---------- the astronaut, floating in zero g in his own dome on the middle island ----------
+  // (B, the user 10-19: src/cosmo.js builds the dome.) He drifts round the front half of it, slowly
+  // turning head over heels, clear of his pod at the back.
   const w = NPC_SLOTS.walker;
-  const hood1 = HOODS[w.hood];
+  const cd = DOMES[COSMO_DOME];
   const stroll = new THREE.Group();
+  stroll.position.set(cd.x, cd.y, cd.z);
+  stroll.rotation.y = cd.facing;
   scene.add(stroll);
-  let walkAngle = 1.2;
+  const floatAt = (tt, out) => out.set(Math.sin(tt * 0.11) * 5.2, 5.4 + Math.sin(tt * 0.37) * 0.9, 8.2 + Math.sin(tt * 0.07 + 1) * 4.2);
   set(
-    (v) => v.copy(lapAt(walkAngle, hood1)),
+    (v) => stroll.localToWorld(v.set(0, 5.4, 8.2)),
     async () => {
       const astro = await npc(w.glb, w.id);
       astro.root.scale.setScalar(OUTDOOR);
-      stroll.add(astro.root);
-      const start = lapAt(walkAngle, hood1);
-      astro.root.position.set(start.x, surfaceAt(start.x, start.z), start.z);
-      astro.play('walk');
-      const pace = (astro.speedOf('walk') || 1) * OUTDOOR;
-      astro.setPace(astro.paceFor('walk'));
-      let pause = 0;
-      let next = 14;
+      astro.float?.(true);
+      // He turns about his middle, not his feet.
+      const pivot = new THREE.Group();
+      pivot.add(astro.root);
+      astro.root.position.y = -CHOG_HEIGHT * OUTDOOR * 0.45;
+      stroll.add(pivot);
+      astro.play('idle');
+      let ft = Math.random() * 40;
+      const drift = own(astro, (tt, dt) => {
+        ft += dt;
+        floatAt(ft, pivot.position);
+        pivot.rotation.set(Math.sin(ft * 0.13) * 0.7 + Math.sin(ft * 0.05) * 0.5, Math.PI + Math.sin(ft * 0.09) * 1.3, Math.sin(ft * 0.17) * 0.45);
+      });
+      const at = new THREE.Vector3();
+      let faded = 1;
       return {
         group: stroll,
         chogs: await shown(stroll, [astro]),
-        where: (v) => v.copy(lapAt(walkAngle, hood1)),
-        tick: own(astro, (tt, dt) => {
-          if (pause > 0) {
-            pause -= dt;
-            if (pause <= 0) astro.play('walk'), astro.setPace(astro.paceFor('walk'));
-            return;
-          }
-          if ((next -= dt) <= 0) {
-            pause = 2.6;
-            next = 18 + Math.random() * 10;
-            astro.play('idle');
-            return;
-          }
-          walkAngle += (dt * pace * Math.sign(w.speed)) / hood1.loopR;
-          const p = lapAt(walkAngle, hood1);
-          astro.root.position.set(p.x, surfaceAt(p.x, p.z), p.z);
-          astro.root.rotation.y = Math.atan2(Math.sin(walkAngle), -Math.cos(walkAngle));
-        }, { steer: true, resume: () => (pause > 0 ? astro.play('idle') : (astro.play('walk'), astro.setPace(astro.paceFor('walk')))) }),
+        where: (v) => pivot.getWorldPosition(v),
+        tick: (tt, dt) => {
+          drift(tt, dt);
+          // Floating with him, the camera can drift right up to him: he fades out of its way.
+          const k = lastCamera ? THREE.MathUtils.smoothstep(lastCamera.position.distanceTo(pivot.getWorldPosition(at)), 2.0, 3.4) : 1;
+          if (Math.abs(k - faded) > 0.01) astro.setFade?.((faded = k));
+        },
+      };
+    },
+  );
+
+  // ---------- Patrol on his hover chopper, riding round the islands (B, src/rider.js; the user 10-19) ----------
+  // The ride's ground: a bridge's deck where it crosses one, else the walking surface.
+  const rideGround = (x, z) => {
+    for (const br of bridges ?? []) {
+      const ux = (br.bx - br.ax) / br.len, uz = (br.bz - br.az) / br.len;
+      const along = (x - br.ax) * ux + (z - br.az) * uz;
+      if (along < 0 || along > br.len) continue;
+      if (Math.abs((x - br.ax) * -uz + (z - br.az) * ux) < br.width / 2) return br.deckY(along / br.len) + 0.15;
+    }
+    return surfaceAt(x, z);
+  };
+  const rideStart = new THREE.Vector3(Math.cos(2.5) * (DOWNTOWN.r + 2.5), 0, Math.sin(2.5) * (DOWNTOWN.r + 2.5));
+  let rider = null;
+  const meAt = new THREE.Vector3();
+  set(
+    (v) => (rider ? v.copy(rider.group.position) : v.copy(rideStart)),
+    async () => {
+      const chog = await npc(M('chog-56'), 56);
+      chog.root.scale.setScalar(OUTDOOR);
+      rider = createRider({ chog, groundAt: rideGround });
+      scene.add(rider.group);
+      await shown(rider.group, [chog]);
+      return {
+        group: rider.group,
+        // Its own clip and pose each frame (rider.update), so none for the cast's loop to move.
+        chogs: [],
+        where: (v) => v.copy(rider.group.position),
+        tick: (tt, dt) => {
+          rider.group.visible = !away.has(56);
+          rider.update(dt, lastEnv, lastCamera, lastMe ? lastMe.getWorldPosition(meAt) : null);
+        },
       };
     },
   );

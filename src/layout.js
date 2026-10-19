@@ -93,8 +93,10 @@ function line(ax, az, bx, bz, n = 8) {
  */
 export const BRIDGES = HOODS.map((h) => {
   const ux = Math.cos(h.angle), uz = Math.sin(h.angle);
-  const a = HUB.r - 6, b = HUB.r + h.gap + 6;
-  return { hood: h.id, angle: h.angle, ax: ux * a, az: uz * a, bx: ux * b, bz: uz * b, ay: baseY(HUB) - 1.6, by: baseY(h) - 1.6, width: 8.5 };
+  // Each end well onto its island's level ground, so the deck starts on the flat and stays level out past
+  // the island's sloping rim (src/skyfx.js).
+  const a = HUB.r - 11, b = HUB.r + h.gap + 11;
+  return { hood: h.id, angle: h.angle, ax: ux * a, az: uz * a, bx: ux * b, bz: uz * b, ay: baseY(HUB) - 1.6, by: baseY(h) - 1.6, width: 12 };
 });
 
 /** Walkways on the islands. kind decides width and paving. */

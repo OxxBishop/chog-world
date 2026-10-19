@@ -664,15 +664,18 @@ body.intro-reveal .hud, body.intro-reveal .places-toggle, body.intro-reveal .nav
 .intro .chog img { width: 88px; height: 88px; image-rendering: pixelated; }
 .intro .chog:hover, .intro .chog:focus-visible { box-shadow: 0 0 0 3px var(--cyan), 0 0 22px rgba(62, 242, 255, 0.5); outline: none; }
 
-/* Gone: torn into strips and out. */
+/* Gone: squeezed to a jittering line and out. Only transform and opacity, which the browser runs off the
+   page's main thread, so a busy first frame of the arrival can't freeze it half way (a clip-path tear
+   froze as a band on phones, the user, 10-19). */
 #loading.intro.leaving { animation: intro-tear 0.55s steps(6) forwards; }
 @keyframes intro-tear {
-  0% { clip-path: inset(0 0 0 0); filter: none; }
-  30% { clip-path: inset(10% 0 30% 0); transform: translateX(-10px); filter: hue-rotate(80deg) brightness(1.4); }
-  55% { clip-path: inset(46% 0 40% 0); transform: translateX(14px); }
-  80% { clip-path: inset(49% 0 49% 0); transform: translateX(-6px) scaleY(0.4); }
-  100% { clip-path: inset(50% 0 50% 0); opacity: 0; }
+  0% { transform: none; opacity: 1; }
+  30% { transform: translateX(-10px) scaleY(0.55); }
+  55% { transform: translateX(14px) scaleY(0.14); }
+  80% { transform: translateX(-6px) scaleY(0.03); opacity: 1; }
+  100% { transform: scaleY(0.01); opacity: 0; }
 }
+#loading.intro.done { visibility: hidden; transition: opacity 0.6s, visibility 0s 0.6s; }
 
 @media (prefers-reduced-motion: reduce) {
   .intro .glitch, .intro .glitch::before, .intro .glitch::after, #loading.intro .intro-band, .intro .prompt .cursor { animation: none; }
@@ -885,7 +888,7 @@ body.in-casino .places-toggle, body.in-casino #places, body.in-casino .nav-hint 
 .cz-ui.at-room .cz-games { display: flex; }
 .cz-ui.at-room .cz-rack, .cz-ui.at-room .cz-act, .cz-ui.at-room .cz-badges { display: none; }
 .cz-ui.at-room .cz-bank { padding-bottom: 12px; }
-.cz-ui.at-slots .cz-undo, .cz-ui.at-slots .cz-clear { display: none; }
+.cz-ui.at-slots .cz-undo, .cz-ui.at-slots .cz-clear, .cz-ui.at-slots .cz-rebet { display: none; }
 /* A phone: the badges across the top, your chips and SPIN in one row over the rack, the rack full width. */
 @media (max-width: 640px) {
   .cz-edges { top: calc(env(safe-area-inset-top, 0px) + 72px); left: 12px; right: 12px; gap: 8px; }
@@ -1084,6 +1087,26 @@ body.walking .places-toggle, body.walking #places, body.walking .nav-hint, body.
   animation: tv-rise 0.28s ease-out;
 }
 .tv-portal[hidden] { display: none; }
+/* B: the hoverboard's button (src/hoverboard.js), bottom right, clear of the joystick's thumb. */
+.tv-ride {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: 0;
+  font: 600 15px var(--display);
+  color: #fff;
+  background: linear-gradient(135deg, #9b72f7, #6f4ae0);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55), 0 0 22px rgba(180, 140, 255, 0.55), 0 8px 18px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: tv-pop 0.25s ease-out;
+}
+.tv-ride[hidden] { display: none; }
+.tv-ride:active { transform: scale(0.96); }
+.tv-ride:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+@keyframes tv-pop { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes tv-rise { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .tv-portal-head { display: flex; align-items: center; gap: 10px; }
 .tv-portal-head strong { display: block; font: 600 17px var(--display); }

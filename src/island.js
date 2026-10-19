@@ -10,6 +10,7 @@ import { buildLandmarks } from './landmarks.js';
 import { buildUndersides } from './underside.js';
 import { buildBridges, buildSkyRocks, buildWaterfalls } from './skyfx.js';
 import { buildTunnels } from './tunnels.js';
+import { buildCosmoDome, COSMO_DOME } from './cosmo.js';
 import { ISLANDS, HOODS, DOWNTOWN, DOMES, DOME_R, roadDistance, nearDome, nearPortal } from './layout.js';
 import { fbm, noise2 } from './util.js';
 import { Pod, RoomBox } from './camera.js';
@@ -37,6 +38,12 @@ const BIOMES = {
     under: [...MODELS.ferns, ...MODELS.ferns, ...MODELS.mushrooms, ...MODELS.bush], underCount: 60,
     grass: 300,
   },
+  // Cosmo's dome (src/cosmo.js): a moon floor, a few grey rocks and hardly any flowers.
+  moon: {
+    trees: [], treeCount: 0, treeScale: [1, 1], tints: ['#d8d2e6', '#c6bfd8', '#e2dcef'],
+    under: [...MODELS.rocks, ...MODELS.pebbles, ...MODELS.pebbles], underCount: 16, flowers: 4,
+    grass: 0,
+  },
 };
 
 // A random point somewhere on the islands, weighted by island area.
@@ -60,7 +67,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   const terrain = buildTerrain(scene);
   const roads = buildRoads(scene);
   const bridges = buildBridges(scene);
-  // Glass tunnels over the bridges, like the pods' domes (src/tunnels.js).
+  // Glass hoops over the bridges, the user's pick (src/tunnels.js).
   const tunnels = buildTunnels(scene, bridges.paths);
   const skyRocks = buildSkyRocks(scene, rng, MODELS);
   const falls = buildWaterfalls(overlay, rng, noise);
@@ -76,8 +83,8 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   const plant = (name, ...rest) => (FLOWERS.has(name) ? bloom : low).add(name, ...rest);
   const shadeSpots = [];
 
-  const domes = DOMES.map((d) => {
-    const dome = new Dome(d);
+  const domes = DOMES.map((d, i) => {
+    const dome = new Dome(i === COSMO_DOME ? { ...d, biome: 'moon' } : d);
     scene.add(dome.group);
     return dome;
   });
@@ -248,7 +255,8 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
       shadeSpots.push([w.x, w.z, 3 * scale, 0.35]);
       planted++;
     }
-    place(b.underCount, 0.3, 2, (x, z) => plant(rng.pick(b.under), x, y, z, { scale: rng.range(0.6, 1.1), rotY: rng() * Math.PI * 2, tint: rng.pick(dome.biome === 'frost' ? b.tints : GREENS) }));
+    place(b.underCount, 0.3, 2, (x, z) => plant(rng.pick(b.under), x, y, z, { scale: rng.range(0.6, 1.1), rotY: rng() * Math.PI * 2, tint: rng.pick(dome.biome === 'frost' || dome.biome === 'moon' ? b.tints : GREENS) }));
+    if (b.flowers) place(b.flowers, 0.3, 3, (x, z) => bloom.add(rng.pick(MODELS.flowers), x, y + 0.06, z, { scale: rng.range(0.7, 0.95), rotY: rng() * Math.PI * 2 }));
     place(b.grass, 0, 1, (x, z) => low.add(rng() < 0.6 ? 'Grass_Common_Short' : 'Grass_Common_Tall', x, y, z, { scale: rng.range(0.5, 0.85), rotY: rng() * Math.PI * 2, tint: dome.biome === 'grove' ? '#6fbf55' : rng.pick(GRASS) }));
     for (let lz = DOME_R - 1; lz > dome.homeZ + dome.home.front; lz -= 1.3) {
       const w = dome.toWorld(Math.sin(lz * 0.25) * 0.8 + rng.range(-0.3, 0.3), lz);
@@ -322,9 +330,12 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
     addRoom(r.id, r.name, r.room, pod, 'hub');
   }
 
+  const cosmo = buildCosmoDome(domes[COSMO_DOME]);
+
   return {
     obstacles,
     domes,
+    cosmo,
     solids,
     bridges: bridges.paths,
     tunnels,
@@ -342,6 +353,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
     },
     update(env, t, camera, dt = 0.016) {
       for (const d of domes) d.update(env, renderer);
+      cosmo.update(dt, camera);
       // A room draws only while the camera is in it; from outside its building hides it anyway.
       for (const r of rooms) r.room.group.visible = r.pod.inside(camera.position, 1.5);
       roads.update(env, renderer);

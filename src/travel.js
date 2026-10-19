@@ -11,6 +11,9 @@ import { wind } from './foliage.js';
 // departs({ chog, pad, scene, camera }) and arrives(...) play on your Chog at a pad (pad.centre, pad.facing),
 // and buildPad(scene, portal) can dress each hub ({ group, update(dt, { near, charge, beam }) }).
 const teleportFx = Object.values(import.meta.glob('./fx/teleport.js', { eager: true }))[0] ?? null;
+import { buildHoverboards, BOARD } from './hoverboard.js';
+// Riding a hoverboard: how much faster than your walk and run.
+const BOARD_BOOST = 2.1;
 
 /*
  * Getting about (the user's picks, 2026-10-15): you walk your own Chog round the islands in third
@@ -190,6 +193,14 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     lastLook: 0, // seconds since you last turned the view yourself
     move: '',
     busy: null, // a portal trip or a door: input waits
+    float: 0, // in zero g (Cosmo's dome): 0 on the ground to 1 floating
+    board: -1, // the hoverboard you ride (src/hoverboard.js), or -1
+    roll: 0,
+    hop: null, // stepping onto or off a board: { from, to, t, on }
+    rideYaw: 0,
+    floatT: 0,
+    lift: 0,
+    floating: false,
     onPortal: null,
     lastDoor: null,
     suspended: false,
@@ -201,6 +212,10 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   // ---------- the HUD ----------
   const isTouch = matchMedia('(pointer: coarse)').matches;
   const hud = buildHud();
+  // Hoverboards by the domes' doors (src/hoverboard.js).
+  const boards = buildHoverboards(scene, (x, z, near) => groundAt(x, z, near ?? heightAt(x, z) + 1)?.y ?? heightAt(x, z));
+  let lastEnv = null;
+  hud.ride.addEventListener('click', () => (state.board >= 0 ? leaveBoard() : takeBoard()));
   const map = drawMap();
 
   // ---------- input ----------
@@ -292,6 +307,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     }
     if (k === 'm') toggleMap();
     if (k === 'escape') closeMap();
+    // F: on or off a hoverboard (src/hoverboard.js).
+    if (k === 'f' && !e.repeat) state.board >= 0 ? leaveBoard() : takeBoard();
   }, { capture: true });
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
   window.addEventListener('blur', () => keys.clear());
@@ -322,7 +339,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
 
   // ---------- the ground ----------
   // Where you can stand at (x, z), and how high: on an island (clear of its very rim) or a bridge's deck.
-  function groundAt(x, z, nearY) {
+  function groundAt(x, z) {
     // A portal's pad: you stand on its top, not in it. Its edge is a short eased step, so you walk on.
     for (const p of portals) {
       const r = Math.hypot(x - p.at.x, z - p.at.z);
@@ -333,18 +350,18 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       const h = heightAt(x, z);
       return { y: h + Math.max(0, p.at.y + PAD_TOP - h) * k, on: 'pad' };
     }
-    const options = [];
     for (const br of bridges) {
       const ux = (br.bx - br.ax) / br.len, uz = (br.bz - br.az) / br.len;
       const along = (x - br.ax) * ux + (z - br.az) * uz;
       const side = (x - br.ax) * -uz + (z - br.az) * ux;
       if (along < -0.5 || along > br.len + 0.5 || Math.abs(side) > br.width / 2 - 0.45) continue;
-      options.push({ y: br.deckY(THREE.MathUtils.clamp(along / br.len, 0, 1)) + 0.15, on: 'bridge' });
+      // The deck always stands over the ground under it (its landings are level, on stone where the
+      // ground falls away), so on it the deck is the ground: from its end you walk on, from its side
+      // it's a wall where it stands high.
+      return { y: br.deckY(THREE.MathUtils.clamp(along / br.len, 0, 1)) + 0.15, on: 'bridge' };
     }
     const hit = islandAt(x, z);
-    if (hit && hit.k < 0.955) options.push({ y: surfaceAt(x, z), on: 'land' });
-    if (!options.length) return null;
-    return options.reduce((a, b) => (Math.abs(a.y - nearY) <= Math.abs(b.y - nearY) ? a : b));
+    return hit && hit.k < 0.955 ? { y: surfaceAt(x, z), on: 'land' } : null;
   }
 
   // Push a step clear of walls: domes (in and out only by their doors), buildings, the fountain, people.
@@ -404,12 +421,21 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   }
 
   // ---------- the camera ----------
+  let stairLift = 0;
   function placeCamera(dt, snap = false) {
     const look = _v.copy(state.pos);
-    look.y += CAM.look;
+    look.y += CAM.look + state.lift;
+    // Down a bridge's steps the camera rises to look down them (from just over the steps behind, their
+    // edges would hide your Chog), easing back as the way levels out.
+    const hereDeck = deckUnder(state.pos.x, state.pos.z);
+    const backDeck = deckUnder(state.pos.x + Math.sin(state.camYaw) * 6, state.pos.z + Math.cos(state.camYaw) * 6);
+    const rise = Number.isFinite(hereDeck) && Number.isFinite(backDeck) ? Math.max(0, (backDeck - hereDeck) / 6) : 0;
+    const stairs = rise > 0.05 ? Math.atan(rise) + 0.32 : 0;
+    stairLift = snap ? stairs : stairLift + (stairs - stairLift) * (1 - Math.exp(-dt * 2.5));
+    const pitch0 = Math.min(CAM.pitchMax, Math.max(state.camPitch, stairLift));
     // Behind and above, by yaw and pitch, pulled in where something's in the way.
-    const cp = Math.cos(state.camPitch);
-    const dir = _w.set(Math.sin(state.camYaw) * cp, Math.sin(state.camPitch), Math.cos(state.camYaw) * cp);
+    const cp = Math.cos(pitch0);
+    const dir = _w.set(Math.sin(state.camYaw) * cp, Math.sin(pitch0), Math.cos(state.camYaw) * cp);
     const want = new THREE.Vector3();
     let dist = state.camDist;
     const inTunnel = tunnels?.inside(look);
@@ -425,7 +451,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     // No room behind (a wall at your back): look down from higher up rather than crowd into your Chog.
     if (dist < 4.6) {
       for (const lift of [0.35, 0.7, 1.0]) {
-        const pitch = Math.min(CAM.pitchMax, state.camPitch + lift);
+        const pitch = Math.min(CAM.pitchMax, pitch0 + lift);
         const cp2 = Math.cos(pitch);
         const dir2 = new THREE.Vector3(Math.sin(state.camYaw) * cp2, Math.sin(pitch), Math.cos(state.camYaw) * cp2);
         let ok = state.camDist;
@@ -444,8 +470,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       }
     }
     want.copy(look).addScaledVector(dir, dist);
-    // Never under the grass (a bridge's deck counts when you're on it).
-    const floor = inTunnel ? look.y - CAM.look + 0.8 : cameraFloor(want.x, want.z, 1.2);
+    // Never under the grass, nor a bridge's deck (some fall a long way between islands: down one, the
+    // steps behind you rise above where the camera would be, so it looks down on you from higher up).
+    const floor = inTunnel ? look.y - CAM.look + 0.8 : Math.max(cameraFloor(want.x, want.z, 1.2), deckUnder(want.x, want.z) + 1.2);
     if (want.y < floor) want.y = floor;
     if (snap) {
       state.camPos.copy(want);
@@ -463,12 +490,27 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   // Whether the camera can't be at p: inside a building or a house (a dome's glass it may pass).
   function blocked(p, inTunnel) {
     if (inTunnel && !tunnels.inside(p, true)) return true;
+    // Floating in Cosmo's dome, the camera stays under its glass (lifted with you, it went out through
+    // the glass and looked in past the struts).
+    if (state.float > 0.05 && island.cosmo && !island.cosmo.contains(p, 1.2)) return true;
     for (const s of solids) {
       if (s.enterable) continue;
       if (Math.abs(p.x - s.x) > s.reach || Math.abs(p.z - s.z) > s.reach) continue;
       if (s.inside(p, 0.4)) return true;
     }
-    return p.y < cameraFloor(p.x, p.z, 0.6);
+    return p.y < Math.max(cameraFloor(p.x, p.z, 0.6), deckUnder(p.x, p.z) + 0.6);
+  }
+  // The height of a bridge's deck under (x, z), or -Infinity: the camera keeps above it, from a little
+  // out beyond its ends and rails.
+  function deckUnder(x, z) {
+    for (const br of bridges) {
+      const ux = (br.bx - br.ax) / br.len, uz = (br.bz - br.az) / br.len;
+      const along = (x - br.ax) * ux + (z - br.az) * uz;
+      if (along < -1 || along > br.len + 1) continue;
+      if (Math.abs((x - br.ax) * -uz + (z - br.az) * ux) > br.width / 2 + 1.5) continue;
+      return br.deckY(THREE.MathUtils.clamp(along / br.len, 0, 1));
+    }
+    return -Infinity;
   }
 
   // ---------- each frame ----------
@@ -499,7 +541,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const runFeet = Math.max(walkFeet, (chog?.speedOf?.('run') || RUN / SCALE) * SCALE);
     const walkV = THREE.MathUtils.clamp(walkFeet, ...WALK_BAND);
     const runV = THREE.MathUtils.clamp(runFeet, ...RUN_BAND);
-    const top = w.run ? runV : walkV;
+    const top = (w.run ? runV : walkV) * (state.board >= 0 ? BOARD_BOOST : 1);
     const target = mag > 0.01 ? want.normalize().multiplyScalar(top * Math.max(mag, 0.35)) : want.set(0, 0, 0);
     state.vel.lerp(target, 1 - Math.exp(-dt * ACCEL));
     const speed = state.vel.length();
@@ -510,7 +552,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const next = state.pos.clone().addScaledVector(state.vel, dt);
     collide(state.pos, next);
     const g = groundAt(next.x, next.z, state.pos.y);
-    const climbable = (gy, x, z) => gy - state.pos.y < STEP_UP && (gy - state.pos.y < 0.12 || (gy - state.pos.y) / Math.max(Math.hypot(x - state.pos.x, z - state.pos.z), 1e-3) < MAX_SLOPE);
+    // (A small step it just steps up at a walk: the domes' doors have a 14 cm sill, which stopped a walking
+    // Chog at Cosmo's door and only let a running one through.)
+    const climbable = (gy, x, z) => gy - state.pos.y < STEP_UP && (gy - state.pos.y < 0.25 || (gy - state.pos.y) / Math.max(Math.hypot(x - state.pos.x, z - state.pos.z), 1e-3) < MAX_SLOPE);
     if (g && (g.on === 'pad' || climbable(g.y, next.x, next.z))) {
       next.y = g.y;
       state.pos.copy(next);
@@ -530,8 +574,27 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     }
     chog.root.position.copy(state.pos);
     chog.root.rotation.y = state.yaw;
+    // Zero g in Cosmo's dome (B, src/cosmo.js; the user, 10-19): your Chog lifts off and drifts about in
+    // there, turning gently, and comes back down on the way out.
+    const zg = island.cosmo?.zeroG(state.pos) ? 1 : 0;
+    // (Off the hoverboard first: it waits by the door.)
+    if (zg && state.board >= 0) leaveBoard(true);
+    state.float += (zg - state.float) * (1 - Math.exp(-dt * (zg ? 0.8 : 1.5)));
+    state.floatT += dt;
+    const fk = state.float * state.float * (3 - 2 * state.float);
+    // On a hoverboard (src/hoverboard.js): stood on its deck, leaning into the turns.
+    const rideLift = rideStep(dt, speed);
+    chog.root.position.copy(state.pos);
+    state.lift = fk * (2.4 + Math.sin(state.floatT * 0.9) * 0.35) + rideLift;
+    chog.root.position.y += state.lift;
+    chog.root.rotation.x = Math.sin(state.floatT * 0.7) * 0.22 * fk;
+    chog.root.rotation.z = Math.sin(state.floatT * 0.53) * 0.3 * fk + state.roll;
+    if (state.floating !== fk > 0.05) {
+      state.floating = fk > 0.05;
+      chog.float?.(state.floating);
+    }
     pushGrass(chog);
-    animate(chog, speed, walkV, runV, walkFeet, runFeet);
+    animate(chog, state.float > 0.5 || state.board >= 0 || state.hop ? 0 : speed, walkV, runV, walkFeet, runFeet);
     if (!state.own) chog.update(dt, camera);
 
     // The camera swings round behind you as you go (unless you've just turned it yourself).
@@ -551,6 +614,12 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       checkDoors();
       checkPortals();
     }
+    // The hoverboard's button: by a parked board, or while riding one.
+    const nearBoard = state.board >= 0 ? state.board : state.busy || state.hop ? -1 : boards.nearest(state.pos, 3.6);
+    const showRide = nearBoard >= 0 && !state.busy;
+    if (hud.ride.hidden === showRide) hud.ride.hidden = !showRide;
+    const rideLabel = state.board >= 0 ? 'Hop off' : 'Ride the hoverboard';
+    if (showRide && hud.ride.textContent !== rideLabel) hud.ride.textContent = rideLabel;
     lastT += dt;
     if (lastT > 1 / 30) {
       lastT = 0;
@@ -580,6 +649,65 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       else P[i].w = 0;
     }
   }
+  // ---------- hoverboards (B, src/hoverboard.js; the user, 10-19) ----------
+  // Each frame: stepping onto or off a board, the board carried under your Chog, its lean into the turns.
+  // Returns how far over the ground it puts your Chog's feet.
+  function rideStep(dt, speed) {
+    const H = BOARD.hover + BOARD.thick;
+    let lift;
+    if (state.hop) {
+      const h = state.hop;
+      h.t = Math.min(1, h.t + dt / 0.42);
+      const k = h.t * h.t * (3 - 2 * h.t);
+      state.pos.x = h.from.x + (h.to.x - h.from.x) * k;
+      state.pos.z = h.from.z + (h.to.z - h.from.z) * k;
+      const g = groundAt(state.pos.x, state.pos.z, state.pos.y);
+      if (g) state.pos.y = g.y;
+      state.yaw = h.yaw0 + wrap(h.yaw1 - h.yaw0) * k;
+      state.vel.set(0, 0, 0);
+      lift = (h.on ? k : 1 - k) * H + Math.sin(Math.PI * h.t) * 0.7;
+      if (h.t >= 1) state.hop = null;
+    } else lift = state.board >= 0 ? H : 0;
+    // The lean: how fast it's turning, at speed.
+    const turn = wrap(state.yaw - state.rideYaw) / Math.max(dt, 1e-3);
+    state.rideYaw = state.yaw;
+    const riding = state.board >= 0 && !state.hop;
+    const want = riding ? THREE.MathUtils.clamp(-turn * 0.09 * Math.min(1, speed / 4), -0.32, 0.32) : 0;
+    state.roll += (want - state.roll) * (1 - Math.exp(-dt * 5));
+    if (riding) {
+      lift += Math.sin(state.floatT * 2.2) * 0.04;
+      boards.carry(state.board, state.pos, state.yaw, state.roll, lift);
+    }
+    boards.update(dt, lastEnv);
+    return lift;
+  }
+  function takeBoard() {
+    if (state.busy || state.hop || state.board >= 0 || !state.on) return;
+    const b = boards.nearest(state.pos, 3.6);
+    if (b < 0) return;
+    const bd = boards.boards[b];
+    state.board = b;
+    boards.take(b);
+    state.hop = { from: state.pos.clone(), to: new THREE.Vector3(bd.x, bd.y, bd.z), t: 0, on: true, yaw0: state.yaw, yaw1: bd.yaw };
+  }
+  // Off: the board waits where it is, and your Chog hops down beside it. quick (a door, a portal): straight
+  // down, the board left a step to its side.
+  function leaveBoard(quick = false) {
+    if (state.board < 0) return;
+    const b = state.board;
+    state.board = -1;
+    const side = new THREE.Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
+    if (quick) {
+      state.hop = null;
+      boards.park(b, state.pos.clone().addScaledVector(side, 2.4), state.yaw);
+      return;
+    }
+    boards.park(b, state.pos, state.yaw);
+    const to = state.pos.clone().addScaledVector(side, 2.1);
+    collide(state.pos, to);
+    state.hop = { from: state.pos.clone(), to, t: 0, on: false, yaw0: state.yaw, yaw1: state.yaw };
+  }
+
   function animate(chog, speed, walkV, runV, walkFeet = walkV, runFeet = runV) {
     // A little either side of each change, so a speed near one never flickers between two moves.
     const was = state.move;
@@ -606,6 +734,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       // Right at the door, walking into it.
       if (ahead > -0.5 && ahead < 3.2 && side < d.half + 0.6 && state.vel.dot(d.out) < -0.3) {
         state.lastDoor = d;
+        if (state.board >= 0) leaveBoard(true);
         world.enterRoom(d.room);
         return;
       }
@@ -658,6 +787,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const from = portalFx[fromIdx];
     const to = portalFx[k];
     hud.portal.hidden = true;
+    if (state.board >= 0) leaveBoard(true);
     state.busy = 'portal';
     state.vel.set(0, 0, 0);
     const chog = state.chog;
@@ -693,8 +823,11 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     await flash(false);
     chog.root.visible = true;
     // Down out of the light, from the head.
-    if (teleportFx?.arrives) await teleportFx.arrives({ chog, pad: to, scene, camera });
-    else
+    if (teleportFx?.arrives) {
+      await teleportFx.arrives({ chog, pad: to, scene, camera });
+      // B's wormhole has it walk out toward the camera: it stays facing that way.
+      if (teleportFx.facingAfter) state.yaw = teleportFx.facingAfter(to);
+    } else
       await tween(1.05, (t) => {
         to.beam = (1 - t) * 1.4;
         chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, 1);
@@ -734,6 +867,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       <button class="tv-map" aria-label="Open the map"><canvas width="300" height="300"></canvas></button>
       <div class="tv-stick" hidden><div class="tv-knob"></div></div>
       <div class="tv-portal" hidden></div>
+      <button class="tv-ride" hidden></button>
       <p class="tv-hint">${isTouch ? 'Drag on the left to walk, on the right to look round. Pinch to zoom.' : 'WASD to walk, Shift to run. Drag to look round, scroll to zoom. M for the map.'}</p>
       <div class="tv-full" hidden>
         <div class="tv-full-card">
@@ -753,6 +887,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       stick: q('.tv-stick'),
       knob: q('.tv-knob'),
       portal: q('.tv-portal'),
+      ride: q('.tv-ride'),
       hint: q('.tv-hint'),
       full: q('.tv-full'),
       fullCanvas: q('.tv-full canvas'),
@@ -1073,7 +1208,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const d = state.lastDoor ?? (state.lastRoom?.id?.startsWith('home') ? homeDoor(state.lastRoom) : null);
     state.lastRoom = null;
     if (d) {
-      const p = d.at.clone().addScaledVector(d.out, 6.5);
+      const p = d.at.clone().addScaledVector(d.out, /^(bar|casino|lobby)$/.test(d.room?.id ?? '') ? 9.5 : 6.5);
       const g = groundAt(p.x, p.z, p.y) ?? { y: heightAt(p.x, p.z) };
       state.pos.set(p.x, g.y, p.z);
       state.yaw = Math.atan2(d.out.x, d.out.z);
@@ -1167,8 +1302,10 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
           // Beams down onto the plaza's portal.
           pad.charge = 1;
           pad.beam = 1.4;
-          if (teleportFx?.arrives) await teleportFx.arrives({ chog, pad, scene, camera });
-          else
+          if (teleportFx?.arrives) {
+            await teleportFx.arrives({ chog, pad, scene, camera });
+            if (teleportFx.facingAfter) state.yaw = teleportFx.facingAfter(pad);
+          } else
             await tween(1.1, (t) => {
               pad.beam = (1 - t) * 1.4;
               chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, 1);
@@ -1196,6 +1333,10 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   }
 
   return {
+    // The light of the moment, for the hoverboards' glow (main.js, each frame).
+    setEnv(env) {
+      lastEnv = env;
+    },
     update,
     beginOwn,
     pickGuest,

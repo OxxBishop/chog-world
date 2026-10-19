@@ -205,10 +205,8 @@ export class Room {
     const t = 0.25;
     g.add(new THREE.Mesh(new THREE.BoxGeometry(o.w + t * 2, t, 0.3).translate(o.x, o.h + t / 2, 0.1), this.mats.trim));
     for (const s of [-1, 1]) g.add(new THREE.Mesh(new THREE.BoxGeometry(t, o.h, 0.3).translate(o.x + s * (o.w / 2 + t / 2), o.h / 2, 0.1), this.mats.trim));
-    // The leaf hangs on its own hinge, kept out of the merge so it can swing into the room
-    // (hinge.rotation.y = hinge.userData.dir * angle; src/entry.js opens it).
-    // It hangs on the side away from the room's framed view, so open it never stands between that view
-    // and the doorway.
+    // The leaf hangs on its own hinge, kept out of the merge so it can slide into the wall past its jamb
+    // (src/entry.js setRoomDoor opens it; the sliding doors, the user 10-19).
     const hinge = new THREE.Group();
     hinge.position.set(o.x + o.w / 2, 0, -0.05);
     hinge.userData.dir = 1;

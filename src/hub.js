@@ -258,17 +258,51 @@ export function sunScaled(m, sun) {
 // handles keep theirs: too small to show the steps, and one shader fewer to build.
 export function doorMats({ darkWood, wood, brass }) {
   const sun = { value: 1 };
-  return { darkWood: sunScaled(darkWood.clone(), sun), wood: sunScaled(wood.clone(), sun), brass, sun };
+  // (The handles' own copy too: the door's clipping planes go on it, see slidingDoor.)
+  return { darkWood: sunScaled(darkWood.clone(), sun), wood: sunScaled(wood.clone(), sun), brass: brass.clone(), sun };
 }
 export const doorSun = (set, k) => (set.sun.value = 1 - THREE.MathUtils.smoothstep(k, 0.1, 0.6));
+// Sliding doors (the user, 10-19: "why not have a sliding door? like it just parts and the chog walks in").
+// The two leaves part and each slides out past its jamb, as into a pocket in the wall. What has gone past
+// the jamb isn't drawn: clipping planes on the door's own materials, there from the start (keeping all)
+// so their shaders are built with the rest, and placed at the jambs the first time it opens. Nothing
+// swings into the doorway, so nothing ever crosses the camera coming through. Returns open(k), 0 to 1.
+export const keepAll = () => new THREE.Plane(new THREE.Vector3(0, 1, 0), 1e6);
+export function slidingDoor(leaves) {
+  const planes = leaves.map(keepAll);
+  const mats = new Set();
+  for (const l of leaves) l.traverse((o) => o.isMesh && mats.add(o.material));
+  for (const m of mats) {
+    m.clippingPlanes = planes;
+    m.clipShadows = true;
+  }
+  let placed = false;
+  return (k) => {
+    if (!placed) {
+      placed = true;
+      leaves.forEach((l, i) => {
+        l.userData.x0 = l.position.x;
+        l.parent.updateWorldMatrix(true, false);
+        // The leaf's side of its jamb (where it hangs from), in the world.
+        planes[i].set(new THREE.Vector3(l.userData.dir, 0, 0), -l.userData.dir * l.position.x).applyMatrix4(l.parent.matrixWorld);
+      });
+    }
+    const e = THREE.MathUtils.smootherstep(k, 0, 1);
+    for (const l of leaves) l.position.x = l.userData.x0 - l.userData.dir * l.userData.width * 1.02 * e;
+  };
+}
 // A room's own door, seen from its hall and from inside: never in the sun either. Its copy of the
 // room's trim keeps the room's lamplight (room.lit).
 const shaded = new WeakMap();
+// It slides too (src/entry.js setRoomDoor), so its copies carry its clipping plane (room.doorway.clip).
 export function shadeRoomDoor(room) {
+  room.doorway.clip ??= keepAll();
   room.doorway.hinge.traverse((o) => {
     if (!o.isMesh) return;
     if (!shaded.has(o.material)) {
       const m = sunScaled(o.material.clone(), NO_SUN);
+      m.clippingPlanes = [room.doorway.clip];
+      m.clipShadows = true;
       if (room.lit?.includes(o.material)) room.lit.push(m);
       shaded.set(o.material, m);
     }
@@ -291,6 +325,7 @@ export function hingedLeaf({ hinge, dir, width, bottom, height, mats }) {
   const g = new THREE.Group();
   g.position.copy(hinge);
   g.userData.dir = dir;
+  g.userData.width = width;
   const cx = (dir * width) / 2;
   // Meeting the other leaf with no gap, so the doorway can't be seen through.
   g.add(box(width - 0.01, height, 0.2, mats.darkWood, cx, bottom + height / 2, 0));
@@ -741,19 +776,23 @@ export function buildHub() {
   barRoom.group.position.set(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z);
   casinoRoom.group.position.set(CASINO_ROOM.x, CASINO_ROOM.y, CASINO_ROOM.z);
   // How to walk in (hub space): the outside door, its leaves, the hall's floor, and the room's door.
-  const entrance = (x, d, leaves, door, floor, zIn, room) => ({
-    x, half: d.half, sill: d.bottom, top: d.top, z: d.z, zIn, floor, room,
-    // Swings the outside doors: 0 shut, 1 open. Open, they are in the hall's shade.
-    open(k) {
-      const a = THREE.MathUtils.smootherstep(k, 0, 1) * 1.6;
-      for (const l of leaves) l.rotation.y = l.userData.dir * a;
-      doorSun(door, k);
-    },
-  });
+  // steps: the fronts of the steps up to the sill from outside, the outermost first, as [z, the tread's
+  // top], so a Chog walks to each riser and steps up it instead of floating up a slope through them.
+  const entrance = (x, d, leaves, door, floor, zIn, room, steps = [[d.z + 1.0, d.bottom]]) => {
+    const slide = slidingDoor(leaves);
+    return {
+      x, half: d.half, sill: d.bottom, top: d.top, z: d.z, zIn, floor, room, steps,
+      // Parts the outside doors, sliding into the wall: 0 shut, 1 open. Open, the hall's in shade.
+      open(k) {
+        slide(k);
+        doorSun(door, k);
+      },
+    };
+  };
   const rooms = [
     {
       id: 'lobby', name: 'Lobby', room: lobbyRoom, at: new THREE.Vector3(LOBBY_ROOM.x, LOBBY_ROOM.y, LOBBY_ROOM.z), shell: 'lobby',
-      entrance: entrance(0, { ...DOOR, top: DOOR.top - 0.85 }, lobbyLeaves, lobbyDoor, lobbyFloor, lobbyIn, lobbyRoom),
+      entrance: entrance(0, { ...DOOR, top: DOOR.top - 0.85 }, lobbyLeaves, lobbyDoor, lobbyFloor, lobbyIn, lobbyRoom, [2, 1, 0, -1].map((i) => [STEP.from + STEP.run * (i + 1), DOOR.bottom - STEP.rise * (i + 1)])),
     },
     {
       id: 'bar', name: 'Bar', room: barRoom, at: new THREE.Vector3(BAR_ROOM.x, BAR_ROOM.y, BAR_ROOM.z), shell: 'bar',

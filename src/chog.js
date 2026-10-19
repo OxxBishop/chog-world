@@ -985,7 +985,10 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     aura = auraRing(look.aura, look.glow);
     root.add(aura);
   }
-  if (SHADOW_MODE === 'round' || SHADOW_MODE === 'sun') root.add(groundShadow());
+  const shadow = SHADOW_MODE === 'round' || SHADOW_MODE === 'sun' ? groundShadow() : null;
+  if (shadow) root.add(shadow);
+  // In zero g (B's src/cosmo.js): its feet aren't kept on any ground and it casts no shadow on it.
+  let floating = false;
   // The mood badge pops up over the head when the Chog reacts to something said.
   const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
   badge.scale.setScalar(0.62);
@@ -1131,6 +1134,13 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       root.traverse((o) => (o.isMesh || o.isSprite) && o !== stand?.card && o !== badge && !tintables.includes(o) && (o.visible = k > 0.02));
       if (model) model.visible = k > 0.02;
       if (k <= 0.02) badge.visible = false;
+    },
+    // Floating, in zero g: its feet left free of the ground and its shadow on the ground gone (shrunk to
+    // nothing: setFade shows every mesh again).
+    float(on) {
+      floating = !!on;
+      if (floating && model) model.position.y = 0;
+      shadow?.scale.setScalar(floating ? 1e-4 : 1);
     },
     setGrey(k) {
       if (stand) stand.mat.uniforms.uGrey.value = k;
@@ -1446,7 +1456,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   // Its feet out of the ground: a clip that drops the hips further than the legs bend would sink the soles,
   // so the whole model rises by that much (never lowered: a jump stays a jump).
   function groundUpdate(dt, camera) {
-    if (!soles.length || !skin) return;
+    if (!soles.length || !skin || floating) return;
     root.getWorldPosition(centre);
     if (camera && centre.distanceTo(camera.position) > 80) return;
     model.updateMatrixWorld(true);

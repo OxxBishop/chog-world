@@ -777,6 +777,7 @@ const UI_HTML = `${ICONS}
       <div class="cz-act">
         <button type="button" class="cz-key cz-undo" title="Undo" aria-label="Take the last chip back"><svg aria-hidden="true"><use href="#czi-undo"/></svg></button>
         <button type="button" class="cz-key cz-clear" title="Clear" aria-label="Clear the felt"><svg aria-hidden="true"><use href="#czi-clear"/></svg></button>
+        <button type="button" class="cz-key cz-rebet" title="Rebet" aria-label="Put the last bets down again"><svg aria-hidden="true"><use href="#czi-rebet"/></svg></button>
         <button type="button" class="cz-spin"><span>SPIN</span></button>
       </div>
       <div class="cz-games">
@@ -809,7 +810,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     img: q$('.cz-who img'), name: q$('.cz-who b'), sub: q$('.cz-who span'), badges: q$('.cz-badges'), tip: q$('.cz-tip'),
     leave: q$('.cz-leave'), leaveText: q$('.cz-leave span'), say: q$('.cz-say'), tokens: q$('.cz-tokens'), felt: q$('.cz-felt'),
     feltN: q$('.cz-felt b'), bankLabel: q$('.cz-bank small'), bankN: q$('.cz-bank b'), chips: [...ui.querySelectorAll('.cz-chip')],
-    undo: q$('.cz-undo'), clear: q$('.cz-clear'), spin: q$('.cz-spin'),
+    undo: q$('.cz-undo'), clear: q$('.cz-clear'), rebet: q$('.cz-rebet'), spin: q$('.cz-spin'),
   };
   const banner = document.createElement('div');
   banner.className = `cz-banner look-${look.name}`;
@@ -843,6 +844,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   let lostKind = null;
   let lastN = null;
   let backAt = 0; // seconds left at the wheel before the camera goes back to the felt
+  let sweepAt = 0; // then seconds before the spin's chips are swept off the felt
   // The show.
   let flash = 0, push = 0, shake = 0, show = null, wake = 0, shownChips = 0, t = 0;
   const fx = { spin: 0, win: 0, jackpot: 0 };
@@ -1141,6 +1143,15 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     settledFelt = false;
     lost = null;
     table.mark(null);
+  }
+  // A spin's chips off the felt once you've seen them: what it paid is in your chips by then. The
+  // number it landed on stays marked until the next bet.
+  function sweepFelt() {
+    sweepAt = 0;
+    if (!table || wheel || !settledFelt || bets.size) return;
+    for (const key of table.stacked()) sparkleAt(table.worldAt(key), 6, 0.4, false);
+    table.setStacks([]);
+    render();
   }
   function drawFelt(result = null) {
     if (!result) table.setStacks([...bets].map(([key, amount]) => ({ key, amount })));
@@ -1780,7 +1791,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     el.chips.find((b) => b.classList.contains('on'))?.focus();
   });
   el.undo.addEventListener('click', () => takeOff());
-  el.clear.addEventListener('click', () => (staked() ? clearBets() : rebet()));
+  el.clear.addEventListener('click', () => clearBets());
+  el.rebet.addEventListener('click', () => rebet());
   el.spin.addEventListener('click', () => (mode === 'slots' ? spin() : spinWheel()));
   el.leave.addEventListener('click', () => {
     if (mode) stepBack();
@@ -1820,15 +1832,12 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     el.bankN.textContent = fmt(shownChips);
     el.leaveText.textContent = mode ? 'Step back' : 'Leave';
     el.leave.setAttribute('aria-label', mode ? 'Step back from the game' : 'Leave the casino');
-    // Undo, and Clear (Rebet once the felt is bare).
+    // Undo and Clear for the chips on the felt; Rebet puts the last spin's bets down again on a bare felt.
     const on = mode === 'roulette' ? staked() : 0;
     el.undo.disabled = !!wheel || !on;
-    const again = !on && !!lastBets;
-    el.clear.classList.toggle('again', again);
-    el.clear.disabled = !!wheel || (!on && !lastBets);
-    el.clear.title = again ? 'Rebet' : 'Clear';
-    el.clear.setAttribute('aria-label', again ? 'Put the last bets down again' : 'Clear the felt');
-    el.clear.querySelector('use').setAttribute('href', again ? '#czi-rebet' : '#czi-clear');
+    el.clear.disabled = !!wheel || !on;
+    el.rebet.disabled = !!wheel || !!on || !lastBets;
+    el.rebet.classList.toggle('again', !wheel && !on && !!lastBets);
     // SPIN, with a light running round its ring while the reels or the wheel turn.
     const turning = mode === 'slots' ? !!spinning : !!wheel;
     el.spin.disabled = turning || !!show || (mode === 'slots' && !!picking);
@@ -2032,7 +2041,11 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
           bv.copy(table.ball.position).sub(table.wheelAt).applyAxisAngle(Y, a);
           table.ball.position.copy(table.wheelAt).add(bv);
         }
-        if (backAt > 0 && (backAt -= dt) <= 0 && mode === 'roulette' && !wheel) goTable('bet');
+        if (backAt > 0 && (backAt -= dt) <= 0) {
+          if (mode === 'roulette' && !wheel) goTable('bet');
+          sweepAt = 1.4;
+        }
+        if (sweepAt > 0 && (sweepAt -= dt) <= 0) sweepFelt();
         table.stepAim(dt, t);
       }
       stepChips(dt);
