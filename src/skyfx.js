@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { ISLANDS, BRIDGES } from './layout.js';
-import { edgeR, heightAt, undersidePoint } from './terrain.js';
+import { ISLANDS, BRIDGES, roadDistance } from './layout.js';
+import { edgeR, heightAt, islandAt, undersidePoint } from './terrain.js';
 import { info } from './assets.js';
 import { fbm, noise2, clamp, smoothstep } from './util.js';
 import { mergeByMaterial } from './merge.js';
@@ -53,10 +53,46 @@ export function buildBridges(scene) {
     const ux = (br.bx - br.ax) / len, uz = (br.bz - br.az) / len;
     const nx = -uz, nz = ux;
     const rise = br.by - br.ay;
-    const steep = Math.abs(rise) / len > 0.12;
-    const deckY = (t) => br.ay + rise * t + 0.25 + Math.sin(t * Math.PI) * (steep ? 0.8 : 2.4);
+    // The deck's height along the way (its middle; its top is 0.15 higher). Each end lies on the island's
+    // grass, following it, up to where the island's walkable ground ends; between, the span climbs or
+    // steps from one landing to the other. (It used to start 6 m inside each island 0.7 to 1.4 m under
+    // the grass, so a Chog walking on followed the buried deck down into the ground: the user, 10-18.)
+    // The walking surface there: the grass, or the paving a few cm over it (as travel.js surfaceAt).
+    const landAt = (d) => {
+      const x = br.ax + ux * d, z = br.az + uz * d;
+      const isl = islandAt(x, z);
+      if (!isl || isl.k >= 0.955) return null;
+      const r = roadDistance(x, z);
+      return heightAt(x, z) + (r < -0.22 ? 0.065 : r < 0.22 ? 0.14 : 0);
+    };
+    const STEP = 0.25;
+    let s0 = 0, s1 = len;
+    while (s0 < len / 2 && landAt(s0) !== null) s0 += STEP;
+    while (s1 > len / 2 && landAt(s1) !== null) s1 -= STEP;
+    // The deck's top 2 cm over the ground it lies on (its middle is 0.15 under its top).
+    const ON_GRASS = -0.13;
+    const y0 = (landAt(Math.max(0, s0 - STEP)) ?? br.ay + 0.25) + ON_GRASS;
+    const y1 = (landAt(Math.min(len, s1 + STEP)) ?? br.by + 0.25) + ON_GRASS;
+    const steep = Math.abs(y1 - y0) / Math.max(1, s1 - s0) > 0.12;
+    const hump = steep ? 0.8 : 2.4;
+    const n = Math.ceil(len / STEP);
+    const table = new Float32Array(n + 1);
+    for (let i = 0; i <= n; i++) {
+      const d = Math.min(len, i * STEP);
+      const g = d < s0 || d > s1 ? landAt(d) : null;
+      if (g !== null) table[i] = g + ON_GRASS;
+      else {
+        const u = clamp((d - s0) / Math.max(0.01, s1 - s0), 0, 1);
+        table[i] = y0 + (y1 - y0) * u + Math.sin(u * Math.PI) * hump;
+      }
+    }
+    const deckY = (t) => {
+      const f = clamp(t, 0, 1) * (len / STEP);
+      const i = Math.min(n - 1, Math.floor(f));
+      return table[i] + (table[i + 1] - table[i]) * (f - i);
+    };
     const at = (t, side = 0, dy = 0) => new THREE.Vector3(br.ax + ux * len * t + nx * side, deckY(t) + dy, br.az + uz * len * t + nz * side);
-    paths.push({ ...br, len, deckY });
+    paths.push({ ...br, len, deckY, s0, s1 });
 
     // Deck: short boards following the arch, or level treads stepping down a stair.
     const N = 28;

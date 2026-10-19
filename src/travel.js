@@ -462,7 +462,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   }
   // Whether the camera can't be at p: inside a building or a house (a dome's glass it may pass).
   function blocked(p, inTunnel) {
-    if (inTunnel && !tunnels.inside(p)) return true;
+    if (inTunnel && !tunnels.inside(p, true)) return true;
     for (const s of solids) {
       if (s.enterable) continue;
       if (Math.abs(p.x - s.x) > s.reach || Math.abs(p.z - s.z) > s.reach) continue;

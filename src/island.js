@@ -346,6 +346,7 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
       for (const r of rooms) r.room.group.visible = r.pod.inside(camera.position, 1.5);
       roads.update(env, renderer);
       bridges.update(env, renderer);
+      tunnels.update?.(env, renderer, dt);
       skyRocks.update(t);
       falls.update(env, t);
       hub.update(env, t, renderer);
