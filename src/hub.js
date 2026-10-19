@@ -6,6 +6,7 @@ import { mergeByMaterial } from './merge.js';
 import { createGlows } from './glows.js';
 import { buildLobbyRoom, buildBarRoom } from './interior.js';
 import { buildCasinoRoom } from './casino.js';
+import { createLobbyFx } from './fx/lobbyfx.js';
 
 /*
  * The Chog Hub: one building on the downtown plaza with three doors, each wing with its own
@@ -540,6 +541,9 @@ export function buildHub() {
   // Each is reached for real: its door in the pod's shell opens onto a short hall to the room's own
   // door, so the camera can fly in from the plaza without a cut (src/entry.js).
   const lobbyRoom = buildLobbyRoom();
+  // The lobby's sun shafts and dust (B24). The light look keeps fewer motes.
+  const lobbyLight = createLobbyFx(lobbyRoom, { quality: /[?&]q=low\b/.test(location.search) ? 'low' : 'high' });
+  let lastT = null;
   const barRoom = buildBarRoom();
   const casinoRoom = buildCasinoRoom();
   for (const r of [lobbyRoom, barRoom, casinoRoom]) shadeRoomDoor(r);
@@ -794,6 +798,9 @@ export function buildHub() {
     rooms,
     update(env, t, renderer) {
       for (const r of rooms) if (r.room.group.visible) r.room.update(env, renderer);
+      const dt = lastT === null ? 0 : Math.min(0.1, Math.max(0, t - lastT));
+      lastT = t;
+      if (lobbyRoom.group.visible) lobbyLight.update(dt, env);
       const n = env.night;
       for (const s of signs) s.material.emissiveIntensity = 0.35 + n * 1.6;
       mats.lantern.emissiveIntensity = 0.3 + n * 2.2;
