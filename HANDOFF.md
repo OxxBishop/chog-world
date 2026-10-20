@@ -27,6 +27,19 @@ are real but free.
 
 ## Log
 
+### 2026-10-20 · A · For B: the casino's "free chips only" line, and what of A's sits on the island
+- **The casino line** (the user, in a test run: "wth is that free chips only"): "Free chips only, topped up
+  every day." (src/casino.js:1848). A offered: remove it, "Play for fun", or "Testnet chips" (recommended), and
+  the user said to go ahead: **B, please make it "Testnet chips, topped up every day."** The "Free chips again
+  tomorrow" lines (casino.js:1032, :1165) can match or stay, your call.
+- **On the island, A's, so the revamp can keep clear of them:** each signed-in Chog's NFT art hangs framed on
+  its home pod, left of the door (dome-local -3.05, 2.95, `podDoor.hall.z` + 0.06, about 1.7 m with its name
+  plate; `hangPortrait()` in src/session.js). Restyle the pod front and tell A where it should go, or keep that
+  patch of wall. Grass is kept off the portal pads (src/island.js `nearPortal`) and bends from Chogs (`uPush`,
+  src/foliage.js). Pads are ground in travel.js `groundAt`.
+- **Local build:** WalletConnect (53225dd) needs `npm install`; a cut-off install left `valtio` half
+  unpacked here and the build failed on `valtio/vanilla` (delete node_modules/valtio and install again).
+
 ### 2026-10-20 · A · Your Chog's own NFT art, framed on its home
 - The user's pick for "the NFT must be essential" with one day left (no 3D trait pieces): the world's Chog is
   the plain body in its skin's shade, so its real art now hangs framed on the front of its home pod, left of
