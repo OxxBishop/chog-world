@@ -200,6 +200,59 @@ export function initSession(world) {
     }
   }
 
+  // Its own art, framed on the front of its home beside the door: the NFT is who lives here (the
+  // world's Chog is the plain body in its skin's shade, so this is where its look shows in full).
+  let portrait = null;
+  const loadTex = (url) => new THREE.TextureLoader().loadAsync(url).then((t) => ((t.colorSpace = THREE.SRGBColorSpace), (t.anisotropy = 4), t));
+  async function hangPortrait(info, room) {
+    takePortrait();
+    const i = Number(String(room.place).replace('dome', ''));
+    const dome = world.domes?.[i];
+    if (!dome?.podDoor) return;
+    const art = await loadTex(`${import.meta.env.BASE_URL}art/${info.id}.webp`).catch(() => null);
+    if (!art) return;
+    const W = 1.5, B = 0.1;
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: '#6b4428', roughness: 0.55 });
+    const brass = new THREE.MeshStandardMaterial({ color: '#d9ad55', metalness: 0.7, roughness: 0.35 });
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(W + B * 2, W + B * 2, 0.08).translate(0, 0, 0.04), wood));
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(W + 0.04, W + 0.04, 0.02).translate(0, 0, 0.085), brass));
+    // The art itself, lit a little from within so it reads in the dome's shade.
+    const pic = new THREE.MeshStandardMaterial({ map: art, emissiveMap: art, emissive: '#ffffff', emissiveIntensity: 0.25, roughness: 0.7 });
+    g.add(new THREE.Mesh(new THREE.PlaneGeometry(W, W).translate(0, 0, 0.1), pic));
+    // A brass plate under it with its name.
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 128;
+    const x = c.getContext('2d');
+    x.fillStyle = '#e2b95f';
+    x.fillRect(0, 0, 512, 128);
+    x.fillStyle = '#4a2e14';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.font = '700 72px Fredoka, sans-serif';
+    x.fillText(info.name, 256, 68);
+    const plateTex = new THREE.CanvasTexture(c);
+    plateTex.colorSpace = THREE.SRGBColorSpace;
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 0.03).translate(0, -(W / 2 + B + 0.24), 0.03), [brass, brass, brass, brass, new THREE.MeshStandardMaterial({ map: plateTex, metalness: 0.5, roughness: 0.4 }), brass]));
+    // On the pod's front, to the left of the door as you come up to it, at a Chog's eye height.
+    g.position.set(-3.05, 2.95, dome.podDoor.hall.z + 0.06);
+    g.traverse((o) => o.isMesh && (o.castShadow = o.receiveShadow = true));
+    dome.group.add(g);
+    portrait = g;
+    await world.prewarm?.(g);
+  }
+  function takePortrait() {
+    if (!portrait) return;
+    portrait.removeFromParent();
+    portrait.traverse((o) => {
+      if (!o.isMesh) return;
+      o.geometry.dispose();
+      for (const m of [o.material].flat()) (m.map?.dispose(), m.dispose());
+    });
+    portrait = null;
+  }
+
   // Make the Chog and put it in its home, ready to be shown (it stays out of sight until then).
   async function settle(info) {
     const s = session;
@@ -211,7 +264,7 @@ export function initSession(world) {
     const room = world.homes[homeFor(info.id, world.homes.length)];
     room.room.group.add(chog.root);
     prepareWake(chog);
-    await world.prewarm?.(room.room.group);
+    await Promise.all([world.prewarm?.(room.room.group), hangPortrait(info, room)]);
     Object.assign(s, { id: info.id, info, chog, room });
   }
 
@@ -490,6 +543,7 @@ export function initSession(world) {
     const s = session;
     session = null;
     chat.reset();
+    takePortrait();
     if (s) {
       s.stopWatch?.();
       clearInterval(s.ownerCheck);

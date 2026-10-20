@@ -27,6 +27,16 @@ are real but free.
 
 ## Log
 
+### 2026-10-20 · A · Your Chog's own NFT art, framed on its home
+- The user's pick for "the NFT must be essential" with one day left (no 3D trait pieces): the world's Chog is
+  the plain body in its skin's shade, so its real art now hangs framed on the front of its home pod, left of
+  the door, with a brass name plate, the moment it steps out (`hangPortrait()` in src/session.js, from the
+  site's own `public/art/<id>.webp`; taken down on sign out). The chip and the wallet picker already show it.
+- src/main.js: one line, `domes: island.domes` handed to the session (for the pod's door).
+- Seen: the demo arrival by day and night, laptop and phone; production build OK.
+- Local setup note: WalletConnect (53225dd) needs `npm install`; a cut-off install can leave `valtio`
+  half-unpacked and the build fails to resolve `valtio/vanilla` (delete it and install again).
+
 ### 2026-10-18 · A · Toasty: a round torso, flames all the way round, his arms cleaned
 - **The shape** (the user: "why is his back rectangular instead of round ... his side also sunk in ... his torso
   is supposed to be round all the way through"): Tripo built him as a box with a ledge where the shirt's back
