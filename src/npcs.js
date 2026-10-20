@@ -337,8 +337,8 @@ const CAST = {
   56: { name: 'Patrol', face: 'happy', pace: 0.85, lines: ['Afternoon. Please enjoy the plaza responsibly.', 'All clear here. Have a lovely day.', 'Pardon me. Just keeping an eye out.'], hi: ['All good, {n}?', 'Hey {n}. Stay safe out there.'] },
   66: { name: 'Quackers', face: 'excited', pace: 1.2, lines: ['Love the look. Mine is better, but love it.', 'Duck float? Iconic. Thanks for noticing.', 'Strike a pose with me. Quick!'], hi: ['{n}! Love the fit.', 'Hey {n}! Quack!'] },
   52: { name: 'Toasty', face: 'happy', pace: 1, lines: ['Did I ever tell you about the coldest night on these islands?', 'Brr. Sit down, I have a story for you.', 'You look warm. Stand a little closer, friend.'], hi: ['{n}! Warm enough?', 'Hey {n}, I owe you a story.'] },
-  // The dino on the beacon island (no wave of its own: it stands and talks).
-  dino: { name: 'Dino', face: 'excited', pace: 1, move: 'idle', lines: ['Rawr! Did I scare you? No? Okay.', 'Cannot stop, I am in training!', 'This block and I go everywhere together.', 'Race you round the island!'], hi: ['Rawr, {n}!', 'Hey {n}! Catch me if you can!'] },
+  // The dino on the beacon island (its arms rigged 10-21: it waves like the rest).
+  dino: { name: 'Dino', face: 'excited', pace: 1, lines: ['Rawr! Did I scare you? No? Okay.', 'Cannot stop, I am in training!', 'This block and I go everywhere together.', 'Race you round the island!'], hi: ['Rawr, {n}!', 'Hey {n}! Catch me if you can!'] },
 };
 // Greetings: two of the cast who come across each other, one of them walking, greet by name, the first
 // line and then the answer (the user, 10-18: "the chogs should say a greeting to each other if they come

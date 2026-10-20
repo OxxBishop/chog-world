@@ -27,6 +27,22 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · A · The dino: arms, the cast's moves, four claws, a clean suit
+
+- **What changed:** `public/models/npcs/dino.glb` rebuilt. It has arm bones now (Tripo gave it none, its arms
+  stuck over its head), its arms rest down, and it carries the cast's clips: the picked walk and jog, idle,
+  talk, wave, cheer. Four claws on each foot (it had one and a flat grey piece on the side). Its colour map
+  cleaned (smears where the green meets the purple, streaks and seam lines on the suit, the hands all pink,
+  a clean line where the pink feet meet the green legs) and repacked with gutters.
+- **Code:** `src/chog.js` `WAVE_MODEL` (the dino's wave sits lower and further out, so its big hood doesn't hide
+  the hand); `src/npcs.js` the dino waves when it greets you, like the rest.
+- **See it:** the beacon island. It laps with its block on its head; stand in its way and it waves and talks.
+  `tools/models/pose.html?m=dino&move=walk` (or run, wave, cheer, talk).
+- **Tools:** `tools/models/fix/addbones.mjs` (new bones in a skin), `patch.mjs --uv`, `ktx2.mjs --color uastc`,
+  `tools/models/view.html` (`?uv=1`, `?tex=`, `?plain=1`, `?side=front`, `?cy=&el=`), the scripts in
+  `tools/models/fix/dino/` (README, 10-21).
+- **Left:** nothing known.
+
 ### 2026-10-20 · A · For B: the casino's "free chips only" line, and what of A's sits on the island
 - **The casino line** (the user, in a test run: "wth is that free chips only"): "Free chips only, topped up
   every day." (src/casino.js:1848). A offered: remove it, "Play for fun", or "Testnet chips" (recommended), and

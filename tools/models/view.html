@@ -1,0 +1,72 @@
+<!doctype html><meta charset="utf-8"><title>View</title>
+<style>body{margin:0;background:#d9d4e4}canvas{display:block}</style>
+<script type="module">
+// Any .glb from a few sides, lit like pose.html: /tools/models/view.html?f=/path.glb&v=front,threeq,side,back&size=300
+// cy=0.1&el=0.3&zoom=4: close on the feet. uv=1: unlit, each pixel the texel it shows (R, G the low bits of x and y, B their high bits), to find a mark's
+// place in the colour map from a screenshot.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'meshoptimizer';
+import { withKtx2, setChogRenderer } from '/src/chog.js';
+const q = new URLSearchParams(location.search);
+const views = (q.get('v') || 'front,threeq,side,back').split(',');
+const S = +(q.get('size') || 300), zoom = +(q.get('zoom') || 1);
+const uvDebug = q.get('uv') === '1';
+const r = new THREE.WebGLRenderer({ antialias: !uvDebug, preserveDrawingBuffer: true });
+r.setSize(S * views.length, S);
+r.setScissorTest(true);
+r.outputColorSpace = uvDebug ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace;
+document.body.append(r.domElement);
+setChogRenderer(r);
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+withKtx2(loader);
+const g = await loader.loadAsync(q.get('f'));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#d9d4e4');
+scene.add(new THREE.HemisphereLight('#ffffff', '#8a80a0', 2.0));
+const sun = new THREE.DirectionalLight('#fff4e0', 2.2);
+sun.position.set(3, 6, 4);
+scene.add(sun);
+scene.add(g.scene);
+// tex=/path.png: that colour map, uncompressed (is a mark in the map or in the compression?); plain=1: no map at
+// all (is it in the shape?).
+if (q.get('tex')) {
+  const t = await new THREE.TextureLoader().loadAsync(q.get('tex'));
+  t.flipY = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  g.scene.traverse((o) => o.isMesh && (o.material.map = t));
+}
+if (q.get('plain')) g.scene.traverse((o) => o.isMesh && (o.material.map = null));
+// side=front: back faces hidden (a crack in the surface then shows the background, not the inside).
+if (q.get('side') === 'front') g.scene.traverse((o) => o.isMesh && (o.material.side = THREE.FrontSide));
+if (uvDebug) {
+  const N = 1024, data = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) data.set([x & 255, y & 255, (x >> 8) | ((y >> 8) << 4), 255], (y * N + x) * 4);
+  const tex = new THREE.DataTexture(data, N, N);
+  tex.magFilter = tex.minFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  scene.background = new THREE.Color(0, 0, 0);
+  g.scene.traverse((o) => o.isMesh && (o.material = new THREE.MeshBasicMaterial({ map: tex })));
+}
+// Framed on the tallest part's width (a stray bit far out shouldn't shrink the view): height and depth.
+const box = new THREE.Box3().setFromObject(g.scene);
+const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+// cy: look at that share of the height instead of the middle (0 the feet); el: how far above level the camera sits.
+if (q.get('cy')) c.y = box.min.y + size.y * +q.get('cy');
+const el = +(q.get('el') ?? 0.2);
+const R = size.y / zoom;
+const cam = new THREE.PerspectiveCamera(30, 1, R / 100, R * 20);
+views.forEach((v, i) => {
+  const a = { front: 0, threeq: Math.PI / 4, side: Math.PI / 2, back: Math.PI, lthreeq: -Math.PI / 4, lside: -Math.PI / 2 }[v] ?? +v;
+  cam.position.set(Math.sin(a), el, Math.cos(a)).normalize().multiplyScalar(R * 2.1).add(c);
+  cam.lookAt(c);
+  r.setViewport(i * S, 0, S, S);
+  r.setScissor(i * S, 0, S, S);
+  r.render(scene, cam);
+});
+let tris = 0;
+g.scene.traverse((o) => o.isMesh && (tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3));
+document.title = `tris ${tris} size ${size.toArray().map((v) => v.toFixed(2)).join(' x ')}`;
+window.__info = document.title;
+window.__done = true;
+</script>

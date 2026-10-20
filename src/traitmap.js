@@ -69,7 +69,7 @@ export const ATTACH = { head: 'Head', body: 'Spine', accessory: 'HandR' };
 
 // Animation clip names in the rigged models, by what the world asks for.
 // Walking and running are the user's picks (10-16): the cartoon walk and the cartoon jog, retargeted from
-// the Quaternius library (tools/models/bake.html). A model without them (the dino) keeps Tripo's Walk and Run.
+// the Quaternius library (tools/models/bake.html). A model without them keeps Tripo's Walk and Run.
 export const CLIPS = { idle: 'Idle', walk: 'WalkCartoon', run: 'JogCartoon', wake: 'WakeUp', wave: 'Wave', talk: 'Talk', sing: 'Sing', sniff: 'Sniff', cheer: 'Cheer', sad: 'Sad' };
 export const CLIP_FALLBACK = { walk: 'Walk', run: 'Run' };
 // How fast each picked clip plays: quick steps on short legs (faster since 10-17, the user: "walking speed

@@ -1,10 +1,10 @@
 /*
  * Patch a shipped cast model in place of its vertex order (no reorder, so its face sheet, clips and every
  * other fix stay as they are):
- *   node tools/models/fix/patch.mjs <in.glb> <out.glb> [--pos pos.f32] [--nrm nrm.f32] [--joints joints.f32 --weights weights.f32]
+ *   node tools/models/fix/patch.mjs <in.glb> <out.glb> [--pos pos.f32] [--nrm nrm.f32] [--uv uv.f32] [--joints joints.f32 --weights weights.f32]
  *        [--base base.png] [--quality 92] [--requantize 1]
  * --index: Uint32 triangles to keep (cleanup.py cords). --append <dir>: new vertices after the model's own
- * (append_pos/nrm/uv/joints/weights.f32 there, cleanup.py's hole fills). --pos / --nrm / --joints / --weights: Float32, the shipped file's vertex order (mane.py writes them). --base: a new
+ * (append_pos/nrm/uv/joints/weights.f32 there, cleanup.py's hole fills). --uv: new UVs (repack.py's, with its base.png). --pos / --nrm / --joints / --weights: Float32, the shipped file's vertex order (mane.py writes them). --base: a new
  * colour map (upres.py's 2048), stored as JPEG. --requantize: store its normals, UVs and weights the way the
  * rest of the cast does (the sniffer's UVs were floats: a vertex layout, so a shader, of its own on Intel).
  * Then compressed the way apply.mjs does it.
@@ -35,7 +35,7 @@ const f32 = (file) => {
 };
 const n = prim.getAttribute('POSITION').getCount();
 
-if (opt.pos || opt.nrm || opt.weights || opt.requantize || opt.index || opt.append) {
+if (opt.pos || opt.nrm || opt.uv || opt.weights || opt.requantize || opt.index || opt.append) {
   // Every attribute back to plain floats, so the re-quantising starts clean.
   for (const name of prim.listSemantics()) {
     const a = prim.getAttribute(name);
@@ -55,6 +55,11 @@ if (opt.pos || opt.nrm || opt.weights || opt.requantize || opt.index || opt.appe
     const p = f32(opt.pos);
     if (p.length !== n * 3) throw new Error(`--pos has ${p.length / 3} vertices, the model ${n}`);
     prim.setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(p).setBuffer(buf));
+  }
+  if (opt.uv) {
+    const v = f32(opt.uv);
+    if (v.length !== n * 2) throw new Error(`--uv has ${v.length / 2} vertices, the model ${n}`);
+    prim.setAttribute('TEXCOORD_0', doc.createAccessor().setType('VEC2').setArray(v).setBuffer(buf));
   }
   if (opt.nrm) {
     const v = f32(opt.nrm);

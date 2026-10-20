@@ -517,6 +517,9 @@ const ARM_DROP_MAX = { 'chog-409': +(_lp.get('drop') ?? 40) };
 // one (arm at shoulder height, the hand rocking at the wrist) looked "like the hand is wobbling".
 const _wq = new URLSearchParams(globalThis.location?.search ?? '');
 const WAVE = { lift: +(_wq.get('wlift') ?? 0.6), swing: +(_wq.get('wswing') ?? 0.28), forward: +(_wq.get('wfwd') ?? 0.45), hz: +(_wq.get('whz') ?? 1.5), fore: +(_wq.get('wfore') ?? 0.7), foreSwing: +(_wq.get('wfs') ?? 0.3), lag: 0.45, rock: 0.15 };
+// A model whose head is wider than its arm reaches waves lower and further out, the forearm doing more of it
+// (the dino's hood hid its hand for half of every swing; the user's pick, 10-21).
+const WAVE_MODEL = { dino: { lift: 0.2, swing: 0.1, forward: 0.3, fore: 0.75, foreSwing: 0.45 } };
 // Moves melt into each other over this long, their weights always adding up to one: a sum under one blends
 // toward the bind pose, the T-pose a quick change of mind used to flash (the user, 10-17).
 const FADE = 0.3;
@@ -861,6 +864,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   // Both upper arms, kept from lifting too high (ARM_LIFT_MAX) or, for some, dropping too low (ARM_DROP_MAX).
   let lifts = [];
   let armDrop = null;
+  let wave = WAVE;
   // The legs kept clear of the body while walking or running (legLimit), and how much right now.
   let legRigNow = null;
   let legW = 0;
@@ -954,6 +958,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       lifts = ['L', 'R'].map((s) => ({ up: model.getObjectByName(`UpperArm${s}`), fore: model.getObjectByName(`ForeArm${s}`) })).filter((l) => l.up && l.fore);
       const drop = ARM_DROP_MAX[base.match(/([\w-]+)\.glb$/)?.[1]];
       armDrop = drop ? THREE.MathUtils.degToRad(drop) : null;
+      wave = { ...WAVE, ...WAVE_MODEL[base.match(/([\w-]+)\.glb$/)?.[1]] };
       legRigNow = legRig(model);
       gltf.userData.soles ??= soleVertices(gltf);
       soles = gltf.userData.soles;
@@ -1368,7 +1373,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     }
     A.wt += dt;
     const w = THREE.MathUtils.smoothstep(A.ww, 0, 1);
-    const ph = A.wt * WAVE.hz * Math.PI * 2;
+    const ph = A.wt * wave.hz * Math.PI * 2;
     A.up.updateWorldMatrix(true, true);
     A.up.getWorldPosition(_sh);
     root.getWorldQuaternion(_rq);
@@ -1376,8 +1381,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     root.getWorldPosition(_side);
     _side.subVectors(_sh, _side).setY(0).normalize();
     // The arm in the plane out to its side (tipped a little forward), at an angle over level that swings.
-    _off.copy(_side).multiplyScalar(Math.cos(WAVE.forward)).addScaledVector(_bf, Math.sin(WAVE.forward)).normalize();
-    const lift = WAVE.lift + WAVE.swing * Math.sin(ph);
+    _off.copy(_side).multiplyScalar(Math.cos(wave.forward)).addScaledVector(_bf, Math.sin(wave.forward)).normalize();
+    const lift = wave.lift + wave.swing * Math.sin(ph);
     _to.copy(_off).multiplyScalar(Math.cos(lift));
     _to.y = Math.sin(lift);
     A.fore.getWorldPosition(_el);
@@ -1386,12 +1391,12 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     A.fore.getWorldPosition(_el);
     A.hand.getWorldPosition(_wr);
     // (Never past upright: leaning in over the head, the hand went behind it.)
-    const up = Math.min(lift + WAVE.fore + WAVE.foreSwing * Math.sin(ph - WAVE.lag), Math.PI * 0.5);
+    const up = Math.min(lift + wave.fore + wave.foreSwing * Math.sin(ph - wave.lag), Math.PI * 0.5);
     _aim.copy(_off).multiplyScalar(Math.cos(up));
     _aim.y = Math.sin(up);
     swing(A.fore, _cur.subVectors(_wr, _el).normalize(), _aim.normalize(), w);
     // The hand trails the swing a little, about the way it faces (forward).
-    _qh.setFromAxisAngle(_bf, -WAVE.rock * Math.sin(ph - WAVE.lag * 2) * w);
+    _qh.setFromAxisAngle(_bf, -wave.rock * Math.sin(ph - wave.lag * 2) * w);
     A.hand.getWorldQuaternion(_qt).premultiply(_qh);
     A.hand.parent.getWorldQuaternion(_pq);
     A.hand.quaternion.copy(_pq.invert().multiply(_qt));
