@@ -27,6 +27,13 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · A · The dino is out of the game
+
+- The user, after seeing the rebuilt dino on a phone at night: "horrid, you might as well remove the character
+  from the game". Its lap round the beacon island (`src/npcs.js` runner slot, its lines, the toy block), its
+  shader warm-up (`src/main.js` CAST_KINDS) and its own wave (`src/chog.js`) are gone. The beacon island's
+  loop road stays. `public/models/npcs/dino.glb` and the rebuild tools stay in the repo, unused.
+
 ### 2026-10-21 · A · The dino: arms, the cast's moves, four claws, a clean suit
 
 - **What changed:** `public/models/npcs/dino.glb` rebuilt. It has arm bones now (Tripo gave it none, its arms
