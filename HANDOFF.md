@@ -27,6 +27,28 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · A · Evening: joystick, portal card, postcard sharing, arms, Peel, Snooze, rooms, stars
+
+- **WalletConnect:** the user's Reown project id is set in Vercel (`VITE_WALLETCONNECT_PROJECT_ID`, production
+  and preview). Reown's dashboard must list chog-world.vercel.app as an allowed domain (the user's side).
+- **Joystick fixed bottom left on touch screens** (`travel.js`, `.tv-stick`): only a touch on it walks; any
+  other touch looks round or pinches. The portal card sits above it on phones; arriving by portal, the card
+  stays away till you step off and on again (as before).
+- **Postcard** (`src/fx/postcard.js`, B's, reworked): a framed card with your Chog's art as the stamp and where
+  you are ("Greetings from Chog Hub"), then a sheet: phones Share (system sheet, picture attached) and Save;
+  computers Post on X (picture copied, the post opens with words and the link), Copy and Save.
+- **Arms** (`chog.js` armClamp): walking and running they hang 28 degrees out and swing forward and back
+  (they flew out level with the shoulders); standing they never hang behind the body (per model:
+  `ARM_BACK_BY`, Peel's come 16 degrees forward of his belly).
+- **Peel** redrawn in Nano Banana with short even arms and clean hands, rebuilt (Tripo: 50 credits left), new
+  face. **Toasty's** nose flattened in the shipped file. **Snooze** naps at the foot of the giant tree
+  (`npcs.js` napper), wakes to greet you.
+- **Rooms** (`camera.js` collide): the camera keeps 2.3 m over a room's floor, above the furniture (it
+  swung into chairs and beds: half the view a cushion). Rugs lie flat (`interior.js` put).
+- **Stars:** round soft points instead of square cells (`sky.js`).
+- **Pending the user's picks:** in-app UI (`tools/ui/hud-options2.html`: rune, pixel, toy) and the Monad
+  billboard (hologram, billboard on posts, dome ticker). Flow and Gemini prompts: `video/flow-prompts.md`.
+
 ### 2026-10-21 · A · The user's afternoon test (phone and desktop), fixed
 
 A edited B's files for most of these (B is out of its weekly limit), small and commented:
