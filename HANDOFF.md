@@ -3,6 +3,13 @@
 Newest entries go at the top. Each entry: date, agent, what changed, how to see it, what is left or broken.
 Read `TASKS.md` first.
 
+## 10-22 early (A): Celestial UI, music, ticker, bug fixes
+- **UI:** `src/celestial.css` (loaded after style.css) restyles every in-game control in the user's pick, Celestial: gold-ringed glass wells, Cinzel/Josefin Sans (self-hosted), the map's bezel drawn in `src/travel.js` (no compass strip), casino controls to match. `src/motion.js`: Anime.js presses, HUD fade-in, panel fades (opacity only; bubbles are placed by transform). Loading/connect screens unchanged.
+- **Audio:** `src/audio.js`, island/night themes and the singer's song (Gemini), `public/audio/`. Sound button in the time bar.
+- **Ticker:** `src/fx/domeTicker.js`, LED band round the Hub dome; panels reroll when out of sight.
+- **Fixes:** roulette taps no longer open chat; casino hall z-fighting (gold jambs, door frames); beta tag, Simulate sale, dev views, lobby wallet screen removed; casino UI only shows in the casino; NPCs fade at the lens.
+- **Left:** Flow cutscenes and roulette/loading sounds come from the user (prompts given in chat).
+
 ## Project in one paragraph
 
 Chog World is a Chogathon 2026 entry: a shared 3D island world where your Chog NFT comes alive, learns
