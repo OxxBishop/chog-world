@@ -1789,6 +1789,19 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     pickGuest,
     end,
     portals,
+    // Where you are, by the nearest portal's place (for the postcard), and the cast Chog you walk as.
+    placeName() {
+      let best = null, bd = Infinity;
+      for (const p of portals) {
+        const d = Math.hypot(state.pos.x - p.at.x, state.pos.z - p.at.z);
+        if (d < bd) (bd = d), (best = p);
+      }
+      return best && bd < 160 ? best.name : 'Chog World';
+    },
+    get guest() {
+      const c = CAST.find((g) => g.id === state.guestId);
+      return c ? { id: c.id, name: c.name } : null;
+    },
     // The hoverboards (src/hoverboard.js), for the cast to keep clear of.
     get boards() {
       return boards.boards;

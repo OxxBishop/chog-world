@@ -15,6 +15,7 @@ import { angleLerp } from './util.js';
  *   plaza    the singer on their stage with a crowd watching, two Chogs strolling round the fountain,
  *            and one by the lobby door
  *   gardener #271 (Petal) out on the tree island among the flowers
+ *   napper   #124 (Snooze) dozing at the foot of the giant tree there
  *   runner   #471 (Dash) lapping the loop on the beacon island
  *   walker   the astronaut, floating in zero g in his own dome on the middle island (src/cosmo.js)
  *
@@ -37,6 +38,8 @@ export const NPC_SLOTS = {
   // By the lobby door, in the Monad look.
   doorman: { id: 1151, glb: M('chog-1151'), plaza: [-5.2, 23.2] },
   gardener: { id: 271, glb: M('chog-271'), hood: 0 },
+  // At the foot of the giant tree, on the side you come up from the bridge (the user's pick, 10-21).
+  napper: { id: 124, glb: M('chog-124'), hood: 0, r: 9.5 },
   runner: { id: 471, glb: M('chog-471'), hood: 2 },
   walker: { id: 68, glb: M('chog-68'), hood: 1, speed: -0.07 },
 };
@@ -815,6 +818,32 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       // Standing about the flowers, now and then a happy little jump.
       const tick = own(petal, idler(petal, ['cheer'], [10, 18]));
       return { group: patch, chogs: await shown(patch, [petal]), tick: (tt, dt) => tick(dt) };
+    },
+  );
+
+  // ---------- Snooze (#124), napping at the foot of the giant tree ----------
+  const nap = NPC_SLOTS.napper;
+  const napHood = HOODS[nap.hood];
+  const nest = new THREE.Group();
+  {
+    // Toward downtown from the tree, so he's the first thing you see coming up from the bridge.
+    const a = napHood.angle + Math.PI + 0.35;
+    const x = napHood.x + Math.cos(a) * nap.r, z = napHood.z + Math.sin(a) * nap.r;
+    nest.position.set(x, surfaceAt(x, z), z);
+    nest.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a)) + Math.PI;
+  }
+  nest.scale.setScalar(OUTDOOR);
+  scene.add(nest);
+  set(
+    (v) => nest.getWorldPosition(v),
+    async () => {
+      const snooze = await npc(nap.glb, nap.id);
+      nest.add(snooze.root);
+      // Eyes shut, breathing slowly; he wakes for you and dozes off again after.
+      const doze = () => (snooze.play('sleepy'), snooze.setPace(0.6));
+      doze();
+      const tick = own(snooze, () => {}, { resume: doze });
+      return { group: nest, chogs: await shown(nest, [snooze]), tick: (tt, dt) => tick(tt, dt) };
     },
   );
 

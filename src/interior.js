@@ -223,6 +223,8 @@ export class Room {
     p.position.set(x, y, z);
     p.rotation.y = rot;
     if (swaps) recolour(p, swaps);
+    // Rugs lie flat: a Chog's feet sank into their thickness (the user, 10-21).
+    if (name.startsWith('rug')) p.scale.y *= 0.2;
     p.traverse((o) => {
       if (o.isMesh) o.castShadow = false;
     });

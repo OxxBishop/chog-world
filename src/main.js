@@ -584,7 +584,18 @@ async function init() {
   });
   // The casino's game (B8): its panel shows while you're inside.
   // The postcard camera (B19): the view, framed and saved as a PNG.
-  $('btn-photo')?.addEventListener('click', () => postcard({ frame, canvas: renderer.domElement, name: session?.active?.info?.name ?? 'Chog World' }));
+  // (A, 10-21: where you are, and your Chog's art for the stamp; then a sheet to share it.)
+  $('btn-photo')?.addEventListener('click', () => {
+    const own = session?.active?.info, guest = travel?.active ? travel.guest : null;
+    const id = own?.id ?? guest?.id ?? null;
+    postcard({
+      frame,
+      canvas: renderer.domElement,
+      name: own?.name ?? guest?.name ?? 'Chog World',
+      place: inRoom?.room?.name ?? (travel?.active ? travel.placeName() : 'Chog World'),
+      art: id ? `${import.meta.env.BASE_URL}art/${id}.webp` : null,
+    });
+  });
   casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active, sky });
   // The session warms its Chogs' shaders as it starts: the loader waits for those too.
   await Promise.race([Promise.all([session.warmed, space.ready, ...warming]), new Promise((r) => setTimeout(r, 15000))]);

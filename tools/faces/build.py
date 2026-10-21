@@ -37,7 +37,8 @@ CFG = {
     # The plain Chog and the singer (its body, since 10-16): eyes by box, the detected parts' order having
     # changed under them (10-21: the singer's eyes and mouth swapped places).
     'plain': dict(eyes=[[300, 668, 432, 746], [578, 668, 710, 746]], mouth=[474, 815, 556, 842], rest='king'),
-    'chog-132': dict(eyes=[[270, 545, 430, 652], [575, 545, 735, 652]], mouth=[455, 700, 565, 752], rest='king', skin=[0.29, 0.16, 0.13]),
+    # (10-21 third round: redrawn with short, even arms and clean hands.)
+    'chog-132': dict(eyes=[[254, 524, 446, 646], [558, 524, 748, 646]], mouth=[446, 688, 560, 740], rest='king', skin=[0.28, 0.16, 0.13]),
     'singer': dict(eyes=[[300, 668, 432, 746], [578, 668, 710, 746]], mouth=[474, 815, 556, 842], rest='barkeep', open_mouth=True),
     'chog-66': dict(eyes=[], mouth=[418, 776, 618, 838], rest='own', mk=0.8),
     # (10-21 second round: redrawn with a small tail.)
