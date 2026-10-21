@@ -1,0 +1,43 @@
+<!doctype html><meta charset="utf-8"><title>Arm check</title><pre id="log"></pre>
+<script type="module">
+// Where each cast model's hands hang standing (src/chog.js, its idle at t), against its own body: the lowest
+// point of each hand (skinned), its crotch (the thighs' joint) and its shoulders, as fractions of its height
+// (A, 10-21: the user wants the cast's arms one length). /tools/models/armcheck.html?m=chog-132,chog-409&t=0.8
+import * as THREE from 'three';
+import { makeChog, setChogRenderer } from '/src/chog.js';
+const q = new URLSearchParams(location.search);
+setChogRenderer(new THREE.WebGLRenderer());
+const out = {};
+const v = new THREE.Vector3();
+for (const m of q.get('m').split(',')) {
+  const c = await makeChog({ model: `models/${q.get('dir') || 'npcs'}/${m}.glb` });
+  c.play('idle');
+  const steps = Math.round(+(q.get('t') || 0.8) * 60);
+  for (let k = 0; k < steps; k++) c.update(1 / 60, null);
+  c.root.updateMatrixWorld(true);
+  let skin = null;
+  c.root.traverse((o) => o.isSkinnedMesh && (!skin || o.geometry.attributes.position.count > skin.geometry.attributes.position.count) && (skin = o));
+  const bones = skin.skeleton.bones;
+  const idx = (n) => bones.findIndex((b) => b.name === n);
+  const hands = [idx('HandL'), idx('HandR')], fores = [idx('ForeArmL'), idx('ForeArmR')];
+  const si = skin.geometry.attributes.skinIndex, sw = skin.geometry.attributes.skinWeight, n = skin.geometry.attributes.position.count;
+  let top = -1e9, bot = 1e9, handLow = [1e9, 1e9], armLen = [0, 0];
+  for (let i = 0; i < n; i++) {
+    skin.getVertexPosition(i, v).applyMatrix4(skin.matrixWorld);
+    top = Math.max(top, v.y); bot = Math.min(bot, v.y);
+    // (A hand vertex: one whose strongest bone is the hand or its forearm, the forearm's lowest point
+    // standing in when a rig gives the hand little of its own.)
+    let best = -1, bw = 0;
+    for (let j = 0; j < 4; j++) if (sw.getComponent(i, j) > bw) (bw = sw.getComponent(i, j)), (best = si.getComponent(i, j));
+    for (const s of [0, 1]) if (best === hands[s] || best === fores[s]) handLow[s] = Math.min(handLow[s], v.y);
+  }
+  const H = top - bot;
+  const y = (name) => c.root.getObjectByName(name).getWorldPosition(new THREE.Vector3()).y;
+  const sh = (y('UpperArmL') + y('UpperArmR')) / 2, crotch = (y('ThighL') + y('ThighR')) / 2;
+  const f = (x) => +((x - bot) / H).toFixed(3);
+  out[m] = { H: +H.toFixed(2), shoulder: f(sh), crotch: f(crotch), handL: f(handLow[0]), handR: f(handLow[1]), drop: +((sh - (handLow[0] + handLow[1]) / 2) / H).toFixed(3) };
+}
+document.getElementById('log').textContent = JSON.stringify(out, null, 1);
+window.__json = JSON.stringify(out);
+window.__done = btoa('ok');
+</script>

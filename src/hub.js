@@ -815,6 +815,13 @@ export function buildHub() {
   // Bulbs: warm string lights over the bar, gold marquee bulbs that chase round the casino door.
   const bulbGeo = new THREE.SphereGeometry(0.13, 8, 6);
   const warmBulbs = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd9a0') });
+  // (Not drawn right by the camera: walking into the bar under them, they filled the view as big discs: A, the
+  // user 10-21.)
+  warmBulbs.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vNearD;').replace('#include <project_vertex>', '#include <project_vertex>\nvNearD = -mvPosition.z;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vNearD;').replace('void main() {', 'void main() {\n  if (vNearD < 1.6) discard;');
+  };
+  warmBulbs.customProgramCacheKey = () => 'warm-bulbs-near';
   const stringMesh = new THREE.InstancedMesh(bulbGeo, warmBulbs, bulbs.length);
   bulbs.forEach((p, i) => stringMesh.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)));
   group.add(stringMesh);

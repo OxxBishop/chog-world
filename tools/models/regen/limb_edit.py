@@ -124,7 +124,25 @@ elif task == 'tail':
     e = np.clip(np.where(np.isfinite(dist), dist, 0) / P.get('ease', 0.12), 0, 1); e = e * e * (3 - 2 * e)
     tail = tailg[weld]
     ew = e[weld]
-    target = J + (m - J) * k
+    # k along the tail (from where it joins to its tip), kx across it (thinner: from behind a fat tail read as
+    # a lump, the user 10-21); kx defaults to k.
+    kx = P.get('kx', k)
+    tip = m[tail][np.argmax(np.linalg.norm(m[tail] - J, axis=1))]
+    ax = (tip - J) / max(np.linalg.norm(tip - J), 1e-6)
+    rel = m - J
+    along = rel @ ax
+    target = J + np.outer(along * k, ax) + (rel - np.outer(along, ax)) * kx
+    # curl=<degrees>: the tail bent up toward its tip, so from behind its length shows (a tail pointing
+    # straight back at you is a lump).
+    curl = np.radians(P.get('curl', 0))
+    if curl:
+        L = max(float(along[tail].max()), 1e-6)
+        up = np.array([0.0, 0.0, 1.0])
+        axis = np.cross(ax, up); axis /= max(np.linalg.norm(axis), 1e-6)
+        th = (curl * np.clip(along / L, 0, 1) ** 1.3)[:, None]
+        r = target - J
+        r = r * np.cos(th) + np.cross(axis, r) * np.sin(th) + np.outer(r @ axis, axis) * (1 - np.cos(th))
+        target = J + r
     moved[tail] = (target[tail] - m[tail]) * ew[tail, None]
     bm.free()
     near = (z < 0.55) & (s_ > -0.15) & ~tail

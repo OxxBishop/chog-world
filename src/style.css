@@ -1142,6 +1142,28 @@ body.walking .places-toggle, body.walking #places, body.walking .nav-hint, body.
   animation: tv-pop 0.25s ease-out;
 }
 .tv-ride[hidden] { display: none; }
+/* A: the zoom button (src/travel.js), under the map: close, as it starts, far. */
+.tv-zoom {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 182px);
+  right: calc(env(safe-area-inset-right, 0px) + 16px);
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(20, 10, 50, 0.35);
+  pointer-events: auto;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.tv-zoom svg { width: 24px; height: 24px; fill: none; stroke: var(--text); stroke-width: 2.2; stroke-linecap: round; }
+.tv-zoom:not(.in) .tv-zoom-plus { display: none; }
+.tv-zoom:active { transform: scale(0.94); }
+.tv-zoom:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 .tv-ride:active { transform: scale(0.96); }
 .tv-ride:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 @keyframes tv-pop { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -1182,6 +1204,7 @@ body.walking .places-toggle, body.walking #places, body.walking .nav-hint, body.
   body.travel .hud.top-left { display: none; }
   .tv-compass { top: calc(env(safe-area-inset-top, 0px) + 10px); width: calc(100vw - 32px); }
   .tv-map { top: calc(env(safe-area-inset-top, 0px) + 58px); width: 112px; height: 112px; }
+  .tv-zoom { top: calc(env(safe-area-inset-top, 0px) + 180px); width: 42px; height: 42px; }
   body.travel .signin-btn, body.travel .chog-chip { top: calc(env(safe-area-inset-top, 0px) + 58px); }
   .tv-pick-grid { grid-template-columns: repeat(3, 1fr); }
   .tv-pick-card { padding: 14px; }

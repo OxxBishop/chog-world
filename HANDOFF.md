@@ -27,6 +27,34 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · A · The user's afternoon test (phone and desktop), fixed
+
+A edited B's files for most of these (B is out of its weekly limit), small and commented:
+- **Arms one length, stance straight:** Peel's arms (his shoulders were found at his elbows, so his arms
+  were stiff tubes to the floor) re-rigged with `shoulder=0.37;z_arm=0.63` and trimmed; Petal's and Dash's
+  levelled and set to 0.55 m (0.42 was too short). Idle and Talk baked with the body's steady tilt removed
+  and its sway kept (`lean=0` in `retarget.js`), every cast model. `tools/models/armcheck.html` measures where
+  each Chog's hands hang.
+- **Puff:** his own closed crying eyes at rest (King Pom's open ones read as deformed), his wings rigid on his
+  chest (they were weighted to his head and swung with it: `regen/wing_fix.py`), his tail slimmer and curled
+  up (`limb_edit.py tail ... kx=0.62;curl=40`).
+- **The singer's and the plain Chog's faces:** back to their 10-16 sheets (the 10-21 rebuild swapped the
+  singer's eye and mouth); their CFG pins boxes now, but don't export them without comparing.
+- **Portal picker:** after a trip you arrive standing on the pad; its picker now comes up with every other
+  place (`travel.js` travelTo).
+- **Controls:** A and D steer (the view and your Chog turn together), W and S walk; no dragging needed on a
+  keyboard. A zoom button under the map (close, normal, far); pinch and wheel still work.
+- **Bridges:** the hoops fade out by the camera (glass and lines), so the camera is no longer held under them
+  and pulled onto your Chog's head; climbing steps it comes down and looks up them.
+- **Flowers** are walk-through again (B's obstacle pass had added them) and bend away like the grass, wider
+  under a hoverboard.
+- **Cosmo is solid:** the cast collide by their bodies' middles (`userData.centre` for a floating one).
+- **The bar:** a guest's Chog stands at the near end of the counter turned to the pair, the pair closer on a
+  phone, and the view settles on all three; the string bulbs and their halos aren't drawn right by the camera
+  (they filled the walk-in as big discs).
+- **Patrol's chopper:** his seat under him, measured from his mesh (he sat sunk into the bike).
+- **Load time** (HD 520, live site): cold 23 s to the loader closing, 31 s to a live world; warm 16 s.
+
 ### 2026-10-21 · B · The postcard camera (B19)
 
 - A **Postcard** button beside Live (`index.html`, one line in `src/main.js`, new `src/fx/postcard.js`): the current view framed in cream with a Chog World stamp, "Greetings from Chog World", your Chog's name and the date, saved as a PNG. Checked on the laptop: the file saves, no errors.

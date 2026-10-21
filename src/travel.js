@@ -257,6 +257,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     camYaw: Math.PI, // the camera's heading round the Chog (0: camera on +z side)
     camPitch: CAM.pitch,
     camDist: CAM.dist,
+    zoomTo: null, // the zoom button's distance the camera is easing to, or null
     camPos: new THREE.Vector3(),
     camLook: new THREE.Vector3(),
     lastLook: 0, // seconds since you last turned the view yourself
@@ -292,6 +293,20 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   const boards = buildHoverboards(scene, (x, z, near) => groundAt(x, z, near ?? heightAt(x, z) + 1)?.y ?? heightAt(x, z));
   let lastEnv = null;
   hud.ride.addEventListener('click', () => (state.board >= 0 ? leaveBoard() : takeBoard()));
+  // The zoom button (A, 10-21: "a zoom out feature ... more real estate"): close, as it starts, far; and back.
+  // Pinch and the wheel still zoom anywhere in between.
+  const ZOOMS = [6, CAM.dist, 15];
+  hud.zoom.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const i = ZOOMS.findIndex((z) => z > state.camDist + 0.5);
+    state.zoomTo = i < 0 ? ZOOMS[0] : ZOOMS[i];
+    zoomIcon();
+  });
+  const zoomIcon = () => {
+    const out = (state.zoomTo ?? state.camDist) < ZOOMS[2] - 0.5;
+    hud.zoom.classList.toggle('in', !out);
+    hud.zoom.setAttribute('aria-label', out ? 'Zoom out' : 'Zoom in');
+  };
   const map = drawMap();
 
   // ---------- input ----------
@@ -341,6 +356,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       const [a, b] = [...looks.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       state.camDist = THREE.MathUtils.clamp((pinch.dist * pinch.d) / Math.max(d, 1), CAM.min, CAM.max);
+      state.zoomTo = null;
+      zoomIcon();
       return;
     }
     // A finger moves further than a mouse for the same turn: scale touch to the screen.
@@ -371,6 +388,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     e.preventDefault();
     e.stopImmediatePropagation();
     state.camDist = THREE.MathUtils.clamp(state.camDist * Math.pow(1.0015, e.deltaY), CAM.min, CAM.max);
+    state.zoomTo = null;
+    zoomIcon();
   }, { capture: true, passive: false });
   window.addEventListener('keydown', (e) => {
     if (!state.on || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -391,12 +410,13 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
 
   // What you're asking for this frame: a direction relative to the camera (x right, y forward), 0 to 1.
   function wish() {
-    if (block()) return { x: 0, y: 0, run: false };
+    if (block()) return { x: 0, y: 0, run: false, steer: 0 };
     let x = 0, y = 0, run = keys.has('shift');
     if (keys.has('w') || keys.has('arrowup')) y += 1;
     if (keys.has('s') || keys.has('arrowdown')) y -= 1;
-    if (keys.has('d') || keys.has('arrowright')) x += 1;
-    if (keys.has('a') || keys.has('arrowleft')) x -= 1;
+    // A and D steer (the view and your Chog turn together) rather than step sideways: with the keys alone
+    // you can go anywhere, no dragging the view round as you walk (the user, 10-21: "a little stiff").
+    const steer = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
     const l = Math.hypot(x, y);
     if (l > 1) (x /= l), (y /= l);
     if (stick.id !== null) {
@@ -410,7 +430,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
         run = stick.run;
       } else stick.run = false;
     }
-    return { x, y, run };
+    return { x, y, run, steer };
   }
 
   // ---------- the ground ----------
@@ -530,20 +550,28 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       if (d < r) to.set(px + (dx / (d || 1)) * r, to.y, pz + (dz / (d || 1)) * r);
     }
     if (!body) return;
-    // The cast: a gentle shove round them rather than through.
+    // The cast: a gentle shove round them rather than through. By their bodies' middles, so one floating in
+    // zero g with you (Cosmo, whose middle is his pivot: userData.centre) is solid too (the user, 10-21).
+    const myMid = to.y + (state.lift ?? 0) + CHOG_HEIGHT * SCALE * 0.45;
     for (const c of world.npcRoots?.() ?? []) {
       if (c === state.chog?.root || !c.visible) continue;
-      c.getWorldPosition(_v);
+      const sc = c.getWorldScale(_w).y;
+      if (c.userData.centre) c.userData.centre.getWorldPosition(_v);
+      else c.getWorldPosition(_v).y += CHOG_HEIGHT * sc * 0.45;
       const dx = to.x - _v.x, dz = to.z - _v.z;
       const d = Math.hypot(dx, dz);
-      const r = 1.1 * c.getWorldScale(_w).y + rad * 0.6;
-      if (d < r && Math.abs(_v.y - to.y) < 3) to.set(_v.x + (dx / (d || 1)) * r, to.y, _v.z + (dz / (d || 1)) * r);
+      const r = 1.1 * sc + rad * 0.6;
+      if (d < r && Math.abs(_v.y - myMid) < CHOG_HEIGHT * Math.max(sc, SCALE) * 0.8) to.set(_v.x + (dx / (d || 1)) * r, to.y, _v.z + (dz / (d || 1)) * r);
     }
   }
 
   // ---------- the camera ----------
-  let stairLift = 0;
+  let stairLift = 0, stairDip = 0;
   function placeCamera(dt, snap = false) {
+    if (state.zoomTo !== null) {
+      state.camDist += (state.zoomTo - state.camDist) * (snap ? 1 : 1 - Math.exp(-dt * 5));
+      if (Math.abs(state.zoomTo - state.camDist) < 0.02) state.zoomTo = null;
+    }
     const look = _v.copy(state.pos);
     look.y += CAM.look + state.lift;
     // Down a bridge's steps the camera rises to look down them (from just over the steps behind, their
@@ -555,7 +583,15 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     // a bridge's hoops the camera only saw the deck.)
     const stairs = rise > 0.05 ? (Math.atan(rise) + 0.32) * (state.board >= 0 ? 0.35 : 1) : 0;
     stairLift = snap ? stairs : stairLift + (stairs - stairLift) * (1 - Math.exp(-dt * 2.5));
-    const pitch0 = Math.min(CAM.pitchMax, Math.max(state.camPitch, stairLift) + state.domeTilt);
+    // Up a bridge's steps: the camera comes down behind and looks up them, to the top and what's beyond
+    // (looking down from behind, the steps filled the screen: the user, 10-21, "the bridge ascent is still
+    // heavily zoomed in").
+    const aheadDeck = deckUnder(state.pos.x - Math.sin(state.camYaw) * 6, state.pos.z - Math.cos(state.camYaw) * 6);
+    const climb = Number.isFinite(hereDeck) && Number.isFinite(aheadDeck) ? Math.max(0, (aheadDeck - hereDeck) / 6) : 0;
+    const want0 = climb > 0.05 ? Math.atan(climb) : 0;
+    stairDip = snap ? want0 : stairDip + (want0 - stairDip) * (1 - Math.exp(-dt * 2.5));
+    look.y += stairDip * 2.2;
+    const pitch0 = THREE.MathUtils.clamp(Math.max(state.camPitch - stairDip * 0.9, stairLift) + state.domeTilt, CAM.pitchMin, CAM.pitchMax);
     // Behind and above, by yaw and pitch, pulled in where something's in the way.
     const cp = Math.cos(pitch0);
     const dir = _w.set(Math.sin(state.camYaw) * cp, Math.sin(pitch0), Math.cos(state.camYaw) * cp);
@@ -657,8 +693,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     if (!state.busy && state.chog) state.chog.setFade?.(smooth(1.3, 2.8, state.camPos.distanceTo(state.camLook)));
   }
   // Whether the camera can't be at p: inside a building or a house (a dome's glass it may pass).
-  function blocked(p, inTunnel) {
-    if (inTunnel && !tunnels.inside(p, true)) return true;
+  // (A bridge's hoops it may now go out through: they fade away by the camera, and held under their arch
+  // it was pulled in onto the back of your Chog's head, nothing else in view: the user, 10-21.)
+  function blocked(p) {
     for (const s of solids) {
       if (s.enterable) continue;
       if (Math.abs(p.x - s.x) > s.reach || Math.abs(p.z - s.z) > s.reach) continue;
@@ -699,6 +736,12 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
 
     // Moving: toward what you ask for, relative to the camera, easing in and out.
     const w = wish();
+    // Steering (A, D): the view turns, and your Chog with it (in place, if it's standing).
+    if (w.steer) {
+      state.camYaw -= w.steer * dt * (w.run ? 1.6 : 1.9);
+      state.lastLook = 2;
+      if (Math.abs(w.y) < 0.1) state.yaw += wrap(state.camYaw + Math.PI - state.yaw) * (1 - Math.exp(-dt * 8));
+    }
     const fwd = _v.set(-Math.sin(state.camYaw), 0, -Math.cos(state.camYaw));
     const right = _w.set(-fwd.z, 0, fwd.x);
     const want = new THREE.Vector3().addScaledVector(fwd, w.y).addScaledVector(right, w.x);
@@ -822,7 +865,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   const near = [];
   function pushGrass(chog) {
     const P = wind.uPush.value;
-    P[0].set(state.pos.x, state.pos.y, state.pos.z, 0.85 * chog.root.scale.y);
+    // (A board's length clears a wider path.)
+    P[0].set(state.pos.x, state.pos.y, state.pos.z, (state.board >= 0 ? 1.15 : 0.85) * chog.root.scale.y);
     near.length = 0;
     for (const c of world.npcRoots?.() ?? []) {
       if (c === chog.root || !c.visible) continue;
@@ -1210,7 +1254,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     to.charge = 0;
     chog.play('wave');
     state.move = 'wave';
-    state.onPortal = k;
+    // (Still on the pad: its picker comes up with every other place, without stepping off and on again:
+    // the user, 10-21.)
+    state.onPortal = null;
     state.busy = null;
     setTimeout(() => state.move === 'wave' && ((state.move = ''), 0), 1800);
   }
@@ -1244,7 +1290,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       <div class="tv-stick" hidden><div class="tv-knob"></div></div>
       <div class="tv-portal" hidden></div>
       <button class="tv-ride" hidden></button>
-      <p class="tv-hint">${isTouch ? 'Drag on the left to walk, on the right to look round. Pinch to zoom.' : 'WASD to walk, Shift to run. Drag to look round, scroll to zoom. M for the map.'}</p>
+      <button class="tv-zoom" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21M7.5 10.5h6"/><path class="tv-zoom-plus" d="M10.5 7.5v6"/></svg></button>
+      <p class="tv-hint">${isTouch ? 'Drag on the left to walk, on the right to look round. Pinch or the lens to zoom.' : 'W and S to walk, A and D to steer, Shift to run. Drag to look round, scroll to zoom. M for the map.'}</p>
       <div class="tv-full" hidden>
         <div class="tv-full-card">
           <div class="tv-full-top"><strong>Chog World</strong><button class="tv-close" aria-label="Close the map">Close</button></div>
@@ -1264,6 +1311,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       knob: q('.tv-knob'),
       portal: q('.tv-portal'),
       ride: q('.tv-ride'),
+      zoom: q('.tv-zoom'),
       hint: q('.tv-hint'),
       full: q('.tv-full'),
       fullCanvas: q('.tv-full canvas'),

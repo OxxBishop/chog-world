@@ -67,6 +67,8 @@ export function buildTunnels(scene, paths) {
       '#include <opaque_fragment>',
       `float fres = pow(clamp(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 2.2);
 diffuseColor.a = mix(0.22, 0.92, fres);
+// (Gone right by the camera: it may sit above the hoops, looking down through them, A 10-21.)
+diffuseColor.a *= smoothstep(1.2, 3.2, length(vViewPosition));
 outgoingLight += mix(vec3(1.0, 0.62, 0.92), vec3(0.55, 0.9, 1.0), fres) * fres * 0.3;
 #include <opaque_fragment>`,
     );
@@ -124,14 +126,19 @@ outgoingLight += mix(vec3(1.0, 0.62, 0.92), vec3(0.55, 0.9, 1.0), fres) * fres *
     vertexShader: /* glsl */ `
       attribute vec2 aHoop;
       varying vec2 vHoop;
+      varying float vNear;
       void main() {
         vHoop = aHoop;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vNear = length(mv.xyz);
+        gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: /* glsl */ `
       uniform float uTime, uNight;
       varying vec2 vHoop;
+      varying float vNear;
       void main() {
+        if (vNear < 1.8) discard;
         float wave = pow(max(0.0, sin(vHoop.x * 0.18 - uTime * 2.2)), 6.0);
         vec3 lilac = vec3(0.78, 0.62, 1.0), pink = vec3(1.0, 0.5, 0.78), cyan = vec3(0.5, 0.91, 1.0);
         vec3 c = mix(lilac, mix(pink, cyan, vHoop.y), wave);

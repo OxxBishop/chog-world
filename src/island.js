@@ -339,9 +339,11 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   // Rocks, bushes and the taller flowers a walker goes round (src/travel.js), taken before building them:
   // building empties each set's list, and these used to be read after, so none of them stopped anything
   // (B, 10-21: the user's Chog rode through everything).
-  // Each by its own shape at body height (footprint): rocks firm, bushes and flowers a little soft. Not grass.
+  // Each by its own shape at body height (footprint): rocks firm, bushes a little soft. Not grass, and not the
+  // flowers: a Chog walks through those and they bend away from it like the grass (src/foliage.js; the user,
+  // 10-21: "the flowers are being treated as blocks").
   const propObstacles = [];
-  for (const [set, tallest, soft] of [[props, 0.55, 0.95], [low, 1.0, 0.85], [bloom, 0.85, 0.8]]) {
+  for (const [set, tallest, soft] of [[props, 0.55, 0.95], [low, 1.0, 0.85]]) {
     for (const [name, all] of set.items) {
       if (/^Grass/.test(name)) continue;
       const c = info(name);

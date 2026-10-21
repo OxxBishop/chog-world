@@ -322,22 +322,31 @@ export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name 
       for (let i = 0; i < n; i++) my += hipPos[i * 3 + 1] / n;
       for (let i = 0; i < n; i++) hipPos[i * 3 + 1] = my + (hipPos[i * 3 + 1] - my) * amp.bob;
     }
-    // lean: how much of the body's tilt and sideways shift from straight up it keeps (hips to head). A
-    // human idle stands on one hip with the spine tilted back over it; under a Chog's big head that read as
-    // crooked (the user, 10-21: "peely looks crooked").
+    // lean: how much of the body's steady tilt and sideways shift from straight up it keeps (hips to head),
+    // its sway round that kept whole. A human idle stands on one hip with the spine tilted back over it;
+    // under a Chog's big head that read as crooked (the user, 10-21: "peely looks crooked", and again with
+    // 30% of it kept).
     if (amp.lean !== undefined && amp.lean !== 1) {
-      const q = new THREE.Quaternion(), q0 = new THREE.Quaternion();
+      const q = new THREE.Quaternion(), q0 = new THREE.Quaternion(), mean = new THREE.Quaternion(), base = new THREE.Quaternion(), d = new THREE.Quaternion();
       for (const b of dstNames) {
-        if (!rot[b] || !/^(Hips|Spine|Chest|Neck|Head)$/.test(b)) continue;
+        const a = rot[b];
+        if (!a || !/^(Hips|Spine|Chest|Neck|Head)$/.test(b)) continue;
         q0.copy(bindLocal.get(allDst.find((o) => o.name === b)).q);
-        for (let i = 0; i < n; i++) q0.clone().slerp(q.fromArray(rot[b], i * 4), amp.lean).toArray(rot[b], i * 4);
+        mean.set(0, 0, 0, 0);
+        for (let i = 0; i < n; i++) (mean.x += a[i * 4]), (mean.y += a[i * 4 + 1]), (mean.z += a[i * 4 + 2]), (mean.w += a[i * 4 + 3]);
+        mean.normalize();
+        base.copy(q0).slerp(mean, amp.lean);
+        const inv = mean.clone().invert();
+        for (let i = 0; i < n; i++) base.clone().multiply(d.copy(inv).multiply(q.fromArray(a, i * 4))).toArray(a, i * 4);
       }
-      // The hips' sideways shift, in the model's space.
+      // The hips' sideways shift, in the model's space: its average taken out, its sway kept.
       const rootQ = d0.Root?.q ?? new THREE.Quaternion(), rootP = d0.Root?.p ?? new THREE.Vector3();
       const v = new THREE.Vector3();
+      let mx = 0;
+      for (let i = 0; i < n; i++) mx += v.fromArray(hipPos, i * 3).applyQuaternion(rootQ).add(rootP).x / n;
       for (let i = 0; i < n; i++) {
         v.fromArray(hipPos, i * 3).applyQuaternion(rootQ).add(rootP);
-        v.x = d0.Hips.p.x + (v.x - d0.Hips.p.x) * amp.lean;
+        v.x = d0.Hips.p.x + (mx - d0.Hips.p.x) * amp.lean + (v.x - mx);
         v.sub(rootP).applyQuaternion(rootQ.clone().invert()).toArray(hipPos, i * 3);
       }
     }

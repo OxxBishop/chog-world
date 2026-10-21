@@ -900,6 +900,8 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       // He turns about his middle, not his feet.
       const pivot = new THREE.Group();
       pivot.add(astro.root);
+      // (His middle, for your Chog to bump into: src/travel.js.)
+      astro.root.userData.centre = pivot;
       astro.root.position.y = -CHOG_HEIGHT * OUTDOOR * 0.45;
       stroll.add(pivot);
       astro.play('idle');
