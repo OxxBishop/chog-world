@@ -96,7 +96,18 @@ export function buildBridges(scene) {
     const deckY = (t) => deckAt(clamp(t, 0, 1) * len);
     const at = (t, side = 0, dy = 0) => new THREE.Vector3(br.ax + ux * len * t + nx * side, deckY(t) + dy, br.az + uz * len * t + nz * side);
     const s0 = cA, s1 = cB;
-    paths.push({ ...br, len, deckY, s0, s1 });
+    // The deck's walking surface: on a stair (below) each tread is level, at the height of its upper end,
+    // so it stands up to a step over the smooth slope a Chog walks along; its feet keep to the treads
+    // (src/chog.js groundUpdate, via src/travel.js).
+    // (Treads 0.3 m long: at 0.85 m each step stood 0.73 m tall on the steepest stair, as tall as a Chog's legs,
+    // so its feet sank into the next step or floated over the last; the user, 10-21.)
+    const STEPS = steep ? Math.round(len / 0.3) : 0;
+    const treadY = (t) => {
+      if (!STEPS) return deckY(t) + 0.15;
+      const i = Math.min(STEPS - 1, Math.max(0, Math.floor(clamp(t, 0, 1) * STEPS)));
+      return Math.max(deckY(i / STEPS), deckY((i + 1) / STEPS)) + 0.15;
+    };
+    paths.push({ ...br, len, deckY, treadY, rise: STEPS ? Math.abs(y1 - y0) / Math.max(1, cB - cA) * (len / STEPS) : 0, s0, s1 });
     // Under each landing, where the rim falls away below it, a stone abutment down to the ground.
     for (const [a, b, y] of [[0, cA, y0], [cB, len, y1]]) {
       let lo = Infinity, from = null, to = null;
@@ -125,7 +136,7 @@ export function buildBridges(scene) {
 
     // Deck: short boards following the arch, or level treads stepping down a stair.
     const N = 28;
-    const steps = steep ? Math.round(len / 0.85) : N;
+    const steps = steep ? STEPS : N;
     for (let i = 0; i < steps; i++) {
       const a = at(i / steps), b = at((i + 1) / steps);
       let seg;

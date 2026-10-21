@@ -566,9 +566,12 @@ const WAVE = { lift: +(_wq.get('wlift') ?? 0.6), swing: +(_wq.get('wswing') ?? 0
 // toward the bind pose, the T-pose a quick change of mind used to flash (the user, 10-17).
 const FADE = 0.3;
 // The ground's height at (x, z) outdoors (src/travel.js surfaceAt), for each foot (groundUpdate).
-let groundAt = null;
-export function setChogGround(fn) {
+let groundAt = null, groundSlack = null;
+// slack(x, z): how far the ground may stand over a Chog's own feet there and still be the ground it's on
+// (a bridge's stair: its treads stand up to a step over the slope it walks along; B, 10-21).
+export function setChogGround(fn, slack = null) {
   groundAt = fn;
+  groundSlack = slack;
 }
 // The mic's head this far in front of the lips while singing (model units).
 const MIC_GAP = 0.085;
@@ -1510,7 +1513,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     if (camera && centre.distanceTo(camera.position) > 80) return;
     model.updateMatrixWorld(true);
     // Standing on the world's ground (not a room's floor): each sole against the ground right under it.
-    const onGround = groundAt && Math.abs(groundAt(centre.x, centre.z) - centre.y) < 0.3;
+    const g0 = groundAt ? groundAt(centre.x, centre.z) : 0;
+    const onGround = groundAt && (Math.abs(g0 - centre.y) < 0.3 || (g0 > centre.y && g0 - centre.y < (groundSlack?.(centre.x, centre.z) ?? 0)));
     let lo = Infinity;
     for (const i of soles) {
       skin.getVertexPosition(i, _tg).applyMatrix4(skin.matrixWorld);

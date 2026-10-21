@@ -100,6 +100,24 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   const dom = renderer.domElement;
   const hub = island.hub;
   const bridges = island.bridges;
+  // The ground a Chog's feet keep to (src/chog.js): on a bridge, its deck's treads; else the land's paving.
+  const onBridge = (x, z) => {
+    for (const br of bridges) {
+      const ux = (br.bx - br.ax) / br.len, uz = (br.bz - br.az) / br.len;
+      const along = (x - br.ax) * ux + (z - br.az) * uz;
+      if (along < -0.5 || along > br.len + 0.5) continue;
+      if (Math.abs((x - br.ax) * -uz + (z - br.az) * ux) > br.width / 2 - 0.2) continue;
+      return { br, t: THREE.MathUtils.clamp(along / br.len, 0, 1) };
+    }
+    return null;
+  };
+  setChogGround(
+    (x, z) => {
+      const b = onBridge(x, z);
+      return b ? (b.br.treadY ?? ((t) => b.br.deckY(t) + 0.15))(b.t) : surfaceAt(x, z);
+    },
+    (x, z) => (onBridge(x, z)?.br.rise ?? 0) + 0.3,
+  );
   const tunnels = island.tunnels;
   const solids = island.solids.filter((s) => !(s instanceof RoomBox));
   const plaza = island.plaza;
@@ -878,7 +896,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       const tip = THREE.MathUtils.clamp(Math.atan(slope) * 0.45, -0.3, 0.3);
       state.ridePitch += (-tip - state.ridePitch) * (1 - Math.exp(-dt * 4));
       pitch = state.ridePitch;
-      const tread = Math.abs(slope) > 0.12 ? 0.85 * Math.abs(slope) : 0;
+      const tread = Math.abs(slope) > 0.12 ? 0.3 * Math.abs(slope) : 0;
       const need = Math.max(0, (gF + gB) / 2 - state.pos.y) + Math.max(0, BOARD.thick + 0.16 + tread + half * Math.abs(slope - Math.tan(-pitch)) - RIDE_TOP);
       state.rideRise += (need - state.rideRise) * (1 - Math.exp(-dt * (need > state.rideRise ? 9 : 3)));
       lift += state.rideRise;

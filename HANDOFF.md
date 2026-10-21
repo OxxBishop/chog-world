@@ -27,6 +27,14 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · The Hub's doorways stop flickering; Chogs walk on a bridge's steps, not in them
+- **The doorways** (the user: "the casino doors are still glitching", seen from inside the casino looking back at its door). The hall behind each outside door (`vestibule` in `src/hub.js`) had its side walls, ceiling and door frame flush with the room's front wall. Each stood out past the room's door trim, at exactly the wall's depth, so on a phone the two surfaces flickered in jagged stripes left of and above the gold frame. A desktop GPU breaks the tie the same way every frame, which is why our captures never showed it. They now start 2 cm behind the wall. A ray check across each doorway found 90 such spots in the casino and 285 in the lobby before; none now.
+- **The bridges** (the user, after A's character rework: "the characters sink into the bridge now"). Every sloped bridge is a stair of level treads; each tread stood up to a whole step over the smooth slope a Chog walks along, and on the steepest that step was 0.73 m, as tall as a Chog's legs. Now:
+  - `src/skyfx.js`: each bridge carries `treadY(t)` (its treads' tops) and `rise`, and the treads are 0.3 m long instead of 0.85 m, so a step is 0.26 m at most. Same stairs, finer steps.
+  - `src/chog.js` (A's, small edit): `setChogGround(fn, slack)` takes a second function, how far the ground may stand over a Chog's feet and still be its ground. `groundUpdate` keeps each sole on the tread under it.
+  - `src/travel.js`: hands chog.js a ground that knows the bridges' treads. The hoverboard's lift over stairs follows the smaller steps.
+  - Seen: Toasty up and down the steepest stair on a phone; its feet keep to the treads (within a few cm most frames, a brief 0.2 m dip as a foot crosses a step's edge).
+
 ### 2026-10-21 · A · For B, from the user: the compass's distance labels overlap
 
 The user's phone test (10-21, iPhone): "send it to b". On the compass across the top (`src/travel.js`, the
