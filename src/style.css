@@ -1065,19 +1065,23 @@ body.walking .places-toggle, body.walking #places, body.walking .nav-hint, body.
   pointer-events: auto;
 }
 .tv-map canvas { width: 100%; height: 100%; display: block; }
+/* A: fixed bottom left on touch screens (10-21), clear of the time bar; brighter while held. */
 .tv-stick {
   position: absolute;
-  left: 0;
-  top: 0;
+  left: calc(env(safe-area-inset-left, 0px) + 22px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
   width: 128px;
   height: 128px;
-  margin: -64px 0 0 -64px;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.16) 70%, rgba(255, 255, 255, 0.05));
   border: 2px solid rgba(255, 255, 255, 0.45);
   box-shadow: 0 4px 20px rgba(20, 10, 50, 0.35);
 }
 .tv-stick[hidden] { display: none; }
+.tv-stick.on { opacity: 1; }
 .tv-knob {
   position: absolute;
   left: 40px;
@@ -1107,6 +1111,8 @@ body.walking .places-toggle, body.walking #places, body.walking .nav-hint, body.
   transition: opacity 0.6s ease;
 }
 .tv-hint.gone { opacity: 0; }
+/* A: above the fixed joystick on touch screens. */
+@media (pointer: coarse) { .tv-hint { bottom: calc(env(safe-area-inset-bottom, 0px) + 236px); } }
 .tv-portal {
   position: absolute;
   left: 50%;

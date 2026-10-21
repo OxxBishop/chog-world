@@ -319,14 +319,17 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     if (!state.on) return;
     e.stopImmediatePropagation();
     dom.setPointerCapture(e.pointerId);
-    // A touch low on the left half is the joystick; anything else turns the view.
-    if (e.pointerType === 'touch' && stick.id === null && e.clientX < window.innerWidth * 0.5 && e.clientY > window.innerHeight * 0.35 && !state.busy) {
-      Object.assign(stick, { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY });
-      hud.stick.hidden = false;
-      hud.stick.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
-      hud.knob.style.transform = 'translate(0px, 0px)';
-      hud.hint.classList.add('gone');
-      return;
+    // A touch on the joystick (fixed, bottom left: it used to come up wherever the left thumb landed and
+    // got in the way of pinching and looking, the user 10-21) walks; anything else turns the view.
+    if (e.pointerType === 'touch' && stick.id === null && !state.busy) {
+      const r = hud.stick.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * 0.75) {
+        Object.assign(stick, { id: e.pointerId, x0: cx, y0: cy, x: e.clientX, y: e.clientY });
+        hud.stick.classList.add('on');
+        hud.hint.classList.add('gone');
+        return;
+      }
     }
     looks.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() });
     if (looks.size === 2) {
@@ -372,7 +375,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     e.stopImmediatePropagation();
     if (e.pointerId === stick.id) {
       stick.id = null;
-      hud.stick.hidden = true;
+      hud.stick.classList.remove('on');
+      stick.run = false;
+      hud.knob.style.transform = 'translate(0px, 0px)';
       return;
     }
     const p = looks.get(e.pointerId);
@@ -1287,11 +1292,11 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     wrapEl.innerHTML = `
       <canvas class="tv-compass" width="560" height="44" aria-label="Compass"></canvas>
       <button class="tv-map" aria-label="Open the map"><canvas width="300" height="300"></canvas></button>
-      <div class="tv-stick" hidden><div class="tv-knob"></div></div>
+      <div class="tv-stick"${isTouch ? '' : ' hidden'}><div class="tv-knob"></div></div>
       <div class="tv-portal" hidden></div>
       <button class="tv-ride" hidden></button>
       <button class="tv-zoom" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21M7.5 10.5h6"/><path class="tv-zoom-plus" d="M10.5 7.5v6"/></svg></button>
-      <p class="tv-hint">${isTouch ? 'Drag on the left to walk, on the right to look round. Pinch or the lens to zoom.' : 'W and S to walk, A and D to steer, Shift to run. Drag to look round, scroll to zoom. M for the map.'}</p>
+      <p class="tv-hint">${isTouch ? 'The stick walks (push it to the edge to run). Drag anywhere else to look round, pinch to zoom.' : 'W and S to walk, A and D to steer, Shift to run. Drag to look round, scroll to zoom. M for the map.'}</p>
       <div class="tv-full" hidden>
         <div class="tv-full-card">
           <div class="tv-full-top"><strong>Chog World</strong><button class="tv-close" aria-label="Close the map">Close</button></div>
