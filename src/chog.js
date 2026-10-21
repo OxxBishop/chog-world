@@ -556,12 +556,9 @@ const LEG_LIMIT = { flex: +(_lp.get('flex') ?? 48), ext: +(_lp.get('ext') ?? 38)
 // 10-18: "king pom's hand looks deformed").
 // (King Pom's model of 10-21 wears a short robe his hands clear, so none needs it now: ?drop=<deg> tries one.)
 const ARM_DROP_MAX = _lp.get('drop') ? { 'chog-409': +_lp.get('drop') } : {};
-// The wave (waveUpdate): the right arm raised high, out to the side and a little forward (lift, forward,
-// radians), the whole arm swinging side to side from the shoulder (swing) and the forearm following
-// through a beat later (fore, foreSwing, lag), the hand trailing a little (rock). The user, 10-18: the old
-// one (arm at shoulder height, the hand rocking at the wrist) looked "like the hand is wobbling".
-const _wq = new URLSearchParams(globalThis.location?.search ?? '');
-const WAVE = { lift: +(_wq.get('wlift') ?? 0.6), swing: +(_wq.get('wswing') ?? 0.28), forward: +(_wq.get('wfwd') ?? 0.45), hz: +(_wq.get('whz') ?? 1.5), fore: +(_wq.get('wfore') ?? 0.7), foreSwing: +(_wq.get('wfs') ?? 0.3), lag: 0.45, rock: 0.15 };
+// No waving (the user, 10-21, after three tries at it: "just cut it out"): a Chog asked to wave says its hello
+// with its talk instead, the bubble and the mouth doing the greeting.
+const NO_WAVE = { wave: 'talk' };
 // Moves melt into each other over this long, their weights always adding up to one: a sum under one blends
 // toward the bind pose, the T-pose a quick change of mind used to flash (the user, 10-17).
 const FADE = 0.3;
@@ -626,7 +623,7 @@ const _lc = new THREE.Vector3();
 const _qt = new THREE.Quaternion();
 
 // A model has fewer moves than a standee: these borrow the nearest it has.
-const STAND_IN = { sniff: 'talk', sing: 'cheer', wake: 'wave', sleepy: 'idle', sad: 'idle' };
+const STAND_IN = { sniff: 'talk', sing: 'cheer', wake: 'talk', sleepy: 'idle', sad: 'idle' };
 const textures = new THREE.TextureLoader().setCrossOrigin('anonymous');
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
@@ -1084,6 +1081,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       return state;
     },
     play(name) {
+      name = NO_WAVE[name] ?? name;
       if (name === state) return;
       state = name;
       stateT = 0;
@@ -1249,7 +1247,6 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         for (const h of handFix) h.base.copy(h.bone.quaternion), h.bone.quaternion.multiply(h.fix), (h.applied = true);
         strideUpdate(dt);
         armClamp();
-        waveUpdate(dt);
         micUpdate(dt);
         reachUpdate(dt);
         groundUpdate(dt, camera);
@@ -1407,47 +1404,6 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       const bend = _aim.angleTo(_cur);
       if (bend > ELBOW_MAX) swing(L.fore, _aim, _to.copy(_cur).lerp(_aim, ELBOW_MAX / bend).normalize(), 1);
     }
-  }
-  // The wave, with a Chog's short arms: the right arm out to the side and up, nearly straight, swinging from
-  // the shoulder, the hand rocking at the wrist (over whatever the clip's body does).
-  function waveUpdate(dt) {
-    const A = arm;
-    if (!A) return;
-    A.ww = (A.ww ?? 0) + ((state === 'wave' ? 1 : 0) - (A.ww ?? 0)) * (1 - Math.exp(-dt * 7));
-    if (A.ww < 0.01) {
-      A.wt = 0;
-      return;
-    }
-    A.wt += dt;
-    const w = THREE.MathUtils.smoothstep(A.ww, 0, 1);
-    const ph = A.wt * WAVE.hz * Math.PI * 2;
-    A.up.updateWorldMatrix(true, true);
-    A.up.getWorldPosition(_sh);
-    root.getWorldQuaternion(_rq);
-    _bf.set(0, 0, 1).applyQuaternion(_rq).setY(0).normalize();
-    root.getWorldPosition(_side);
-    _side.subVectors(_sh, _side).setY(0).normalize();
-    // The arm in the plane out to its side (tipped a little forward), at an angle over level that swings.
-    _off.copy(_side).multiplyScalar(Math.cos(WAVE.forward)).addScaledVector(_bf, Math.sin(WAVE.forward)).normalize();
-    const lift = WAVE.lift + WAVE.swing * Math.sin(ph);
-    _to.copy(_off).multiplyScalar(Math.cos(lift));
-    _to.y = Math.sin(lift);
-    A.fore.getWorldPosition(_el);
-    swing(A.up, _cur.subVectors(_el, _sh).normalize(), _to, w);
-    // The forearm further up, toward upright, swinging a beat behind.
-    A.fore.getWorldPosition(_el);
-    A.hand.getWorldPosition(_wr);
-    // (Never past upright: leaning in over the head, the hand went behind it.)
-    const up = Math.min(lift + WAVE.fore + WAVE.foreSwing * Math.sin(ph - WAVE.lag), Math.PI * 0.5);
-    _aim.copy(_off).multiplyScalar(Math.cos(up));
-    _aim.y = Math.sin(up);
-    swing(A.fore, _cur.subVectors(_wr, _el).normalize(), _aim.normalize(), w);
-    // The hand trails the swing a little, about the way it faces (forward).
-    _qh.setFromAxisAngle(_bf, -WAVE.rock * Math.sin(ph - WAVE.lag * 2) * w);
-    A.hand.getWorldQuaternion(_qt).premultiply(_qh);
-    A.hand.parent.getWorldQuaternion(_pq);
-    A.hand.quaternion.copy(_pq.invert().multiply(_qt));
-    A.hand.updateWorldMatrix(false, true);
   }
   // Singing with a mic (the singer, 10-17): the right hand brings it to the mouth, its head just in front of
   // the lips and its handle down and out, the arm bent below (two bones, the elbow down and out to the side).

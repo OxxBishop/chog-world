@@ -276,7 +276,7 @@ const SET = [['sing', 19.2], ['cheer', 2.66], ['idle', 4]];
 const stageFx = Object.values(import.meta.glob('./fx/stagefx.js', { eager: true }))[0] ?? null;
 
 // Someone who mostly stands about: idle, now and then a wave or a cheer (each at its own rhythm).
-function idler(chog, moves = ['wave'], every = [9, 16]) {
+function idler(chog, moves = ['cheer'], every = [9, 16]) {
   let left = every[0] + Math.random() * (every[1] - every[0]);
   let busy = 0;
   chog.play('idle');
@@ -349,7 +349,7 @@ const LYRA = { name: 'Lyra', face: 'excited', lines: ["This next one's for you!"
 const VOICES = 1;
 const FADE_IN = 0.3;
 const FADE_OUT = 0.45;
-// How long it waves before standing and talking on, facing you.
+// How long it says its hello (its talk; no waving since 10-21) before standing and talking on, facing you.
 const WAVE_FOR = 2.6;
 
 /**
@@ -436,7 +436,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     const api = lastMe?.userData.api;
     const answer = api && who.name ? fill(pick(meN(api), MY_HI), who.name) : null;
     const after = answer ? 0.3 + lineLen(answer, 2.4, 4) : 0;
-    say(n, line, { len, total: len + after, move: who.move ?? 'wave', wave: who.move ? 0 : WAVE_FOR });
+    say(n, line, { len, total: len + after, move: who.move ?? 'talk', wave: who.move ? 0 : WAVE_FOR });
     if (answer) mine.pending = { line: answer, at: t + len + 0.3, len: after - 0.3 };
     if (who.reach && lastCamera) c.reach(lastCamera, n.left);
   }
@@ -811,8 +811,8 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       const g = NPC_SLOTS.gardener;
       const petal = await npc(g.glb, g.id);
       patch.add(petal.root);
-      // Standing about the flowers, now and then a wave or a happy little jump.
-      const tick = own(petal, idler(petal, ['wave', 'cheer'], [8, 14]));
+      // Standing about the flowers, now and then a happy little jump.
+      const tick = own(petal, idler(petal, ['cheer'], [10, 18]));
       return { group: patch, chogs: await shown(patch, [petal]), tick: (tt, dt) => tick(dt) };
     },
   );

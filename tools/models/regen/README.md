@@ -21,5 +21,11 @@ Tripo round. Steps per Chog:
 5. **Faces:** `tools/faces` (README there): `capture.html?m=chog-<id>&f=<file>`, `detect.py`, `build.py`
    (CFG per model, new: `keep_blue` keeps drool over every mouth, `mk` scales the drawn mouths),
    `export.py <names>` (merges into faces.json, writes the KTX2).
-6. **Checks:** `../view.html`, `../pose.html` (walk, run, wave), `../stretchmoves.html` (triangles that
+6. **Proportions (10-21, the user's phone test):** `limb_edit.py` fixes the mesh before the rig, through
+   `EDIT=... newcast.sh`: `EDIT="arms shoulder=0.37;k=0.6;hand=0.13"` pulls each arm in along its own line
+   to k of its length with the hand kept whole (Toasty: "arms longer than his legs"), `EDIT="tail k=0.55"`
+   scales the tail about where it joins (Snooze: "tail is way too big"). Toasty was also redrawn in Nano
+   Banana from his first picture with the spikes out from under the hat on both sides, like his NFT; after
+   the arm edit the rigger needs `shoulder=0.37;z_arm=0.65` (his spikes are wider than his arms now).
+7. **Checks:** `../view.html`, `../pose.html` (walk, run, wave), `../stretchmoves.html` (triangles that
    stretch; the ones hidden under a big head count too, so look as well), `../handcheck.html`.

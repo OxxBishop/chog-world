@@ -1,0 +1,73 @@
+<!doctype html><meta charset="utf-8"><title>Arm twist</title>
+<pre id="log">measuring</pre>
+<script type="module">
+// How far each arm bone turns about its own length in a clip (A, 10-21: the user saw the cast's arms
+// twisted). The bone's turn from its bind, in model space, split into the swing that points it and the twist
+// about its bind line; reported per clip as the twist's range in degrees. Run under vite:
+// /tools/models/twist.html?m=chog-52,chog-132&dir=npcs  window.__json: { model: { clip: { bone: [min, max] } } }
+import * as THREE from 'three';
+import { withKtx2 } from '/src/chog.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'meshoptimizer';
+const q = new URLSearchParams(location.search);
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+withKtx2(loader);
+const BONES = ['UpperArmL', 'ForeArmL', 'HandL', 'UpperArmR', 'ForeArmR', 'HandR'];
+const CHILD = { UpperArmL: 'ForeArmL', ForeArmL: 'HandL', UpperArmR: 'ForeArmR', ForeArmR: 'HandR' };
+const out = {};
+function ms(root, b) {
+  const p = new THREE.Vector3(), qq = new THREE.Quaternion(), s = new THREE.Vector3();
+  new THREE.Matrix4().multiplyMatrices(new THREE.Matrix4().copy(root.matrixWorld).invert(), b.matrixWorld).decompose(p, qq, s);
+  return { p, q: qq };
+}
+for (const m of q.get('m').split(',')) {
+  const g = await loader.loadAsync(`/models/${q.get('dir') || 'npcs'}/${m}.glb`);
+  const root = g.scene;
+  root.updateMatrixWorld(true);
+  const bind = {};
+  for (const n of BONES) {
+    const b = root.getObjectByName(n);
+    const c = root.getObjectByName(CHILD[n]);
+    const a = ms(root, b);
+    // A hand has no child bone: its line is the forearm's.
+    const dir = c ? ms(root, c).p.sub(a.p).normalize() : null;
+    bind[n] = { q: a.q, dir };
+  }
+  bind.HandL.dir = bind.ForeArmL.dir.clone();
+  bind.HandR.dir = bind.ForeArmR.dir.clone();
+  const mixer = new THREE.AnimationMixer(root);
+  out[m] = {};
+  for (const clip of g.animations) {
+    mixer.stopAllAction();
+    const act = mixer.clipAction(clip);
+    act.reset().play();
+    const r = {};
+    for (let i = 0; i <= 24; i++) {
+      mixer.setTime((clip.duration * i) / 24);
+      root.updateMatrixWorld(true);
+      for (const n of BONES) {
+        const now = ms(root, root.getObjectByName(n)).q;
+        const delta = now.clone().multiply(bind[n].q.clone().invert());
+        const d = bind[n].dir.clone().applyQuaternion(delta);
+        const sw = new THREE.Quaternion().setFromUnitVectors(bind[n].dir, d);
+        const tw = sw.clone().invert().multiply(delta);
+        // Signed angle about the bind line.
+        const ax = new THREE.Vector3(tw.x, tw.y, tw.z);
+        let ang = 2 * Math.atan2(ax.length(), tw.w);
+        if (ax.dot(bind[n].dir) < 0) ang = -ang;
+        ang = THREE.MathUtils.radToDeg(Math.atan2(Math.sin(ang), Math.cos(ang)));
+        const down = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(-d.y, -1, 1)));
+        r[n] ??= { tw: [999, -999], down: [999, -999] };
+        r[n].tw = [Math.min(r[n].tw[0], ang), Math.max(r[n].tw[1], ang)].map(Math.round);
+        r[n].down = [Math.min(r[n].down[0], down), Math.max(r[n].down[1], down)].map(Math.round);
+      }
+    }
+    act.stop();
+    out[m][clip.name] = r;
+  }
+  out[m].bindDown = Object.fromEntries(BONES.slice(0, 2).concat(BONES.slice(3, 5)).map((n) => [n, Math.round(THREE.MathUtils.radToDeg(Math.asin(-bind[n].dir.y)))]));
+}
+document.getElementById('log').textContent = JSON.stringify(out, null, 1);
+window.__json = JSON.stringify(out);
+window.__done = btoa('ok');
+</script>

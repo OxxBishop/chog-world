@@ -1,5 +1,5 @@
 #!/bin/bash
-# newcast.sh <id> [rig overrides] [bake arms out/fwd]: Tripo model -> facing +z, our rig, slim, the cast's clips,
+# [EDIT="..."] newcast.sh <id> [rig overrides] [bake arms out/fwd]: Tripo model -> facing +z, our rig, slim, the cast's clips,
 # 2048 colour map as KTX2, renders. Output: public/models/_wip/new/chog-<id>.glb, r3/nc-<id>-*.png
 set -e
 ID=$1; OVR=${2:-}; ARMS=${3:-}
@@ -12,6 +12,8 @@ cd $SCR
 if [ "$STEP" -le 1 ]; then
 SRC=$(ls w3/tripo-$ID/tripo-out/*/model.glb | tail -1)
 $BL -b --factory-startup -P decimate.py -- $SRC $REPO/public/models/_wip/t-$ID-d.glb 30000 -90 2>&1 | grep -E "^faces" || true
+# EDIT="arms shoulder=0.37;k=0.6" or EDIT="tail k=0.6": proportions fixed in the mesh before the rig (limb_edit.py).
+[ -n "$EDIT" ] && { $BL -b --factory-startup -P $REPO/tools/models/regen/limb_edit.py -- $REPO/public/models/_wip/t-$ID-d.glb $REPO/public/models/_wip/t-$ID-d.glb $EDIT 2>&1 | grep -E "^ARM|^TAIL|Traceback|Error" || true; }
 $BL -b --factory-startup -P $REPO/tools/models/rig_chog.py -- $REPO/public/models/_wip/t-$ID-d.glb w3/rig/chog-$ID.glb "Idle,Walk,Run,Wave,Talk,Cheer" "$OVR" 2>&1 | grep -E "LANDMARKS|ARM RADIUS|head zone|Traceback|Error" || true
 cd $REPO
 node tools/models/slim_cast.mjs $SCR/w3/rig/chog-$ID.glb --out public/models/_wip/new 2>&1 | tail -1
