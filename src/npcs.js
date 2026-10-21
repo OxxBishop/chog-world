@@ -374,6 +374,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   let lastCamera = null;
   // Your Chog (while you walk one), for the strollers to wait for.
   let lastMe = null;
+  let lastBoards = null;
   // f: the Chog's own routine, which waits while it reacts. steer: whether that routine sets which way it
   // faces (a stroller does; one standing in the crowd keeps the way it faced). resume: back to its routine.
   // who: its CAST entry (name, face, pace, lines; near, how close you come; ahead, only from in front of the
@@ -938,6 +939,23 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   const rideStart = new THREE.Vector3(Math.cos(2.5) * (DOWNTOWN.r + 2.5), 0, Math.sin(2.5) * (DOWNTOWN.r + 2.5));
   let rider = null;
   const meAt = new THREE.Vector3();
+  // What Patrol keeps clear of, near him: your Chog (and the board under it), the hoverboards, the cast.
+  const around = [];
+  const aroundRider = () => {
+    around.length = 0;
+    const at = rider.group.position;
+    const add = (x, z, r) => (x - at.x) ** 2 + (z - at.z) ** 2 < 400 && around.push({ x, z, r });
+    if (lastMe) {
+      lastMe.getWorldPosition(meAt);
+      add(meAt.x, meAt.z, lastBoards?.some((b) => !b.parked) ? 1.7 : 1.1);
+    }
+    for (const b of lastBoards ?? []) if (b.parked) add(b.x, b.z, 1.5);
+    for (const a of actors) {
+      if (!a.group.visible) continue;
+      for (const c of a.chogs) if (c.root.visible && c !== rider.chog) (c.root.getWorldPosition(wp), add(wp.x, wp.z, 1.0));
+    }
+    return around;
+  };
   set(
     (v) => (rider ? v.copy(rider.group.position) : v.copy(rideStart)),
     async () => {
@@ -948,12 +966,14 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       await shown(rider.group, [chog]);
       return {
         group: rider.group,
-        // Its own clip and pose each frame (rider.update), so none for the cast's loop to move.
+        // Its own clip and pose each frame (rider.update), so none for the cast's loop to move; solid for
+        // your Chog to bump into all the same.
         chogs: [],
+        solid: [chog.root],
         where: (v) => v.copy(rider.group.position),
         tick: (tt, dt) => {
           rider.group.visible = !away.has(56);
-          rider.update(dt, lastEnv, lastCamera, lastMe ? lastMe.getWorldPosition(meAt) : null);
+          rider.update(dt, lastEnv, lastCamera, aroundRider());
         },
       };
     },
@@ -989,14 +1009,16 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     },
     /** Every Chog about town that's showing (their roots), for walking round them. */
     roots() {
-      return actors.flatMap((a) => (a.group.visible ? a.chogs.map((c) => c.root) : []));
+      return actors.flatMap((a) => (a.group.visible ? [...a.chogs.map((c) => c.root), ...(a.solid ?? [])] : []));
     },
     // A set still loading: the demo's shots wait for them all (B13).
     get loading() {
       return sets.some((st) => st.state === 'loading');
     },
     // me: the Chog you walk as (its root), or null when you're not out walking.
-    update(dt, camera, env = null, renderer = null, me = null) {
+    // boards: the hoverboards (src/travel.js), for Patrol to keep clear of.
+    update(dt, camera, env = null, renderer = null, me = null, boards = null) {
+      lastBoards = boards;
       t += dt;
       lastEnv = env;
       lastRenderer = renderer;

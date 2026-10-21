@@ -912,7 +912,7 @@ function frame() {
   session?.update(dt);
   casino?.show(!entry?.active && rig.room === casino.room.pod);
   casino?.update(dt, env);
-  npcs?.update(dt, camera, env, renderer, travel?.active ? travel.chog?.root : null);
+  npcs?.update(dt, camera, env, renderer, travel?.active ? travel.chog?.root : null, travel?.boards);
   // Near your Chog out walking, else near what the camera looks at; hidden in rooms and in space.
   if (birds) {
     const me = travel?.active && travel.chog ? travel.chog.root.getWorldPosition(birdMe) : null;

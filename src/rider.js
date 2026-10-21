@@ -97,15 +97,18 @@ function hoverChopper(f) {
   pod(rr * 0.92, rr * 0.95, zr);
   pod(rf * 0.78, rf * 0.92, zf);
   // The frame: a low backbone from the head tube to the back pod, the engine and the tank on top.
-  const headT = new THREE.Vector3(0, f.grip.y - S * 0.5, f.grip.z - S * 0.05);
+  // The tank just clear of his tummy, the head tube past it (the bars then reach back to his hands).
+  const tankZ = Math.max(f.belly + S * 0.4, (f.hip.z + f.grip.z) / 2 + S * 0.08);
+  const headT = new THREE.Vector3(0, f.grip.y - S * 0.5, Math.max(f.grip.z - S * 0.05, tankZ + S * 0.42));
   bar(new THREE.Vector3(0, rr * 1.05, zr), headT, S * 0.09, chrome(), g);
   bar(new THREE.Vector3(0, rr * 0.75, zr + S * 0.25), new THREE.Vector3(0, rr * 0.8, S * 0.5), S * 0.11, paint, g);
   bar(new THREE.Vector3(0, rr * 0.8, S * 0.5), headT, S * 0.11, paint, g);
-  const engine = mesh(new THREE.BoxGeometry(S * 0.42, S * 0.42, S * 0.5), chrome(), 0, rr * 1.0, S * 0.15, g);
+  // (Narrow, so his boots on the pegs show either side of it.)
+  const engine = mesh(new THREE.BoxGeometry(S * 0.28, S * 0.38, S * 0.46), chrome(), 0, rr * 0.95, S * 0.1, g);
   engine.rotation.x = 0.2;
-  for (const s of [-1, 1]) mesh(new THREE.CylinderGeometry(S * 0.16, S * 0.16, S * 0.1, 20), paint, s * S * 0.24, rr * 1.05, S * 0.15, g).rotation.z = Math.PI / 2;
-  const tank = mesh(new THREE.SphereGeometry(1, 32, 20), red, 0, (S + headT.y) / 2 + S * 0.05, (f.hip.z + headT.z) / 2 + S * 0.08, g);
-  tank.scale.set(S * 0.3, S * 0.24, S * 0.52);
+  for (const s of [-1, 1]) mesh(new THREE.CylinderGeometry(S * 0.13, S * 0.13, S * 0.08, 20), paint, s * S * 0.17, rr * 1.0, S * 0.1, g).rotation.z = Math.PI / 2;
+  const tank = mesh(new THREE.SphereGeometry(1, 32, 20), red, 0, (S + headT.y) / 2 + S * 0.05, tankZ, g);
+  tank.scale.set(S * 0.3, S * 0.24, S * 0.4);
   tank.rotation.x = -0.18;
   // The long raked fork down to the front pod, high bars up from it.
   const forkEnd = new THREE.Vector3(0, rf * 1.05, zf);
@@ -127,7 +130,10 @@ function hoverChopper(f) {
     bar(new THREE.Vector3(S * 0.18, y + S * 0.12, S * 0.2), new THREE.Vector3(S * 0.3, y, S * 0.02), S * 0.06, chrome(), g);
     bar(new THREE.Vector3(S * 0.3, y, S * 0.02), new THREE.Vector3(S * 0.32, y + S * 0.12, zr - S * 0.5), S * 0.06, chrome(), g);
   }
-  for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(S * 0.26, S * 0.06, S * 0.16), chrome(), s * S * 0.34, f.peg.y - S * 0.03, f.peg.z, g);
+  for (const s of [-1, 1]) {
+    mesh(new THREE.BoxGeometry(S * 0.2, S * 0.05, S * 0.22), chrome(), s * f.pegX, f.peg.y - S * 0.04, f.peg.z, g);
+    bar(new THREE.Vector3(s * S * 0.12, f.peg.y - S * 0.04, f.peg.z - S * 0.05), new THREE.Vector3(s * (f.pegX - S * 0.08), f.peg.y - S * 0.04, f.peg.z), S * 0.03, chrome(), g);
+  }
   const tail = mesh(new THREE.SphereGeometry(S * 0.08, 12, 8), lamp('#ff3a5a'), 0, rr * 1.6, zr - rr * 0.95, g);
   // A soft pool of violet light on the ground under it.
   const pool = new THREE.Mesh(
@@ -223,6 +229,25 @@ export function createRider({ chog, groundAt }) {
   const hipY = W(B.hips).y;
   const L = B.legs[0];
   const thigh = W(L.thigh).distanceTo(W(L.shin)), shin = W(L.shin).distanceTo(W(L.foot)), ankle = W(L.foot).y;
+  const hipX = Math.abs(W(L.thigh).x);
+  // How far his tummy reaches in front of his hips (the 10-21 cast is rounder: the tank, set by his arms'
+  // reach alone, sat inside him).
+  let skin = null;
+  chog.root.traverse((o) => o.isSkinnedMesh && (!skin || o.geometry.attributes.position.count > skin.geometry.attributes.position.count) && (skin = o));
+  let belly = 0.25;
+  if (skin) {
+    const bones = skin.skeleton.bones;
+    const core = new Set(['Hips', 'Spine', 'Chest'].map((n) => bones.findIndex((b) => b.name === n)));
+    const pos = skin.geometry.attributes.position, si = skin.geometry.attributes.skinIndex, sw = skin.geometry.attributes.skinWeight;
+    const v = new THREE.Vector3(), hz = W(B.hips).z;
+    for (let i = 0; i < pos.count; i++) {
+      let w = 0;
+      for (let j = 0; j < 4; j++) if (core.has(si.getComponent(i, j))) w += sw.getComponent(i, j);
+      if (w < 0.5) continue;
+      v.fromBufferAttribute(pos, i).applyMatrix4(skin.matrixWorld);
+      belly = Math.max(belly, v.z - hz);
+    }
+  }
   const A = B.arms[0];
   const shoulder = W(A.up);
   const arm = shoulder.distanceTo(W(A.fore)) + W(A.fore).distanceTo(W(A.hand));
@@ -233,7 +258,7 @@ export function createRider({ chog, groundAt }) {
   const sole = knee.clone().add(new THREE.Vector3(0, -shin - ankle, shin * 0.12));
   const PEG = 0.72;
   const hipAt = PEG - sole.y;
-  const f = { hip: new THREE.Vector3(0, hipAt, 0), peg: new THREE.Vector3(0, PEG, sole.z), seatY: hipAt - thigh * 0.28 };
+  const f = { hip: new THREE.Vector3(0, hipAt, 0), peg: new THREE.Vector3(0, PEG, sole.z), seatY: hipAt - thigh * 0.28, belly, pegX: hipX * 1.6 };
   const sh = new THREE.Vector3(Math.abs(shoulder.x), hipAt + (shoulder.y - hipY), shoulder.z);
   const down = arm * 0.42;
   const fwdReach = Math.sqrt(Math.max(0.01, (arm * 0.9) ** 2 - down * down - (arm * 0.12) ** 2));
@@ -249,18 +274,21 @@ export function createRider({ chog, groundAt }) {
   lean.add(ride.group, chog.root);
   chog.root.position.set(0, hipAt - hipY, 0);
 
-  const sitQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -SIT);
-  const kneeQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), SIT * 0.92);
   const saved = [];
   const posed = [...B.legs.flatMap((l) => [l.thigh, l.shin]), ...B.arms.flatMap((a) => [a.up, a.fore])];
   const grip = new THREE.Vector3(), pole = new THREE.Vector3();
   const pose = () => {
     posed.forEach((b, i) => (saved[i] = b.quaternion.clone()));
-    for (const l of B.legs) {
-      l.thigh.quaternion.multiply(sitQ);
-      l.shin.quaternion.multiply(kneeQ);
-    }
+    // Each leg reaching its peg, the knee forward and up (in the bike's frame, so it works whichever way
+    // the rig's own bones are turned: the 10-21 cast's thighs turned about their length here and hung
+    // straight down through the bike).
     lean.updateMatrixWorld(true);
+    B.legs.forEach((l, i) => {
+      const sx = i === 0 ? 1 : -1;
+      grip.set(sx * f.pegX, f.peg.y + ankle, f.peg.z).applyMatrix4(lean.matrixWorld);
+      pole.set(sx * 0.25, 0.5, 1).transformDirection(lean.matrixWorld);
+      reach(l.thigh, l.shin, l.foot, grip, pole);
+    });
     for (const a of B.arms) {
       grip.set(a.s * f.grip.x, f.grip.y, f.grip.z).applyMatrix4(lean.matrixWorld);
       pole.set(a.s, -0.6, -0.3).transformDirection(lean.matrixWorld);
@@ -278,21 +306,40 @@ export function createRider({ chog, groundAt }) {
   // Swerving round your Chog: how far he's off his line, to his right.
   let side = 0, sideV = 0, slow = 1;
   const p = new THREE.Vector3(), ahead = new THREE.Vector3(), behind = new THREE.Vector3();
+  const hits = [];
+  // The bike's half width and how far it reaches behind him, out here; how far he swings off his line.
+  const BIKE_HALF = 0.6 * size, BIKE_BACK = 1.3 * size, SWERVE = 4.6;
+  // avoid: what's about, [{ x, z, r }] (your Chog, the hoverboards, the cast), or null.
   const place = (dt, avoid = null) => {
     const u = (s / length) % 1;
     route.getPointAt(u, p);
     route.getPointAt((u + 4 / length) % 1, ahead);
     route.getPointAt((u - 4 / length + 1) % 1, behind);
-    // Your Chog in his way: he eases off and swings wide of it, then back on his line.
+    // Anything in his way (your Chog, a hoverboard, one of the cast): he eases off and swings wide of it
+    // to whichever side clears everything there, nearest his line; with no way round he stops and waits
+    // (the user, 10-21: he rode through a hoverboard and Dash).
     const fx = ahead.x - behind.x, fz = ahead.z - behind.z, fl = Math.hypot(fx, fz) || 1;
     const dx = fx / fl, dz = fz / fl;
     let goal = 0, ease = 1;
-    if (avoid) {
-      const rx = avoid.x - p.x, rz = avoid.z - p.z;
+    hits.length = 0;
+    for (const o of avoid ?? []) {
+      const rx = o.x - p.x, rz = o.z - p.z;
       const f = rx * dx + rz * dz, l = rx * -dz + rz * dx;
-      if (f > -3 && f < 14 && Math.abs(l) < 5) {
-        goal = THREE.MathUtils.clamp(l - Math.sign(l || 1) * 2.6, -4.2, 4.2);
-        if (Math.abs(l - side) < 2.4 && f > 0) ease = THREE.MathUtils.clamp((f - 2) / 8, 0.25, 1);
+      if (f > -BIKE_BACK && f < 16 && Math.abs(l) < 7) hits.push({ f, l, r: o.r + BIKE_HALF });
+    }
+    if (hits.length) {
+      const clear = (g) => Math.abs(g) <= SWERVE && hits.every((h) => Math.abs(h.l - g) >= h.r - 0.01);
+      let best = clear(0) ? 0 : null;
+      for (const h of hits) for (const g of [h.l - h.r, h.l + h.r]) if (clear(g) && (best === null || Math.abs(g - side) < Math.abs(best - side))) best = g;
+      // The nearest thing ahead still across his path where he is now.
+      let block = null;
+      for (const h of hits) if (h.f > 0 && Math.abs(h.l - side) < h.r && (!block || h.f < block.f)) block = h;
+      if (best === null) {
+        goal = side;
+        if (block) ease = THREE.MathUtils.clamp((block.f - block.r - 0.5) / 5, 0, 1);
+      } else {
+        goal = best;
+        if (block) ease = THREE.MathUtils.clamp((block.f - block.r) / 7, 0, 1);
       }
     }
     sideV += ((goal - side) * 6 - sideV * 4.5) * dt;
@@ -308,7 +355,7 @@ export function createRider({ chog, groundAt }) {
     const want = groundAt(p.x, p.z, y ?? 60);
     y = y === null || dt === 0 ? want : y + (want - y) * Math.min(1, dt * 10);
     // (Turned a little into a swerve.)
-    const yaw = Math.atan2(ahead.x - behind.x, ahead.z - behind.z) - Math.atan2(sideV, SPEED * slow);
+    const yaw = Math.atan2(ahead.x - behind.x, ahead.z - behind.z) - Math.atan2(sideV, Math.max(SPEED * slow, 3));
     group.position.set(p.x, y, p.z);
     group.rotation.y = yaw;
     lean.rotation.z = roll;
@@ -327,7 +374,7 @@ export function createRider({ chog, groundAt }) {
       s = d;
       place(0);
     },
-    // avoid: your Chog's world position while you're out walking, else null.
+    // avoid: [{ x, z, r }] to keep clear of (src/npcs.js: your Chog, the hoverboards, the cast), or null.
     update(dt, env, camera, avoid = null) {
       t += dt;
       s = (s + SPEED * slow * dt) % length;

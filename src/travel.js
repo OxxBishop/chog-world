@@ -551,7 +551,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const hereDeck = deckUnder(state.pos.x, state.pos.z);
     const backDeck = deckUnder(state.pos.x + Math.sin(state.camYaw) * 6, state.pos.z + Math.cos(state.camYaw) * 6);
     const rise = Number.isFinite(hereDeck) && Number.isFinite(backDeck) ? Math.max(0, (backDeck - hereDeck) / 6) : 0;
-    const stairs = rise > 0.05 ? Math.atan(rise) + 0.32 : 0;
+    // (Less on a hoverboard: riding high over the steps, its edges hide little, and tipped up as far under
+    // a bridge's hoops the camera only saw the deck.)
+    const stairs = rise > 0.05 ? (Math.atan(rise) + 0.32) * (state.board >= 0 ? 0.35 : 1) : 0;
     stairLift = snap ? stairs : stairLift + (stairs - stairLift) * (1 - Math.exp(-dt * 2.5));
     const pitch0 = Math.min(CAM.pitchMax, Math.max(state.camPitch, stairLift) + state.domeTilt);
     // Behind and above, by yaw and pitch, pulled in where something's in the way.
@@ -571,9 +573,12 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       }
     }
     // No room behind (a wall at your back): look down from higher up rather than crowd into your Chog.
+    // Under a bridge's hoops the room is under their arch, not over it: there it comes down lower instead
+    // (on a hoverboard your Chog rides high, and the camera behind it went up through the glass and was
+    // pulled in onto the back of its head: the user, 10-21).
     if (dist < 4.6) {
-      for (const lift of [0.35, 0.7, 1.0]) {
-        const pitch = Math.min(CAM.pitchMax, pitch0 + lift);
+      for (const lift of inTunnel ? [-0.12, -0.24, -0.36, -0.48] : [0.35, 0.7, 1.0]) {
+        const pitch = THREE.MathUtils.clamp(pitch0 + lift, CAM.pitchMin, CAM.pitchMax);
         const cp2 = Math.cos(pitch);
         const dir2 = new THREE.Vector3(Math.sin(state.camYaw) * cp2, Math.sin(pitch), Math.cos(state.camYaw) * cp2);
         let ok = state.camDist;
@@ -584,11 +589,12 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
             break;
           }
         }
-        if (ok > dist + 1) {
+        if (ok > dist + (inTunnel ? 0.3 : 1)) {
           dir.copy(dir2);
           dist = ok;
         }
-        if (dist >= 4.6) break;
+        // (Under the hoops, on down while it gains room: the lowest look along the bridge it can have.)
+        if (dist >= (inTunnel ? state.camDist * 0.95 : 4.6)) break;
       }
     }
     // Under a bridge's hoops with no room behind (swung out to the side): it swings round behind your Chog,
@@ -886,6 +892,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   const RIDE_TOP = BOARD.hover + BOARD.thick; // the deck's top over the ground, ridden
   const KNEEL = 0.34; // and sunk low to be stepped onto or off
   const STEP_V = 2.4; // stepping on and off: a careful walk, metres a second
+  const HOP_T = 0.42, HOP_UP = 0.3; // the little hop on (and down off): how long, how high over the deck
   function rideStep(dt, speed) {
     let lift = state.board >= 0 ? RIDE_TOP : 0;
     let pitch = 0;
@@ -920,23 +927,41 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     boards.update(dt, lastEnv);
     return lift;
   }
-  // Stepping on: the board floats round to meet your Chog, end on, and sinks low; your Chog walks up and
-  // steps onto it, and the board rises with it. Off: the board sinks, your Chog walks off its front (or a
-  // side, if that's in the way) and steps down, and the board rises back to wait. (It used to be lifted
-  // on as if by invisible hands: the user, 10-19.)
+  // Stepping on: the board floats round to meet your Chog, end on, and sinks low; your Chog walks up to its
+  // tail and hops up onto it, and the board rises with it. Off: the board sinks, your Chog walks to its
+  // front (or a side, if that's in the way), hops down and walks on, and the board rises back to wait. (It
+  // used to be lifted on as if by invisible hands: the user, 10-19. Then it rose to the deck's height half
+  // a metre short of the board and walked on air, and a door's sill popped it up and down: the user,
+  // 10-21, "not as smooth as it used to be".)
   function hopStep(h, dt) {
     h.t += dt;
     const b = h.b;
     state.vel.set(0, 0, 0);
+    // (Slowing as it comes to where it stops, so a hop starts from a step, not a dead halt.)
     const walk = (to) => {
-      h.v += (STEP_V - h.v) * (1 - Math.exp(-dt * 8));
+      h.v += (Math.min(STEP_V, (to - h.s) * 3 + 0.9) - h.v) * (1 - Math.exp(-dt * 8));
       h.s = Math.min(h.len, h.s + h.v * dt);
       state.pos.x = h.from.x + h.dir.x * h.s;
       state.pos.z = h.from.z + h.dir.z * h.s;
-      const g = groundAt(state.pos.x, state.pos.z, state.pos.y);
-      if (g) state.pos.y = g.y;
-      state.yaw += wrap(Math.atan2(h.dir.x, h.dir.z) - state.yaw) * (1 - Math.exp(-dt * 10));
+      ground();
       return h.s >= to;
+    };
+    // (Over a door's sill or a kerb, smoothly.)
+    const ground = () => {
+      const g = groundAt(state.pos.x, state.pos.z, state.pos.y);
+      if (g) state.pos.y += (g.y - state.pos.y) * (1 - Math.exp(-dt * 14));
+      state.yaw += wrap(Math.atan2(h.dir.x, h.dir.z) - state.yaw) * (1 - Math.exp(-dt * 10));
+    };
+    // The hop: from where it stood (s0) to `land`, up from `y0` over the deck to `y1`; its feet's height.
+    const hop = (land, y0, y1) => {
+      h.t2 += dt;
+      const u = Math.min(1, h.t2 / HOP_T);
+      h.s = h.s0 + (land - h.s0) * (0.5 - 0.5 * Math.cos(Math.PI * u));
+      state.pos.x = h.from.x + h.dir.x * h.s;
+      state.pos.z = h.from.z + h.dir.z * h.s;
+      ground();
+      h.v = 0;
+      return { u, feet: y0 + (y1 - y0) * u + HOP_UP * 4 * u * (1 - u) };
     };
     if (h.on) {
       // The board: from where it waited to end on in front of your Chog, turning and sinking.
@@ -946,9 +971,16 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       let top = RIDE_TOP - 0.1 + (KNEEL - RIDE_TOP + 0.1) * k;
       let feet = 0;
       if (h.phase === 'walk') {
-        // A moment for the board to come round, then up to it and onto it as its feet cross its tail.
-        if (h.t > 0.2 && walk(h.len)) (h.phase = 'rise'), (h.t2 = 0);
-        feet = top * smooth(h.sTail - 0.15, h.sTail + 0.3, h.s);
+        // A moment for the board to come round, then up to just short of its tail (and the hop once the
+        // board is there: it comes round and sinks over half a second).
+        const there = h.t > 0.2 && walk(Math.max(0, h.sTail - 0.2));
+        if (there && h.t >= 0.5) (h.phase = 'jump'), (h.t2 = 0), (h.s0 = h.s);
+      }
+      if (h.phase === 'jump') {
+        // Up and over its tail, landing near its middle.
+        const j = hop(h.len - 0.15, 0, top);
+        feet = j.feet;
+        if (j.u >= 1) (h.phase = 'rise'), (h.t2 = 0);
       }
       if (h.phase === 'rise') {
         // On: up it comes to riding height, a little past it and back.
@@ -966,7 +998,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       h.speed = h.phase === 'walk' && h.t > 0.2 ? h.v : 0;
       return feet;
     }
-    // Off: down it sinks, then off your Chog walks.
+    // Off: down it sinks, then your Chog walks to its edge, hops down and walks on a step.
     if (h.phase === 'sink') {
       const k = smooth(0, 0.3, h.t);
       const top = RIDE_TOP + (KNEEL - RIDE_TOP) * k;
@@ -975,18 +1007,22 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       if (k >= 1) h.phase = 'walk';
       return top;
     }
-    walk(h.len);
-    const feet = KNEEL * (1 - smooth(h.sEdge - 0.1, h.sEdge + 0.3, h.s));
+    let feet = 0;
+    if (h.phase === 'walk') {
+      if (walk(Math.max(0, h.sEdge - 0.3))) (h.phase = 'jump'), (h.t2 = 0), (h.s0 = h.s);
+      feet = KNEEL;
+    } else if (h.phase === 'jump') {
+      const j = hop(h.sEdge + 0.5, KNEEL, 0);
+      feet = j.feet;
+      if (j.u >= 1) (h.phase = 'out'), (h.v = STEP_V * 0.5);
+    } else walk(h.len);
     // Once its feet are off, the board rises back to wait.
-    if (!h.parked && h.s > h.sEdge + 0.3) {
+    if (!h.parked && h.phase === 'out') {
       h.parked = true;
       boards.park(b, h.from, h.yaw, KNEEL);
     } else if (!h.parked) boards.carry(b, h.from, h.yaw, 0, KNEEL, 0);
-    h.speed = h.v;
-    if (h.s >= h.len) {
-      if (!h.parked) boards.park(b, h.from, h.yaw, KNEEL);
-      state.hop = null;
-    }
+    h.speed = h.phase === 'jump' ? 0 : h.v;
+    if (h.phase === 'out' && h.s >= h.len) state.hop = null;
     return feet;
   }
   function takeBoard() {
@@ -1701,6 +1737,10 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     pickGuest,
     end,
     portals,
+    // The hoverboards (src/hoverboard.js), for the cast to keep clear of.
+    get boards() {
+      return boards.boards;
+    },
     get active() {
       return state.on;
     },
