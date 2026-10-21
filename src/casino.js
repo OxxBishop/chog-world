@@ -1029,7 +1029,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     if (kind === 'spin' || kind === 'wild') {
       if (kind === 'wild' && ch.wild <= 0) return;
       if (state.chips < bet) {
-        message = state.chips < BETS[0] ? 'Out of chips. Free chips again tomorrow.' : 'Not enough chips for that bet.';
+        message = state.chips < BETS[0] ? 'Out of chips. More testnet chips tomorrow.' : 'Not enough chips for that bet.';
         return render();
       }
       state.chips -= bet;
@@ -1162,7 +1162,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     clearFelt();
     const now = staked();
     if (now + chip > TABLE_MAX) message = `The table takes up to ${TABLE_MAX} a spin.`;
-    else if (now + chip > state.chips) message = state.chips < BETS[0] ? 'Out of chips. Free chips again tomorrow.' : 'Not enough chips for that.';
+    else if (now + chip > state.chips) message = state.chips < BETS[0] ? 'Out of chips. More testnet chips tomorrow.' : 'Not enough chips for that.';
     else {
       bets.set(key, (bets.get(key) ?? 0) + chip);
       placed.push({ key, amount: chip });
@@ -1845,7 +1845,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     el.felt.hidden = !on;
     el.feltN.textContent = on >= TABLE_MAX ? `${fmt(on)} · table max` : fmt(on);
     // What just happened, or how to play.
-    const hint = !message ? (mode ? (hinted[mode] ? '' : HINT[mode]) : 'Free chips only, topped up every day.') : '';
+    const hint = !message ? (mode ? (hinted[mode] ? '' : HINT[mode]) : 'Testnet chips, topped up every day.') : '';
     const text = message || hint;
     el.say.hidden = !text;
     el.say.classList.toggle('quiet', !message);

@@ -207,7 +207,7 @@ function body(p, v) {
   if (has(/shark|dragon|banana|duck|toad|mummy/i, v)) return edge(p, v, 'Costume party', '2 free spins a day', S, (q) => (q.slots.free += 2));
   if (has(/astro|sci fi/i, v)) return edge(p, v, 'Zero gravity', '2 nudges a day: move a reel one stop', S, (q) => (q.slots.nudges += 2));
   if (has(/hawaiian|yukata|farmer|chinese/i, v)) return edge(p, v, 'Holiday', 'three hearts pay 7, not 6', S, boost('heart', 7));
-  if (has(/homeless|holed/i, v)) return edge(p, v, 'Rags to riches', '200 more free chips a day', BOTH, (q) => (q.daily += 200));
+  if (has(/homeless|holed/i, v)) return edge(p, v, 'Rags to riches', '200 more chips a day', BOTH, (q) => (q.daily += 200));
   if (has(/jersey|trackset|hoodie|fire shirt/i, v)) return edge(p, v, 'On a run', streakText(0.1), S, streak(0.1));
   if (has(/vest|jacket/i, v)) return edge(p, v, 'Deep pockets', 'three chips pay 15, not 12', S, boost('chip', 15));
   return edge(p, v, 'Lucky shirt', '1 free spin a day', S, (q) => (q.slots.free += 1));
@@ -309,10 +309,10 @@ function rare(p, t, id) {
     wilds(2, 'chog')(q);
     q.roulette.second += 1;
   });
-  if (['Metal', 'Jade', 'Multi Colored', 'Purple', 'Gold', 'Blue', 'White', 'Green', 'Beige', 'Grey'].includes(t.Skin)) edge(p, `${t.Skin} skin`, 'Rare skin', '200 more free chips a day', BOTH, (q) => (q.daily += 200));
+  if (['Metal', 'Jade', 'Multi Colored', 'Purple', 'Gold', 'Blue', 'White', 'Green', 'Beige', 'Grey'].includes(t.Skin)) edge(p, `${t.Skin} skin`, 'Rare skin', '200 more chips a day', BOTH, (q) => (q.daily += 200));
   else if (t.Skin === 'Red') edge(p, 'Red skin', 'Red', 'your first losing bet on red each day comes back', R, (q) => (q.roulette.colour.red += 1));
   else if (t.Skin === 'Black') edge(p, 'Black skin', 'Black', 'your first losing bet on black each day comes back', R, (q) => (q.roulette.colour.black += 1));
-  if (['Gold', 'Supreme Purple', 'Noble Blue', 'Blood Red', 'Royal Blue', 'Red Sky', 'Deep Purple', 'Magenta', 'Bright Yellow', 'Afternoon Orange', 'Aqua Blue', 'Rose Pink', 'Radioactive'].includes(t.Background)) edge(p, `${t.Background} sky`, 'Rare sky', '300 more free chips a day', BOTH, (q) => (q.daily += 300));
+  if (['Gold', 'Supreme Purple', 'Noble Blue', 'Blood Red', 'Royal Blue', 'Red Sky', 'Deep Purple', 'Magenta', 'Bright Yellow', 'Afternoon Orange', 'Aqua Blue', 'Rose Pink', 'Radioactive'].includes(t.Background)) edge(p, `${t.Background} sky`, 'Rare sky', '300 more chips a day', BOTH, (q) => (q.daily += 300));
   if (t.Naked === 'Yes') edge(p, 'Naked', 'Nothing to hide', '1 free spin a day', S, (q) => (q.slots.free += 1));
 }
 
@@ -324,7 +324,7 @@ export function perksFor(traits = {}, id = 7) {
   const p = blank();
   const tier = tierChips[traits.Tier] ? traits.Tier : 'Common';
   const spins = tierSpins[tier] ?? 0;
-  edge(p, tier, tier, `${tierChips[tier]} free chips a day${spins ? `, and ${plural(spins, 'free spin')}` : ''}`, BOTH, (q) => {
+  edge(p, tier, tier, `${tierChips[tier]} chips a day${spins ? `, and ${plural(spins, 'free spin')}` : ''}`, BOTH, (q) => {
     q.daily = tierChips[tier];
     q.slots.free += spins;
   });

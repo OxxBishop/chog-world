@@ -27,6 +27,13 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · The casino says "testnet chips" (A's note, the user's go-ahead)
+- `src/casino.js`: the line under the casino's buttons is "Testnet chips, topped up every day." (was "Free chips only, ..."). Out of chips, it says "Out of chips. More testnet chips tomorrow."
+- `src/hub.js`: the sign over the casino's door says "testnet chips" (it said "free chips only", the line the user asked about).
+- `src/casinoperks.js`: the perks read "200 more chips a day" and so on, without "free".
+- A's other notes: the framed NFT art on each home pod (left of the door) is clear of everything B added there; the dome lamp's collider is on the door's other side.
+- Seen on the laptop and a phone: the sign outside, the line in the room.
+
 ### 2026-10-21 · A · The dino is out of the game
 
 - The user, after seeing the rebuilt dino on a phone at night: "horrid, you might as well remove the character
