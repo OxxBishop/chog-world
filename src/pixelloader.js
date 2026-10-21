@@ -17,7 +17,7 @@ const DOT = 3;
 const LAP = 1.7;
 
 // The Chog, facing right: its outline, lilac rim, mane, face, eyes, blush and mouth.
-const SPRITE = `
+export const SPRITE = `
 ..........o.........
 .........oLo........
 ..o......ollo..o....
@@ -35,7 +35,7 @@ oLnmmmmmmffffffffdlo
 ..olnldddpffkkffpdlo
 ...olollllllllllllo.
 ....o.oooooooooooo..`;
-const PAL = {
+export const PAL = {
   o: '#120a2e', l: '#c3adff', L: '#f1eaff', m: '#3d2596', n: '#5b3fcc', d: '#29176c',
   f: '#fde9d6', e: '#1b1240', p: '#f7a1b6', k: '#ee93a8',
 };

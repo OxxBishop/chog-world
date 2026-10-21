@@ -7,6 +7,7 @@ import { createGlows } from './glows.js';
 import { buildLobbyRoom, buildBarRoom } from './interior.js';
 import { buildCasinoRoom } from './casino.js';
 import { createLobbyFx } from './fx/lobbyfx.js';
+import { domeTicker } from './fx/domeTicker.js';
 
 /*
  * The Chog Hub: one building on the downtown plaza with three doors, each wing with its own
@@ -445,6 +446,8 @@ export function buildHub() {
   repaint(lobbyPod, { grey: 'brown', purple: 'brown', dark: 'brown' }, mats.gold, isDome);
   lobbyPod.traverse((o) => o.isMesh && !o.userData.roof && (o.userData.lobby = true));
   kit.add(lobbyPod);
+  // The Monad ticker round the dome's foot (A, 10-21: the user's pick).
+  const ticker = domeTicker(lobbyPod, group);
   let barWing = null, casinoWing = null, casinoTube = null;
   for (const side of [-1, 1]) {
     const wing = piece(side < 0 ? 'basemodule_A' : 'basemodule_D', WING_S);
@@ -760,6 +763,7 @@ export function buildHub() {
   }
 
   for (const s of signs) group.add(s);
+  group.add(ticker.group);
   props.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = true;
@@ -865,6 +869,7 @@ export function buildHub() {
         marqueeMesh.setColorAt(i, tmp);
       });
       marqueeMesh.instanceColor.needsUpdate = true;
+      ticker.update(t, n);
       for (const [k, b] of banners.entries()) b.rotation.y = Math.sin(t * 0.8 + k * 2) * 0.12;
       stringGlow.update(env, renderer);
       marqueeGlow.update(env, renderer);
