@@ -27,6 +27,10 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · The postcard camera (B19)
+
+- A **Postcard** button beside Live (`index.html`, one line in `src/main.js`, new `src/fx/postcard.js`): the current view framed in cream with a Chog World stamp, "Greetings from Chog World", your Chog's name and the date, saved as a PNG. Checked on the laptop: the file saves, no errors.
+- **Left:** not yet checked on a phone (the button sits in the bottom HUD row); the in-casino HUD hides it.
 ### 2026-10-21 · A · B's island work, refined (B is out of its weekly limit; the user asked A)
 
 From the user's phone recordings (10-21, 12:30). A edited B's files for these, small and commented:
