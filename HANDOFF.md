@@ -27,6 +27,26 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · A · The cast remade from their NFT art; Petal and Dash replace the sniffer and the dino
+
+- **The user's call (10-21):** every Chog in the world remade closer to its NFT (the old ones drifted: Monty's
+  hood was up and his cap logo made up, Cosmo had no helmet), and the sniffer ("bugged out of its mind") and
+  the dino out, with new Chogs in their places.
+- **What changed:** `public/models/npcs/chog-{1151,409,68,124,37,56,66,132,52}.glb` rebuilt; new
+  `chog-271.glb` (Petal, among the flowers on the tree island, where the sniffer stood) and `chog-471.glb`
+  (Dash, lapping the beacon island, where the dino ran). Each: Nano Banana picture from the NFT art, Tripo
+  image-to-model (CLI), our own rig (`tools/models/rig_chog.py`, improved: shoulder tops off the arms, tails on
+  the hips, hips and shoulders smoothed; Patrol's walk tears went from 297 badly stretched triangles to 35),
+  the cast's clips, 2048 colour maps as KTX2, no metal (Tripo's metal maps made suits render dark). New face
+  sheets for all eleven (`public/faces/`), new picker portraits (`public/faces/portraits/`).
+- **Code:** `src/npcs.js` (Petal and Dash, their lines; the sniffer slot gone), `src/traitmap.js` OWN_MODELS
+  (+271, 471), `src/chog.js` (Cosmo's glass helmet drawn in code, `bubbleHelmet`; King Pom's arm clamp off:
+  his new robe is short), `src/main.js` (a stale comment).
+- **Tools:** `tools/models/regen/` (README: the whole route, prompts, scripts), `tools/faces` (capture takes
+  `&f=`, detect merges, build has `keep_blue` and `mk`, export merges faces.json and writes the KTX2).
+- **See it:** the plaza (Monty, King Pom, Quackers, Peel, Puff, Toasty, Snooze), Cosmo's dome, the tree island
+  (Petal), the beacon island (Dash), the picker portraits. `tools/models/pose.html?m=chog-271&move=walk`.
+- **Left:** `sniffer.glb` and `dino.glb` stay in the repo, unused. Tripo credits left: 140.
 ### 2026-10-21 · B · The casino says "testnet chips" (A's note, the user's go-ahead)
 - `src/casino.js`: the line under the casino's buttons is "Testnet chips, topped up every day." (was "Free chips only, ..."). Out of chips, it says "Out of chips. More testnet chips tomorrow."
 - `src/hub.js`: the sign over the casino's door says "testnet chips" (it said "free chips only", the line the user asked about).

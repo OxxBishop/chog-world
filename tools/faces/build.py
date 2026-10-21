@@ -35,17 +35,21 @@ def box_of(name, i):
 # what its resting eyes are, and how its blinks and squints are drawn.
 CFG = {
     'plain': dict(eyes=[0, 1], mouth=2, rest='king'),
-    'chog-132': dict(eyes=[0, 1], mouth=2, rest='king'),
+    'chog-132': dict(eyes=[[270, 545, 430, 652], [575, 545, 735, 652]], mouth=[455, 700, 565, 752], rest='king', skin=[0.29, 0.16, 0.13]),
     'singer': dict(eyes=[2, 1], mouth=0, rest='barkeep', open_mouth=True),
-    'chog-66': dict(eyes=[2, 3], mouth=4, rest='barkeep'),
-    'chog-37': dict(eyes=[0, 1], mouth=5, rest='king'),
-    'chog-124': dict(eyes=[0, 1], mouth=2, rest='sleepy'),
-    'chog-1151': dict(eyes=[0, 1], mouth=4, rest='own', lids='ink'),
-    'chog-409': dict(eyes=[0, 1], mouth=5, rest='own'),
+    'chog-66': dict(eyes=[], mouth=[418, 776, 618, 838], rest='own', mk=0.8),
+    'chog-37': dict(eyes=[[280, 555, 440, 625], [585, 555, 745, 625]], mouth=3, rest='king'),
+    'chog-124': dict(eyes=[0, 1], mouth=5, rest='own', lids='ink', keep_blue=[500, 740, 640, 860]),
+    # (10-21, rebuilt from his NFT art: his blue drool stays put over every mouth, keep_blue.)
+    'chog-1151': dict(eyes=[0, 1], mouth=4, rest='own', lids='ink', keep_blue=[420, 700, 620, 900]),
+    'chog-409': dict(eyes=[[303, 612, 447, 748], [578, 612, 722, 748]], mouth=4, rest='own', lids='ink'),
     'dino': dict(eyes=[0, 1], mouth=2, rest='own', lids='ink', open_mouth=True),
-    'chog-52': dict(eyes=[[367, 521, 439, 592], [586, 521, 657, 592]], mouth=[465, 655, 560, 678], rest='own', lids='ink', skin=[0.663, 0.38, 0.216]),
-    'chog-56': dict(eyes=[], mouth=2, rest='own'),
-    'chog-68': dict(eyes=[0, 1], brows=[2, 3], mouth=4, rest='own'),
+    'chog-52': dict(eyes=[[266, 466, 449, 654], [576, 466, 759, 654]], mouth=[484, 690, 536, 735], rest='own', lids='ink', skin=[0.39, 0.2, 0.16], mk=1.4),
+    'chog-56': dict(eyes=[], mouth=0, rest='own', mk=0.62),
+    'chog-68': dict(eyes=[0, 1], mouth=5, rest='own', lids='ink', mk=1.7),
+    # The two who took the sniffer's and the dino's places (10-21): Petal (#271) and Dash (#471).
+    'chog-271': dict(eyes=[1, 2], mouth=3, rest='own', lids='ink', mk=0.85, keep_blue=[500, 690, 640, 820]),
+    'chog-471': dict(eyes=[0, 1], mouth=4, rest='own', lids='ink'),
     'bartender': dict(eyes=[0, 1], mouth=2, rest='own', open_mouth=True),
 }
 
@@ -204,21 +208,22 @@ def lid_cut(rgba, slope, at, colour, width):
 LASH = np.array([0.2, 0.12, 0.1], np.float32)
 INK = np.array([0.1, 0.07, 0.08], np.float32)
 
-# The shared art: open eyes, closed lids and squints, mouths.
+# The shared art: open eyes, closed lids and squints, mouths. King Pom's, Snooze's and Patrol's come from their
+# models before the 10-21 rebuild (captured as kit-409, kit-124, kit-56 from git: public/models/npcs/ at b758a1c).
 KIT = {}
 
 
 def kit():
     if KIT:
         return KIT
-    KIT['king'] = [sprite('chog-409', b) for b in boxes('chog-409', [0, 1])]
+    KIT['king'] = [sprite('kit-409', b) for b in boxes('kit-409', [0, 1])]
     KIT['barkeep'] = [sprite('bartender', b) for b in boxes('bartender', [0, 1])]
-    KIT['shut'] = [sprite('chog-124', b) for b in boxes('chog-124', [0, 1])]
+    KIT['shut'] = [sprite('kit-124', b) for b in boxes('kit-124', [0, 1])]
     KIT['squint'] = [sprite('plain', b) for b in boxes('plain', [0, 1])]
     KIT['m_open'] = sprite('bartender', box_of('bartender', 2))
     KIT['m_laugh'] = sprite('singer', box_of('singer', 0))
     KIT['m_o'] = sprite('dino', box_of('dino', 2))
-    KIT['m_frown'] = sprite('chog-56', box_of('chog-56', 2))
+    KIT['m_frown'] = sprite('kit-56', box_of('kit-56', 2))
     KIT['m_smile'] = sprite('plain', box_of('plain', 2))
     return KIT
 
@@ -238,6 +243,15 @@ def build(name):
     for b in eye_boxes + brow_boxes:
         em |= feature_mask(rgb, skin, b, pad=16, thresh=0.065)
     mm = feature_mask(rgb, skin, mouth_box, pad=12, thresh=0.08)
+    # Drool (blue) round the mouth: painted out with the mouth, then laid back over every mouth state.
+    keep = np.zeros(alpha.shape, bool)
+    if cfg.get('keep_blue'):
+        x0, y0, x1, y1 = cfg['keep_blue']
+        kb = np.zeros(alpha.shape, bool)
+        kb[y0:y1, x0:x1] = True
+        keep = kb & (rgb[..., 2] > rgb[..., 0] + 0.15) & (alpha > 0.5)
+        keep = ndi.binary_dilation(keep, iterations=2) & kb
+        mm |= keep
     # Fill everything a cover paints solid, so no trace of the old outline survives under it.
     clean = harmonic_fill(rgb, ndi.binary_dilation(em | mm, iterations=14), skin=skin)
     # The face crop: a square round all features.
@@ -325,7 +339,8 @@ def build(name):
 
     def mouth_sprite(c, key, wk=1.0, hk=1.0, dy=0.0):
         rgba, ctr, size = K[key]
-        k = mouth[2] * wk / size[0]
+        # mk: a model whose own mouth is wide and thin (Patrol's wavy line) gets smaller drawn mouths.
+        k = mouth[2] * wk * cfg.get('mk', 1.0) / size[0]
         paste(c, rgba, (mouth[0], mouth[1] + dy * mouth[3]), (k, k * hk))
 
     eye_cells, mouth_cells = [], []
@@ -371,6 +386,10 @@ def build(name):
             mouth_sprite(c, 'm_open', 1.1, 0.55)
         elif state == 'talk2':
             mouth_sprite(c, 'm_open', 1.25, 1.3)
+        if keep.any():
+            ka = ndi.gaussian_filter(keep.astype(np.float32), 0.8)
+            c[..., :3] = c[..., :3] * (1 - ka[..., None]) + rgb * ka[..., None]
+            c[..., 3] = np.maximum(c[..., 3], ka)
         mouth_cells.append(c)
 
     # Crop every cell to the face square and lay them out.

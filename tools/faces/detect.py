@@ -67,4 +67,6 @@ for n in (sys.argv[1:] or NAMES):
         dr.rectangle((c['x0'], c['y0'], c['x1'], c['y1']), outline=(255, 0, 255, 255), width=3)
         dr.text((c['x0'], c['y0'] - 12), str(k), fill=(255, 255, 0, 255))
     bg.convert('RGB').resize((340, 340)).save(f'faces/{n}_det.jpg')
-json.dump(out, open('faces/detect.json', 'w'), indent=1)
+# Merged with what was found before, so models detected one at a time keep the others' (the kit's too).
+prev = json.load(open('faces/detect.json')) if os.path.exists('faces/detect.json') else {}
+json.dump({**prev, **out}, open('faces/detect.json', 'w'), indent=1)

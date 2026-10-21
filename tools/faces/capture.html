@@ -5,10 +5,17 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { withKtx2, setChogRenderer } from '/src/chog.js';
 const q = new URLSearchParams(location.search);
 const name = q.get('m') || 'plain';
 const PX = 1024;
-const g = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync('/models/npcs/' + name + '.glb');
+// f: another file (a model before it ships, or an old one kept for the shared kit).
+// (The shipped models' textures are KTX2: the world's loader, with a renderer to pick the GPU format.)
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
+setChogRenderer(r);
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+withKtx2(loader);
+const g = await loader.loadAsync(q.get('f') || '/models/npcs/' + name + '.glb');
 const root = g.scene;
 root.updateMatrixWorld(true);
 const scene = new THREE.Scene();
@@ -48,7 +55,6 @@ const cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.001, Math.m
 if (side) { cam.position.set(box.min.x - 1, c.y, c.z); cam.lookAt(box.max.x, c.y, c.z); }
 else { cam.position.set(c.x, c.y, box.max.z + 1); cam.lookAt(c.x, c.y, box.min.z); }
 cam.updateMatrixWorld(true);
-const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
 r.setSize(PX, PX);
 r.outputColorSpace = THREE.SRGBColorSpace;
 r.setClearColor(0x000000, 0);
