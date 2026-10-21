@@ -27,6 +27,10 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · The compass never prints a distance over another (A's note from the user's phone test)
+- `src/travel.js` `drawHud`: the markers' distances are placed nearest first. One that would overlap a label already printed is nudged aside (up to 30 px) if that clears it, else left off. The marker itself still shows.
+- Seen: four spots where portals and landmarks line up on the compass; every label stands clear.
+
 ### 2026-10-21 · B · The Hub's doorways stop flickering; Chogs walk on a bridge's steps, not in them
 - **The doorways** (the user: "the casino doors are still glitching", seen from inside the casino looking back at its door). The hall behind each outside door (`vestibule` in `src/hub.js`) had its side walls, ceiling and door frame flush with the room's front wall. Each stood out past the room's door trim, at exactly the wall's depth, so on a phone the two surfaces flickered in jagged stripes left of and above the gold frame. A desktop GPU breaks the tie the same way every frame, which is why our captures never showed it. They now start 2 cm behind the wall. A ray check across each doorway found 90 such spots in the casino and 285 in the lobby before; none now.
 - **The bridges** (the user, after A's character rework: "the characters sink into the bridge now"). Every sloped bridge is a stair of level treads; each tread stood up to a whole step over the smooth slope a Chog walks along, and on the steepest that step was 0.73 m, as tall as a Chog's legs. Now:

@@ -1374,11 +1374,18 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       ...landmarks.map((m) => ({ at: m.at, kind: m.kind, name: m.name })),
     ];
     g.font = '600 11px Figtree, sans-serif';
+    // Nearest first: a distance is printed only where it has room, so two markers close together never print
+    // over each other (the user, 10-21: "232 m" and "64 m" read as "23264 m"); the nearer one keeps its label.
+    const shown = [];
     for (const m of marks) {
       const rel = _w.subVectors(m.at, state.pos);
-      const dist = Math.hypot(rel.x, rel.z);
+      m.dist = Math.hypot(rel.x, rel.z);
+      m.x = xOf(bearingOf(rel));
+    }
+    marks.sort((a, b) => a.dist - b.dist);
+    for (const m of marks) {
+      const { dist, x } = m;
       if (dist < 6) continue;
-      const x = xOf(bearingOf(rel));
       if (x < 8 || x > W - 8) continue;
       g.fillStyle = m.kind === 'portal' ? '#8ff3ff' : m.kind === 'hub' ? '#ffd27a' : m.kind === 'stage' ? '#ff9ad0' : '#b9f39a';
       g.beginPath();
@@ -1389,8 +1396,16 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
         g.lineTo(x - 5, 11);
       } else g.arc(x, 11, 4, 0, Math.PI * 2);
       g.fill();
+      const text = `${Math.round(dist)} m`;
+      const half = g.measureText(text).width / 2 + 4;
+      // In the way of one already printed: nudged aside a little if that clears it, else left off.
+      let lx = x;
+      const hit = () => shown.find(([a, b]) => lx + half > a && lx - half < b);
+      for (let k = 0, h = hit(); h && k < 3; k++, h = hit()) lx = x < (h[0] + h[1]) / 2 ? h[0] - half : h[1] + half;
+      if (hit() || Math.abs(lx - x) > 30 || lx - half < 0 || lx + half > W) continue;
+      shown.push([lx - half, lx + half]);
       g.fillStyle = 'rgba(255, 255, 255, 0.85)';
-      g.fillText(`${Math.round(dist)} m`, x, 36);
+      g.fillText(text, lx, 36);
     }
     g.fillStyle = '#ffffff';
     g.fillRect(W / 2 - 1, 0, 2, 5);
