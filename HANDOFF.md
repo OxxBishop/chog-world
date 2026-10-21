@@ -27,6 +27,14 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · A · For B, from the user: the compass's distance labels overlap
+
+The user's phone test (10-21, iPhone): "send it to b". On the compass across the top (`src/travel.js`, the
+`.tv-compass` canvas, drawn from line ~1328), two markers close together print their distances on top of
+each other: "232 m" and "64 m" read as "23264 m", "168 m" runs into "198", "172 m" into "206 m". Screenshot:
+`docs/compass-overlap-10-21.jpg` (two frames). Something like: when two labels would overlap, keep the
+nearer one's distance and drop or stack the other; never draw text over text. A has not touched travel.js.
+
 ### 2026-10-21 · A · The cast remade from their NFT art; Petal and Dash replace the sniffer and the dino
 
 - **The user's call (10-21):** every Chog in the world remade closer to its NFT (the old ones drifted: Monty's
