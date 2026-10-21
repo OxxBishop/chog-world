@@ -27,6 +27,46 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · The compass never prints a distance over another (A's note from the user's phone test)
+- `src/travel.js` `drawHud`: the markers' distances are placed nearest first. One that would overlap a label already printed is nudged aside (up to 30 px) if that clears it, else left off. The marker itself still shows.
+- Seen: four spots where portals and landmarks line up on the compass; every label stands clear.
+
+### 2026-10-21 · B · The Hub's doorways stop flickering; Chogs walk on a bridge's steps, not in them
+- **The doorways** (the user: "the casino doors are still glitching", seen from inside the casino looking back at its door). The hall behind each outside door (`vestibule` in `src/hub.js`) had its side walls, ceiling and door frame flush with the room's front wall. Each stood out past the room's door trim, at exactly the wall's depth, so on a phone the two surfaces flickered in jagged stripes left of and above the gold frame. A desktop GPU breaks the tie the same way every frame, which is why our captures never showed it. They now start 2 cm behind the wall. A ray check across each doorway found 90 such spots in the casino and 285 in the lobby before; none now.
+- **The bridges** (the user, after A's character rework: "the characters sink into the bridge now"). Every sloped bridge is a stair of level treads; each tread stood up to a whole step over the smooth slope a Chog walks along, and on the steepest that step was 0.73 m, as tall as a Chog's legs. Now:
+  - `src/skyfx.js`: each bridge carries `treadY(t)` (its treads' tops) and `rise`, and the treads are 0.3 m long instead of 0.85 m, so a step is 0.26 m at most. Same stairs, finer steps.
+  - `src/chog.js` (A's, small edit): `setChogGround(fn, slack)` takes a second function, how far the ground may stand over a Chog's feet and still be its ground. `groundUpdate` keeps each sole on the tread under it.
+  - `src/travel.js`: hands chog.js a ground that knows the bridges' treads. The hoverboard's lift over stairs follows the smaller steps.
+  - Seen: Toasty up and down the steepest stair on a phone; its feet keep to the treads (within a few cm most frames, a brief 0.2 m dip as a foot crosses a step's edge).
+
+### 2026-10-21 · A · For B, from the user: the compass's distance labels overlap
+
+The user's phone test (10-21, iPhone): "send it to b". On the compass across the top (`src/travel.js`, the
+`.tv-compass` canvas, drawn from line ~1328), two markers close together print their distances on top of
+each other: "232 m" and "64 m" read as "23264 m", "168 m" runs into "198", "172 m" into "206 m". Screenshot:
+`docs/compass-overlap-10-21.jpg` (two frames). Something like: when two labels would overlap, keep the
+nearer one's distance and drop or stack the other; never draw text over text. A has not touched travel.js.
+
+### 2026-10-21 · A · The cast remade from their NFT art; Petal and Dash replace the sniffer and the dino
+
+- **The user's call (10-21):** every Chog in the world remade closer to its NFT (the old ones drifted: Monty's
+  hood was up and his cap logo made up, Cosmo had no helmet), and the sniffer ("bugged out of its mind") and
+  the dino out, with new Chogs in their places.
+- **What changed:** `public/models/npcs/chog-{1151,409,68,124,37,56,66,132,52}.glb` rebuilt; new
+  `chog-271.glb` (Petal, among the flowers on the tree island, where the sniffer stood) and `chog-471.glb`
+  (Dash, lapping the beacon island, where the dino ran). Each: Nano Banana picture from the NFT art, Tripo
+  image-to-model (CLI), our own rig (`tools/models/rig_chog.py`, improved: shoulder tops off the arms, tails on
+  the hips, hips and shoulders smoothed; Patrol's walk tears went from 297 badly stretched triangles to 35),
+  the cast's clips, 2048 colour maps as KTX2, no metal (Tripo's metal maps made suits render dark). New face
+  sheets for all eleven (`public/faces/`), new picker portraits (`public/faces/portraits/`).
+- **Code:** `src/npcs.js` (Petal and Dash, their lines; the sniffer slot gone), `src/traitmap.js` OWN_MODELS
+  (+271, 471), `src/chog.js` (Cosmo's glass helmet drawn in code, `bubbleHelmet`; King Pom's arm clamp off:
+  his new robe is short), `src/main.js` (a stale comment).
+- **Tools:** `tools/models/regen/` (README: the whole route, prompts, scripts), `tools/faces` (capture takes
+  `&f=`, detect merges, build has `keep_blue` and `mk`, export merges faces.json and writes the KTX2).
+- **See it:** the plaza (Monty, King Pom, Quackers, Peel, Puff, Toasty, Snooze), Cosmo's dome, the tree island
+  (Petal), the beacon island (Dash), the picker portraits. `tools/models/pose.html?m=chog-271&move=walk`.
+- **Left:** `sniffer.glb` and `dino.glb` stay in the repo, unused. Tripo credits left: 140.
 ### 2026-10-21 · B · The casino says "testnet chips" (A's note, the user's go-ahead)
 - `src/casino.js`: the line under the casino's buttons is "Testnet chips, topped up every day." (was "Free chips only, ..."). Out of chips, it says "Out of chips. More testnet chips tomorrow."
 - `src/hub.js`: the sign over the casino's door says "testnet chips" (it said "free chips only", the line the user asked about).

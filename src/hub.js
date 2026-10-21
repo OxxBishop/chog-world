@@ -353,8 +353,12 @@ export function hingedLeaf({ hinge, dir, width, bottom, height, mats }) {
 export function vestibule(parent, { x, half, top, zOut, zIn, sill, floorIn, roomDoor, mats: m, lamps, runner = 0 }) {
   // The hall's own surfaces, warmed by its lamps after dark (hallLight in buildHub).
   const mats = { ...m, cream: m.hallCream, darkWood: m.hallWood, steps: m.hallStone, runner: m.hallRunner ?? m.runner };
-  const len = zOut - zIn;
-  const mid = (zOut + zIn) / 2;
+  // Its walls, panels and ceiling start 2 cm into the hall from the room's front wall: flush with it, their
+  // ends fought it for the same pixels and flickered round the doorway, seen from inside the room (the
+  // user, 10-19: "the casino doors are still glitching").
+  const zWall = zIn + 0.02;
+  const len = zOut - zWall;
+  const mid = (zOut + zWall) / 2;
   const RISE = 0.8, RUN = 0.8;
   const count = Math.round((sill - floorIn) / RISE);
   const rise = count ? (sill - floorIn) / count : 0;
@@ -363,7 +367,7 @@ export function vestibule(parent, { x, half, top, zOut, zIn, sill, floorIn, room
     parent.add(box(0.3, top - floorIn + 0.3, len, mats.cream, x + side * (half + 0.15), (floorIn + top) / 2, mid));
     // Panelled lower walls: as high as the landing beside it, and a dado rail on top.
     parent.add(box(0.06, sill - floorIn + 1.2, zOut - stepsAt + count * RUN, mats.darkWood, x + side * (half - 0.03), (floorIn + sill + 1.2) / 2, (zOut + stepsAt - count * RUN) / 2));
-    parent.add(box(0.06, 1.2, stepsAt - count * RUN - zIn, mats.darkWood, x + side * (half - 0.03), floorIn + 0.6, (stepsAt - count * RUN + zIn) / 2));
+    parent.add(box(0.06, 1.2, stepsAt - count * RUN - zWall, mats.darkWood, x + side * (half - 0.03), floorIn + 0.6, (stepsAt - count * RUN + zWall) / 2));
     const lamp = new THREE.Vector3(x + side * (half - 0.35), Math.max(sill, floorIn) + 3.1, (zIn + stepsAt) / 2 + 0.6);
     parent.add(box(0.5, 0.14, 0.14, mats.brass, x + side * (half - 0.2), lamp.y + 0.4, lamp.z));
     parent.add(new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8).translate(lamp.x, lamp.y, lamp.z), mats.lantern));
@@ -400,8 +404,8 @@ export function vestibule(parent, { x, half, top, zOut, zIn, sill, floorIn, room
   const end = new THREE.Mesh(new THREE.ShapeGeometry(shape), mats.cream);
   end.position.set(x, 0, zIn + 0.03);
   parent.add(end);
-  for (const side of [-1, 1]) parent.add(box(0.3, roomDoor.h + 0.3, 0.3, mats.darkWood, x + side * (roomDoor.half + 0.15), floorIn + (roomDoor.h + 0.3) / 2, zIn + 0.15));
-  parent.add(box(roomDoor.half * 2 + 0.6, 0.3, 0.3, mats.darkWood, x, floorIn + roomDoor.h + 0.15, zIn + 0.15));
+  for (const side of [-1, 1]) parent.add(box(0.3, roomDoor.h + 0.3, 0.28, mats.darkWood, x + side * (roomDoor.half + 0.15), floorIn + (roomDoor.h + 0.3) / 2, zWall + 0.14));
+  parent.add(box(roomDoor.half * 2 + 0.6, 0.3, 0.28, mats.darkWood, x, floorIn + roomDoor.h + 0.15, zWall + 0.14));
   return (z) => {
     if (z >= stepsAt) return sill;
     if (z <= stepsAt - count * RUN) return floorIn;

@@ -100,6 +100,24 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   const dom = renderer.domElement;
   const hub = island.hub;
   const bridges = island.bridges;
+  // The ground a Chog's feet keep to (src/chog.js): on a bridge, its deck's treads; else the land's paving.
+  const onBridge = (x, z) => {
+    for (const br of bridges) {
+      const ux = (br.bx - br.ax) / br.len, uz = (br.bz - br.az) / br.len;
+      const along = (x - br.ax) * ux + (z - br.az) * uz;
+      if (along < -0.5 || along > br.len + 0.5) continue;
+      if (Math.abs((x - br.ax) * -uz + (z - br.az) * ux) > br.width / 2 - 0.2) continue;
+      return { br, t: THREE.MathUtils.clamp(along / br.len, 0, 1) };
+    }
+    return null;
+  };
+  setChogGround(
+    (x, z) => {
+      const b = onBridge(x, z);
+      return b ? (b.br.treadY ?? ((t) => b.br.deckY(t) + 0.15))(b.t) : surfaceAt(x, z);
+    },
+    (x, z) => (onBridge(x, z)?.br.rise ?? 0) + 0.3,
+  );
   const tunnels = island.tunnels;
   const solids = island.solids.filter((s) => !(s instanceof RoomBox));
   const plaza = island.plaza;
@@ -878,7 +896,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       const tip = THREE.MathUtils.clamp(Math.atan(slope) * 0.45, -0.3, 0.3);
       state.ridePitch += (-tip - state.ridePitch) * (1 - Math.exp(-dt * 4));
       pitch = state.ridePitch;
-      const tread = Math.abs(slope) > 0.12 ? 0.85 * Math.abs(slope) : 0;
+      const tread = Math.abs(slope) > 0.12 ? 0.3 * Math.abs(slope) : 0;
       const need = Math.max(0, (gF + gB) / 2 - state.pos.y) + Math.max(0, BOARD.thick + 0.16 + tread + half * Math.abs(slope - Math.tan(-pitch)) - RIDE_TOP);
       state.rideRise += (need - state.rideRise) * (1 - Math.exp(-dt * (need > state.rideRise ? 9 : 3)));
       lift += state.rideRise;
@@ -1356,11 +1374,18 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       ...landmarks.map((m) => ({ at: m.at, kind: m.kind, name: m.name })),
     ];
     g.font = '600 11px Figtree, sans-serif';
+    // Nearest first: a distance is printed only where it has room, so two markers close together never print
+    // over each other (the user, 10-21: "232 m" and "64 m" read as "23264 m"); the nearer one keeps its label.
+    const shown = [];
     for (const m of marks) {
       const rel = _w.subVectors(m.at, state.pos);
-      const dist = Math.hypot(rel.x, rel.z);
+      m.dist = Math.hypot(rel.x, rel.z);
+      m.x = xOf(bearingOf(rel));
+    }
+    marks.sort((a, b) => a.dist - b.dist);
+    for (const m of marks) {
+      const { dist, x } = m;
       if (dist < 6) continue;
-      const x = xOf(bearingOf(rel));
       if (x < 8 || x > W - 8) continue;
       g.fillStyle = m.kind === 'portal' ? '#8ff3ff' : m.kind === 'hub' ? '#ffd27a' : m.kind === 'stage' ? '#ff9ad0' : '#b9f39a';
       g.beginPath();
@@ -1371,8 +1396,16 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
         g.lineTo(x - 5, 11);
       } else g.arc(x, 11, 4, 0, Math.PI * 2);
       g.fill();
+      const text = `${Math.round(dist)} m`;
+      const half = g.measureText(text).width / 2 + 4;
+      // In the way of one already printed: nudged aside a little if that clears it, else left off.
+      let lx = x;
+      const hit = () => shown.find(([a, b]) => lx + half > a && lx - half < b);
+      for (let k = 0, h = hit(); h && k < 3; k++, h = hit()) lx = x < (h[0] + h[1]) / 2 ? h[0] - half : h[1] + half;
+      if (hit() || Math.abs(lx - x) > 30 || lx - half < 0 || lx + half > W) continue;
+      shown.push([lx - half, lx + half]);
       g.fillStyle = 'rgba(255, 255, 255, 0.85)';
-      g.fillText(`${Math.round(dist)} m`, x, 36);
+      g.fillText(text, lx, 36);
     }
     g.fillStyle = '#ffffff';
     g.fillRect(W / 2 - 1, 0, 2, 5);

@@ -239,6 +239,50 @@ function faceFor(url) {
  * A model's soles, once per file: a few vertices that follow each foot (the lowest, and the front, back and
  * sides of that flat), so the world can keep its feet out of the ground whatever a clip does with the hips.
  */
+/*
+ * Cosmo's glass bubble helmet (his NFT, #68; 10-21). Tripo could only make the glass an opaque shell, so his
+ * model is built without it and the glass is drawn here: a clear dome on the head bone, round the head as
+ * bound (the spikes too, as in his art), open at the neck where the suit's collar takes it,
+ * brighter at the rim the way glass is.
+ */
+const HELMET = { pad: 1.05, reach: 0.99, open: 0.78 };
+function bubbleHelmet(skin, head) {
+  const pos = skin.geometry.attributes.position, si = skin.geometry.attributes.skinIndex, sw = skin.geometry.attributes.skinWeight;
+  const hi = skin.skeleton.bones.indexOf(head);
+  skin.updateMatrixWorld(true);
+  const v = new THREE.Vector3(), box = new THREE.Box3(), pts = [];
+  for (let i = 0; i < pos.count; i++) {
+    let w = 0;
+    for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === hi) w += sw.getComponent(i, k);
+    if (w < 0.6) continue;
+    v.fromBufferAttribute(pos, i).applyMatrix4(skin.matrixWorld);
+    box.expandByPoint(v);
+    pts.push(v.clone());
+  }
+  if (pts.length < 50) return null;
+  const c = box.getCenter(new THREE.Vector3());
+  const d = pts.map((p) => p.distanceTo(c)).sort((a, b) => a - b);
+  const r = d[Math.floor(d.length * HELMET.reach)] * HELMET.pad;
+  const geo = new THREE.SphereGeometry(r, 48, 32, 0, Math.PI * 2, 0, Math.PI * HELMET.open);
+  const mat = new THREE.MeshStandardMaterial({ color: '#e8f4ff', roughness: 0.04, metalness: 0, transparent: true, opacity: 0.12, depthWrite: false });
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace(
+      '#include <dithering_fragment>',
+      `#include <dithering_fragment>
+      float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 2.2);
+      gl_FragColor.a = clamp(gl_FragColor.a + rim * 0.6, 0.0, 0.8);`,
+    );
+  };
+  const dome = new THREE.Mesh(geo, mat);
+  dome.name = 'Helmet';
+  dome.renderOrder = 2;
+  // In the head's own frame, upright as bound.
+  head.updateWorldMatrix(true, false);
+  dome.position.copy(head.worldToLocal(c.clone()));
+  dome.quaternion.copy(head.getWorldQuaternion(new THREE.Quaternion()).invert());
+  return dome;
+}
+
 function soleVertices(gltf) {
   let mesh = null;
   gltf.scene.traverse((o) => o.isSkinnedMesh && (!mesh || o.geometry.attributes.position.count > mesh.geometry.attributes.position.count) && (mesh = o));
@@ -510,7 +554,8 @@ const LEG_LIMIT = { flex: +(_lp.get('flex') ?? 48), ext: +(_lp.get('ext') ?? 38)
 // Upper arms hang no lower than this under level (degrees), for a model whose body is wider at the hands
 // than at the shoulders: King Pom's cloak flares out, and a hand dropped to his side went into it (the user,
 // 10-18: "king pom's hand looks deformed").
-const ARM_DROP_MAX = { 'chog-409': +(_lp.get('drop') ?? 40) };
+// (King Pom's model of 10-21 wears a short robe his hands clear, so none needs it now: ?drop=<deg> tries one.)
+const ARM_DROP_MAX = _lp.get('drop') ? { 'chog-409': +_lp.get('drop') } : {};
 // The wave (waveUpdate): the right arm raised high, out to the side and a little forward (lift, forward,
 // radians), the whole arm swinging side to side from the shoulder (swing) and the forearm following
 // through a beat later (fore, foreSwing, lag), the hand trailing a little (rock). The user, 10-18: the old
@@ -521,9 +566,12 @@ const WAVE = { lift: +(_wq.get('wlift') ?? 0.6), swing: +(_wq.get('wswing') ?? 0
 // toward the bind pose, the T-pose a quick change of mind used to flash (the user, 10-17).
 const FADE = 0.3;
 // The ground's height at (x, z) outdoors (src/travel.js surfaceAt), for each foot (groundUpdate).
-let groundAt = null;
-export function setChogGround(fn) {
+let groundAt = null, groundSlack = null;
+// slack(x, z): how far the ground may stand over a Chog's own feet there and still be the ground it's on
+// (a bridge's stair: its treads stand up to a step over the slope it walks along; B, 10-21).
+export function setChogGround(fn, slack = null) {
   groundAt = fn;
+  groundSlack = slack;
 }
 // The mic's head this far in front of the lips while singing (model units).
 const MIC_GAP = 0.085;
@@ -958,6 +1006,10 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       gltf.userData.soles ??= soleVertices(gltf);
       soles = gltf.userData.soles;
       model.traverse((o) => o.isSkinnedMesh && (!skin || o.geometry.attributes.position.count > skin.geometry.attributes.position.count) && (skin = o));
+      if (/chog-68\.glb$/.test(base) && skin && head) {
+        const dome = bubbleHelmet(skin, head);
+        if (dome) head.add(dome);
+      }
       // Straighten a hand that came out bent back at the wrist.
       gltf.userData.handBends ??= handBends(gltf);
       handFix = gltf.userData.handBends.filter((h) => h.degrees > HAND_FIX_ABOVE).map((h) => ({ bone: model.getObjectByName(h.bone), fix: h.fix, base: new THREE.Quaternion(), applied: false })).filter((h) => h.bone);
@@ -1461,7 +1513,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     if (camera && centre.distanceTo(camera.position) > 80) return;
     model.updateMatrixWorld(true);
     // Standing on the world's ground (not a room's floor): each sole against the ground right under it.
-    const onGround = groundAt && Math.abs(groundAt(centre.x, centre.z) - centre.y) < 0.3;
+    const g0 = groundAt ? groundAt(centre.x, centre.z) : 0;
+    const onGround = groundAt && (Math.abs(g0 - centre.y) < 0.3 || (g0 > centre.y && g0 - centre.y < (groundSlack?.(centre.x, centre.z) ?? 0)));
     let lo = Infinity;
     for (const i of soles) {
       skin.getVertexPosition(i, _tg).applyMatrix4(skin.matrixWorld);

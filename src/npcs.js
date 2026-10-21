@@ -14,7 +14,8 @@ import { angleLerp } from './util.js';
  *
  *   plaza    the singer on their stage with a crowd watching, two Chogs strolling round the fountain,
  *            and one by the lobby door
- *   sniffer  out on the tree island, nose in its flowers
+ *   gardener #271 (Petal) out on the tree island among the flowers
+ *   runner   #471 (Dash) lapping the loop on the beacon island
  *   walker   the astronaut, floating in zero g in his own dome on the middle island (src/cosmo.js)
  *
  * The bar's bartender and regulars are in src/barchat.js. Each Chog here is its own rigged model from
@@ -35,7 +36,8 @@ export const NPC_SLOTS = {
   ],
   // By the lobby door, in the Monad look.
   doorman: { id: 1151, glb: M('chog-1151'), plaza: [-5.2, 23.2] },
-  sniffer: { glb: M('sniffer'), hood: 0 },
+  gardener: { id: 271, glb: M('chog-271'), hood: 0 },
+  runner: { id: 471, glb: M('chog-471'), hood: 2 },
   walker: { id: 68, glb: M('chog-68'), hood: 1, speed: -0.07 },
 };
 
@@ -326,6 +328,8 @@ const CAST = {
   37: { name: 'Puff', face: 'happy', pace: 1.1, lines: ['This song gets me every time.', 'Oh, hi! Do not mind me, happy tears.', 'You came! Group hug later?'], hi: ['{n}! Hi hi!', 'Oh, {n}! Hug later?'] },
   56: { name: 'Patrol', face: 'happy', pace: 0.85, lines: ['Afternoon. Please enjoy the plaza responsibly.', 'All clear here. Have a lovely day.', 'Pardon me. Just keeping an eye out.'], hi: ['All good, {n}?', 'Hey {n}. Stay safe out there.'] },
   66: { name: 'Quackers', face: 'excited', pace: 1.2, lines: ['Love the look. Mine is better, but love it.', 'Duck float? Iconic. Thanks for noticing.', 'Strike a pose with me. Quick!'], hi: ['{n}! Love the fit.', 'Hey {n}! Quack!'] },
+  271: { name: 'Petal', face: 'happy', pace: 0.9, lines: ['Have you smelled these? Go on, I will wait.', 'Every flower here has a name. I named them.', 'Mind the petals, they bruise easy.', 'Sunny out. Perfect for growing.'], hi: ['Oh, {n}! Smell this one.', 'Hey {n}, the flowers missed you.'] },
+  471: { name: 'Dash', face: 'excited', pace: 1.3, lines: ['Cannot stop, I am in training!', 'Ten laps before lunch. Easy.', 'Race you round the island!', 'Personal best today. Probably.'], hi: ['Keep up, {n}!', 'Hey {n}! One more lap?'] },
   52: { name: 'Toasty', face: 'happy', pace: 1, lines: ['Did I ever tell you about the coldest night on these islands?', 'Brr. Sit down, I have a story for you.', 'You look warm. Stand a little closer, friend.'], hi: ['{n}! Warm enough?', 'Hey {n}, I owe you a story.'] },
 };
 // Greetings: two of the cast who come across each other, one of them walking, greet by name, the first
@@ -793,33 +797,85 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     },
   );
 
-  // ---------- the sniffer, at its flowers on the tree island ----------
-  const hood0 = HOODS[NPC_SLOTS.sniffer.hood];
+  // ---------- Petal (#271), among the flowers on the tree island ----------
+  const hood0 = HOODS[NPC_SLOTS.gardener.hood];
   const patch = new THREE.Group();
   patch.position.copy(openSpot(hood0, hood0.angle + Math.PI + 0.9));
-  // Its model faces -x, toward its flowers: the group turns it to face across the island.
-  patch.rotation.y = Math.atan2(hood0.x - patch.position.x, hood0.z - patch.position.z) + Math.PI / 2;
+  // Facing across the island.
+  patch.rotation.y = Math.atan2(hood0.x - patch.position.x, hood0.z - patch.position.z);
   patch.scale.setScalar(OUTDOOR);
   scene.add(patch);
   set(
     (v) => patch.getWorldPosition(v),
     async () => {
-      const sniffer = await npc(NPC_SLOTS.sniffer.glb);
-      patch.add(sniffer.root);
-      // Mostly nose in the flowers, now and then a look up.
-      let left = 6;
-      let up = false;
-      sniffer.play('sniff');
+      const g = NPC_SLOTS.gardener;
+      const petal = await npc(g.glb, g.id);
+      patch.add(petal.root);
+      // Standing about the flowers, now and then a wave or a happy little jump.
+      const tick = own(petal, idler(petal, ['wave', 'cheer'], [8, 14]));
+      return { group: patch, chogs: await shown(patch, [petal]), tick: (tt, dt) => tick(dt) };
+    },
+  );
+
+  // ---------- Dash (#471), lapping the beacon island ----------
+  const hood2 = HOODS[NPC_SLOTS.runner.hood];
+  const lap = new THREE.Group();
+  scene.add(lap);
+  const lapAt = (a, hood) => new THREE.Vector3(hood.x + Math.cos(a) * hood.loopR, 0, hood.z + Math.sin(a) * hood.loopR);
+  let runAngle = 0;
+  set(
+    (v) => v.copy(lapAt(runAngle, hood2)),
+    async () => {
+      const r = NPC_SLOTS.runner;
+      const dash = await npc(r.glb, r.id);
+      dash.root.scale.setScalar(OUTDOOR);
+      lap.add(dash.root);
+      // Its run at the speed its legs carry it (else its feet slide), easing up to speed and back down,
+      // in bursts: run a while, slow to a stop, catch its breath, now and then turn and run back the other way.
+      const top = (dash.speedOf('run') || 3) * OUTDOOR;
+      const R = hood2.loopR;
+      let speed = 0;
+      let dir = 1;
+      let yaw = Math.atan2(-Math.sin(runAngle), Math.cos(runAngle));
+      let mode = 'run';
+      let left = 7 + Math.random() * 5;
+      let lean = 0;
+      dash.play('run');
+      const step = (tt, dt) => {
+        left -= dt;
+        if (mode === 'run' && left <= 0) (mode = 'stop'), (left = 0.5);
+        else if (mode === 'stop' && speed < 0.15) {
+          mode = 'rest';
+          left = 2.2 + Math.random() * 2.5;
+          dash.play('idle');
+        } else if (mode === 'rest' && left <= 0) {
+          if (Math.random() < 0.35) dir = -dir;
+          mode = 'run';
+          left = 6 + Math.random() * 7;
+          dash.play('run');
+        }
+        const want = mode === 'run' ? top : 0;
+        speed += (want - speed) * (1 - Math.exp(-dt * (mode === 'stop' ? 5 : 2.2)));
+        runAngle += (dt * speed * dir) / R;
+        dash.setPace(mode === 'rest' ? 1 : THREE.MathUtils.clamp(speed / top, 0.35, 1.15));
+        const p = lapAt(runAngle, hood2);
+        dash.root.position.set(p.x, surfaceAt(p.x, p.z), p.z);
+        // Facing the way it's going; a turn back takes about half a second.
+        const heading = Math.atan2(-Math.sin(runAngle), Math.cos(runAngle)) + (dir < 0 ? Math.PI : 0);
+        yaw = angleLerp(yaw, heading, 1 - Math.exp(-dt * 7));
+        dash.root.rotation.y = yaw;
+        // Lean into the curve a little at speed.
+        lean += ((speed * speed) / R * 0.02 * dir - lean) * (1 - Math.exp(-dt * 4));
+        dash.root.rotation.z = lean;
+      };
+      step(0, 0);
+      // It notices you and greets the others like the cast; its run waits while it does.
+      const tick = own(dash, step, { steer: true, resume: () => dash.play(mode === 'rest' ? 'idle' : 'run') });
       return {
-        group: patch,
-        chogs: await shown(patch, [sniffer]),
-        tick: (tt, dt) => {
-          left -= dt;
-          if (left > 0) return;
-          up = !up;
-          sniffer.play(up ? 'idle' : 'sniff');
-          left = up ? 3 : 8 + Math.random() * 6;
-        },
+        group: lap,
+        chogs: await shown(lap, [dash]),
+        where: (v) => v.copy(lapAt(runAngle, hood2)),
+        tick: (tt, dt) => tick(tt, dt),
       };
     },
   );

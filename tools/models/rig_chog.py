@@ -247,7 +247,11 @@ for v in me.vertices:
     # Above the top of the outstretched arms nothing belongs to an arm (spikes, hat flaps and ties that
     # hang near the shoulders), except right at the hands.
     above_arm = p.z > z_arm + 1.3 * r_arm + 0.01 * H and abs(p.x) < 0.75 * min(-hand_r, hand_l)
-    if p.z > z_neck - 0.01 * H and (above_arm or d_arm > 1.5 * r_arm):
+    # (The top of a puffy shoulder or sleeve, out past the shoulder and just over the arm line, where bone heat
+    # gives the arm most of it, stays on the arm: held by the head it tore into flaps as the arm came down,
+    # 10-21, the regenerated cast.)
+    arm_top = abs(p.x) > 0.92 * sh and p.z < z_arm + 0.12 * H and OW[v.index, ARM].sum() > 0.5
+    if p.z > z_neck - 0.01 * H and (above_arm or d_arm > 1.5 * r_arm) and not arm_top:
         # The head and everything on it: head and neck only, blended at the neck.
         k = min(1.0, max(0.0, (p.z - (z_neck - 0.01 * H)) / (0.05 * H)))
         row = np.zeros(len(names))
@@ -266,6 +270,56 @@ for v in me.vertices:
         OW[v.index] = row / row.sum()
         torso_core += 1
 OW[:, col['Root']] = 0
+# (10-21, the regenerated cast: Tripo's new models tore at the hips and at the tops of the shoulders in the walk,
+# a hard line between spine and thigh, and between the arm and the collar.) The top of a shoulder in from the
+# joint, over the arm line, never follows the arm; then the weights in two bands, round the hips and round each
+# shoulder, are smoothed over the surface (welded by position), so each joint bends over several rings of the
+# mesh, not one. The head (head and neck held) never changes.
+cov = np.array([tuple(v.co) for v in me.vertices])
+keys = np.round(cov / (0.0005 * H)).astype(np.int64)
+_, wid = np.unique(keys, axis=0, return_inverse=True)
+wid = wid.ravel()
+nw = wid.max() + 1
+ed = np.array([tuple(e.vertices) for e in me.edges])
+a, b = wid[ed[:, 0]], wid[ed[:, 1]]
+keep = a != b
+ea, eb = np.r_[a[keep], b[keep]], np.r_[b[keep], a[keep]]
+deg = np.bincount(ea, minlength=nw).astype(np.float64)
+
+
+def nbmean(X):
+    out = np.zeros_like(X)
+    np.add.at(out, ea, X[eb])
+    return out / np.maximum(deg, 1)[:, None]
+cnt = np.bincount(wid, minlength=nw).astype(np.float64)
+G = np.zeros((nw, len(names)))
+np.add.at(G, wid, OW)
+G /= cnt[:, None]
+gp = np.zeros((nw, 3))
+np.add.at(gp, wid, cov)
+gp /= cnt[:, None]
+HEADS = [col['Head'], col['Neck']]
+locked = G[:, HEADS].sum(1) > 0.5
+# What the head holds never follows an arm or a leg (a hood's rim over the shoulders stretched as the arm moved).
+G[np.ix_(locked, ARM + LEG)] = 0
+# A tail (or anything out behind the hips, below the arms) never follows a leg: it rides the hips.
+behind = (gp[:, 1] > y0 + 0.13 * H) & (gp[:, 2] < z_arm) & (gp[:, 2] > z_crotch - 0.05 * H)
+G[behind, col['Hips']] += G[behind][:, LEG].sum(1)
+G[np.ix_(behind, LEG)] = 0
+G /= np.maximum(G.sum(1, keepdims=True), 1e-9)
+ax, gz = np.abs(gp[:, 0]), gp[:, 2]
+inner_top = (ax < 0.9 * sh) & (gz > z_arm + 0.04 * H) & ~locked
+moved = G[inner_top][:, ARM].sum(1)
+G[np.ix_(inner_top, ARM)] = 0
+G[inner_top, col['Chest']] += moved
+hip_band = (gz > z_crotch - 0.03 * H) & (gz < z_crotch + 0.18 * H)
+sh_band = (ax > 0.55 * sh) & (ax < 1.35 * sh) & (gz > z_arm - 0.1 * H) & (gz < z_arm + 0.14 * H)
+zone = (hip_band | sh_band) & ~locked
+for _ in range(12):
+    nb = nbmean(G)
+    G[zone] = 0.5 * G[zone] + 0.5 * nb[zone]
+print('smoothed', int(zone.sum()), 'welded vertices; shoulder tops off the arm', int(inner_top.sum()), '; behind the hips', int(behind.sum()))
+OW = G[wid]
 for i in range(len(OW)):
     row = OW[i]
     if (row > 0).sum() > 4:

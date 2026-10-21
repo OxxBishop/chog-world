@@ -10,11 +10,23 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 os.chdir(HERE)
 out = os.path.join(HERE, '..', '..', 'public', 'faces')
 os.makedirs(out, exist_ok=True)
-manifest = {}
+# Merged into the shipped manifest, so models rebuilt one at a time keep everyone else's entry; only the named
+# ones (python export.py [names]) or, with none named, every built one.
+import subprocess
+import sys
+
+from PIL import Image
+
+mp = os.path.join(out, 'faces.json')
+manifest = json.load(open(mp)) if os.path.exists(mp) else {}
+only = set(sys.argv[1:])
+TOKTX = 'C:/Program Files/KTX-Software/bin/toktx.exe'
 for f in sorted(os.listdir('faces/out')):
     if not f.endswith('.json'):
         continue
     name = f[:-5]
+    if only and name not in only:
+        continue
     meta = json.load(open(f'faces/out/{f}'))
     cap = json.load(open(f'faces/{name}.json'))
     M = np.array(meta['matrix'], dtype=np.float64).reshape(4, 4).T  # three's toArray is column-major
@@ -28,5 +40,10 @@ for f in sorted(os.listdir('faces/out')):
     d /= np.linalg.norm(d)
     manifest[name] = dict(matrix=[round(float(v), 7) for v in F.T.reshape(-1)], dir=[round(float(v), 5) for v in d], head=cap['headIdx'], mesh=meta['mesh'])
     shutil.copy(f'faces/out/{name}.png', os.path.join(out, f'{name}.png'))
+    # The KTX2 the world loads first: the sheet flipped top to bottom, ETC1S.
+    flip = f'faces/out/{name}_flip.png'
+    Image.open(f'faces/out/{name}.png').transpose(Image.FLIP_TOP_BOTTOM).save(flip)
+    subprocess.run([TOKTX, '--t2', '--genmipmap', '--assign_oetf', 'srgb', '--encode', 'etc1s', '--clevel', '4', '--qlevel', '255', os.path.join(out, f'{name}.ktx2'), flip], check=True)
+    os.remove(flip)
 json.dump(manifest, open(os.path.join(out, 'faces.json'), 'w'), separators=(',', ':'))
 print(len(manifest), 'faces')
