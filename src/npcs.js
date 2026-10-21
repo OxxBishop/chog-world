@@ -367,6 +367,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   let lastEnv = null;
   let lastRenderer = null;
   const wp = new THREE.Vector3();
+  const cp = new THREE.Vector3();
   let t = 0;
 
   // ---------- noticing you ----------
@@ -1076,7 +1077,16 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         for (const c of a.chogs) if (c.root.userData.away !== undefined) c.root.visible = !c.root.userData.away && (near || !a.extra?.includes(c.root));
         if (!near) continue;
         a.tick?.(t, dt);
-        for (const c of a.chogs) c.update(dt, camera);
+        for (const c of a.chogs) {
+          c.update(dt, camera);
+          // A Chog right against the lens (the camera settling behind you out of a door, by the steps
+          // where one stands) leaves the picture instead of filling it with one blurry ear: A, 10-21.
+          const close = c.root.visible && c.root.getWorldPosition(cp).distanceTo(camera.position) < 1.5;
+          if (close !== !!c.root.userData.atLens) {
+            c.root.userData.atLens = close;
+            c.setFade?.(close ? 0 : 1);
+          }
+        }
       }
       lastCamera = camera;
       lastMe = me;

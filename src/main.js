@@ -754,6 +754,9 @@ function buildPickables() {
 }
 rig.onTap = (x, y) => {
   if (!island) return;
+  // At a casino game every tap is the game's (a bet on the felt), never a tap on your Chog (the user, 10-21:
+  // each click on the roulette board opened the chat).
+  if (casino?.state?.mode) return;
   if (session?.tapChog(x, y)) return;
   // Inside a room a tap belongs to the room (the casino's machines), never to the places outside.
   if (rig.room instanceof RoomBox) return;
@@ -840,7 +843,8 @@ function tunePerf(realMs, dt) {
   perf.frames++;
   perf.fpsT += dt;
   if (perf.fpsT > 0.5) {
-    $('fps').textContent = `${Math.round(perf.frames / perf.fpsT)} fps`;
+    const fps = $('fps');
+    if (fps) fps.textContent = `${Math.round(perf.frames / perf.fpsT)} fps`;
     perf.frames = 0;
     perf.fpsT = 0;
   }

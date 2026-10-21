@@ -448,7 +448,6 @@ export function initSession(world) {
       <div><strong>${esc(s.info.name)}</strong><span class="muted small">${s.demo ? 'Demo Chog' : esc(short(s.address))}</span></div>
       <button class="talk">Talk</button>
       <button class="home">Home</button>
-      ${s.demo ? '<button class="sale">Simulate sale</button>' : ''}
       <button class="out">Sign out</button>`;
     artFallbacks(chip);
     chip.hidden = false;
