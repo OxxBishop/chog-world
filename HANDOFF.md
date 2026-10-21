@@ -27,6 +27,21 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · A · The cast stands straight, arms the same length all round, Puff's small tail
+
+The user's next look (10-21): "peely looks crooked", "monad cap chog arms are longer than king pom's and
+toasty's", Puff's "big ass tail".
+- **Standing straight:** the library's idle and talk stand on one hip with the spine tilted back over it;
+  under a Chog's big head that read as crooked. `retarget.js` takes `lean` (how much of the tilt and the
+  hips' sideways shift is kept); Idle and Talk are baked at 0.3 and 0.4 for the whole cast.
+- **Arm lengths:** Monty, Patrol and Cosmo had their arms brought to King Pom's and Toasty's length in the
+  mesh before the rig (`limb_edit.py arms`, hands kept whole), rebuilt. Faces unchanged (same heads).
+- **Puff #37:** redrawn in Nano Banana with a small tail (wings kept even), rebuilt through Tripo, the
+  tail scaled down again in the mesh (`limb_edit.py tail` now traces the tail over the surface and eases
+  12 cm from where it joins). New face sheet.
+- Portraits rendered again. Tripo credits left: 80.
+
+
 ### 2026-10-21 · B · Nothing on the islands is walk-through any more (rocks, bushes, trees, benches, the bar's corner)
 - **The cause** (the user: "it went through almost everything in the chog hub on its hoverboard"): `src/island.js` built the rocks, bushes and taller flowers before reading their spots for colliders, and building empties those lists. So only trees ever blocked a walker; every rock, bush and flower was walk-through. They're read before building now.
 - **Their shapes** (`footprint` in `src/island.js`, A's file): each rock, bush, tall flower and tree blocks by its own shape at a Chog's body height (0.3 to 3 m over its foot). That's one circle for something round, a short row for something long. Trees also block by their low branches (pines'), not just their trunks. Grass and low plants (ferns, mushrooms) stay walk-through. It adds about 0.3 s to the load.

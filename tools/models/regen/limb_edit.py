@@ -43,7 +43,7 @@ if task == 'arms':
         radial = np.linalg.norm(rel - np.outer(t, a), axis=1)
         rmax = np.percentile(radial[sure], 98) * 1.25
         L = t[sure].max()
-        arm = (x * sgn > sh - 0.03) & (t > 0) & (radial < rmax) & (z < P.get("top", 0.88) + 0.05)
+        arm = (x * sgn > sh - 0.03) & (t > 0) & (radial < rmax) & (z < P.get("top", 0.88) + P.get("topslack", 0.05))
         tw = L - hand
         # Eased in over the first few centimetres so the sleeve's join to the body stays smooth.
         ease = np.clip(t / 0.06, 0, 1)
@@ -65,22 +65,69 @@ if task == 'arms':
         moved[arm] += p1[arm] - m[arm]
         print('ARM', 'L' if sgn > 0 else 'R', 'length', round(L, 3), '->', round(tw * k + hand, 3), 'droop', round(droop, 1), '-> 0' if P.get('level') else '', 'shoulder z', round(float(S0[2]), 3), 'vertices', int(arm.sum()))
 elif task == 'tail':
+    import bmesh
+    from collections import deque
     k = P.get('k', 0.6)
     # Blender's -y is the Chog's front (glTF +z): the back is +y. The back's surface: how far the middle of the
-    # body reaches behind its centre line; the tail is what sticks out past that under the waist.
+    # body reaches behind its centre line.
     band = (z > 0.3) & (z < P.get('waist', 0.75)) & (np.abs(x) < 0.15)
     yc = np.median(y[band])
     back = yc + np.percentile(y[band] - yc, 90)
     s_ = y - back
-    tail = (s_ > 0) & (z < P.get('waist', 0.75)) & (z > 0.03)
-    J = m[tail & (s_ < 0.04)].mean(0)
-    J[1] = back
-    # The whole tail scaled about where it joins, the first few centimetres eased so the join stays put.
-    wgt = np.clip(s_ / P.get('ease', 0.06), 0, 1)
-    wgt = wgt * wgt * (3 - 2 * wgt)
+    # The tail traced over the surface (welded across UV seams) from what is surely tail (well behind the
+    # back), stopping at the back itself, so a tail that curls round to the side comes with it whole.
+    bm = bmesh.new(); bm.from_mesh(mesh.data)
+    bm.verts.ensure_lookup_table()
+    pos = {}
+    for v in bm.verts:
+        pos.setdefault(tuple(np.round(m[v.index], 4)), []).append(v.index)
+    weld = np.zeros(len(m), int)
+    for g, ids in enumerate(pos.values()):
+        weld[ids] = g
+    nb = [set() for _ in range(len(pos))]
+    for e in bm.edges:
+        i, j = weld[e.verts[0].index], weld[e.verts[1].index]
+        if i != j: nb[i].add(j); nb[j].add(i)
+    gm = np.zeros((len(pos), 3)); np.add.at(gm, weld, m); gm /= np.bincount(weld, minlength=len(pos))[:, None]
+    gs = gm[:, 1] - back
+    wall = P.get('wall', 0.28)
+    floor = P.get('floor', 0.0)
+    barrier = ((np.abs(gm[:, 0]) < wall) & (gs < 0.0) & (gm[:, 2] > floor)) | ((gm[:, 2] <= floor) & (gs < -P.get('feet', 0.08))) | (gm[:, 2] > P.get('waist', 0.75))
+    seen = np.full(len(pos), -1)
+    q = deque()
+    for g in np.nonzero((gs > P.get('seed', 0.15)) & ~barrier)[0]:
+        seen[g] = 0; q.append(g)
+    while q:
+        g = q.popleft()
+        for h in nb[g]:
+            if seen[h] < 0 and not barrier[h]:
+                seen[h] = seen[g] + 1; q.append(h)
+    tailg = seen >= 0
+    # Where it joins: the traced vertices next to the barrier.
+    join = np.array([g for g in np.nonzero(tailg)[0] if any(barrier[h] for h in nb[g])])
+    J = gm[join].mean(0) if len(join) else gm[tailg].mean(0)
+    # Distance over the surface from the join (Dijkstra over the welded edges), for the ease: the tail
+    # shrinks fully only past `ease` metres from where it joins, so the join itself stays smooth.
+    import heapq
+    dist = np.full(len(pos), np.inf); hq = []
+    for g in join: dist[g] = 0.0; heapq.heappush(hq, (0.0, g))
+    while hq:
+        d0_, g = heapq.heappop(hq)
+        if d0_ > dist[g]: continue
+        for h in nb[g]:
+            if not tailg[h]: continue
+            nd = d0_ + float(np.linalg.norm(gm[h] - gm[g]))
+            if nd < dist[h]: dist[h] = nd; heapq.heappush(hq, (nd, h))
+    dist[tailg & ~np.isfinite(dist)] = 9.0
+    e = np.clip(np.where(np.isfinite(dist), dist, 0) / P.get('ease', 0.12), 0, 1); e = e * e * (3 - 2 * e)
+    tail = tailg[weld]
+    ew = e[weld]
     target = J + (m - J) * k
-    moved[tail] = (target[tail] - m[tail]) * wgt[tail, None]
-    print('TAIL vertices', int(tail.sum()), 'back', round(back, 3), 'reach', round(float(s_[tail].max()), 3), '->', round(float(s_[tail].max() * k), 3))
+    moved[tail] = (target[tail] - m[tail]) * ew[tail, None]
+    bm.free()
+    near = (z < 0.55) & (s_ > -0.15) & ~tail
+    print('UNTRACED near', int(near.sum()), 'by x<0.28', int((near & (np.abs(x) < 0.28)).sum()), 'z<0.15', int((near & (z < 0.15)).sum()))
+    print('TAIL vertices', int(tail.sum()), 'join', len(join), 'back', round(back, 3), 'reach', round(float(s_[tail].max()), 3), 'x range', np.round([m[tail, 0].min(), m[tail, 0].max()], 2))
 else:
     raise SystemExit('task: arms | tail')
 

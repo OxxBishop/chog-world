@@ -38,7 +38,8 @@ CFG = {
     'chog-132': dict(eyes=[[270, 545, 430, 652], [575, 545, 735, 652]], mouth=[455, 700, 565, 752], rest='king', skin=[0.29, 0.16, 0.13]),
     'singer': dict(eyes=[2, 1], mouth=0, rest='barkeep', open_mouth=True),
     'chog-66': dict(eyes=[], mouth=[418, 776, 618, 838], rest='own', mk=0.8),
-    'chog-37': dict(eyes=[[280, 555, 440, 625], [585, 555, 745, 625]], mouth=3, rest='king'),
+    # (10-21 second round: redrawn with a small tail.)
+    'chog-37': dict(eyes=[[280, 552, 442, 628], [585, 552, 746, 628]], mouth=[468, 706, 556, 748], rest='king'),
     'chog-124': dict(eyes=[0, 1], mouth=5, rest='own', lids='ink', keep_blue=[500, 740, 640, 860]),
     # (10-21, rebuilt from his NFT art: his blue drool stays put over every mouth, keep_blue.)
     'chog-1151': dict(eyes=[0, 1], mouth=4, rest='own', lids='ink', keep_blue=[420, 700, 620, 900]),
