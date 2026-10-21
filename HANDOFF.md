@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · The casino's odds rise with every tier, capped at 98.5%, and a card shows what your edges paid (B36)
+
+- **Tier lift** (`perksFor()` in `src/casinoperks.js`): every win pays more by tier, slots +0 / 2 / 4 / 6 / 8%, roulette +0 / 0.3 / 0.6 / 0.9 / 1.25%, trimmed per Chog so neither game returns more than `CAP` (98.5%). The tier badge says it ("every win pays 7.9% more at the slots and 1.2% more at the roulette") and lights up on each win it pays. Fractions of a chip are kept as change (`state.carry`) and paid on a later win.
+- **The zero shield is now 3 times a day** (it alone returned 98.65%, over the cap). Zero comes up once in 37 spins, so in a normal visit it plays as before. Saves from before today pick up their 3 shields.
+- **`node scripts/casino-sim.mjs`** (same seed, same numbers): every tier's average and lowest return now rise Common to Legendary in both games; the highest of any Chog is 98.500%. Legendaries play at the cap: 98.5% in both. Long-run sim agrees with the exact sums within its error.
+- **Don't claim the house edge at demo length:** the day's power-ups still put most Chogs ahead over 20 rounds. With the smaller edges the house takes longer to win them back (median spins at the slots: Common 80, Rare 197, Epic 523, Legendary 398).
+- **The visit's card:** step back from a game (button or Esc) and the room shows your net since you walked in, "Your Chog's edges paid +N", and the top four edges with what each did and paid (wild spins, free spins, the tier's odds, boosted pays, streaks, saves, refunds). X closes it; picking a game or leaving hides it. Starts fresh each time you walk in or switch Chogs.
+- Roulette message: a shield or near misses over several bets now say the total back.
+
 ### 2026-10-21 · B · The casino audited by simulation; a spin can no longer pay the wrong Chog or vanish on a reload
 
 - **`node scripts/casino-sim.mjs [seed]`** (new, about 70 s): plays both games the way `src/casino.js` does, on a seeded draw, and prints the long-run return per Chog (exact, checked by simulation), a 20-round session with the day's power-ups, every Chog by tier, and rare-vs-Common head to head. Same seed, same numbers.

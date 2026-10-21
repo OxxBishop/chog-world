@@ -780,6 +780,42 @@ body.in-casino .places-toggle, body.in-casino #places, body.in-casino .nav-hint 
 .cz-say.quiet { font: 500 13px var(--body); opacity: 0.88; }
 .cz-say.pop { animation: cz-say 0.35s cubic-bezier(0.3, 1.5, 0.5, 1); }
 @keyframes cz-say { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
+/* The visit's card: back in the room after playing, your net and what each of your Chog's edges paid. */
+.cz-sum {
+  position: relative; width: 340px; max-width: calc(100vw - 24px); box-sizing: border-box; padding: 11px 14px 13px 16px; border-radius: 18px;
+  background: rgba(20, 13, 38, 0.94); box-shadow: 0 0 0 1.5px rgba(255, 211, 107, 0.6), 0 14px 34px rgba(0, 0, 0, 0.5);
+  animation: cz-sum-in 0.34s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+.cz-sum[hidden] { display: none; }
+.cz-sum header { display: flex; align-items: center; justify-content: space-between; }
+.cz-sum small { font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: #b3a8c8; }
+.cz-ui .cz-sum-x { width: 28px; height: 28px; margin: -3px -6px 0 0; padding: 0; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.07); color: #d9d0ea; transition: background 0.15s ease, color 0.15s ease; }
+.cz-sum-x svg { width: 14px; height: 14px; }
+.cz-ui .cz-sum-x:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.cz-ui .cz-sum-x:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.cz-sum-net { display: flex; align-items: baseline; gap: 7px; margin: 1px 0 0; }
+.cz-sum-net b {
+  font: 700 34px var(--display); line-height: 1.05; font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, #fff6d4 0%, #ffd36b 48%, #e6a93a 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(92, 52, 8, 0.75));
+}
+.cz-sum-net b.down { background: none; color: #ffb3d2; filter: none; }
+.cz-sum-net span { font-size: 13px; font-weight: 600; color: #d9d0ea; }
+.cz-sum-paid { margin: 2px 0 10px; font-size: 13px; color: #e8e2f4; }
+.cz-sum-paid b { color: var(--cz-gold); font-variant-numeric: tabular-nums; }
+.cz-sum ul { list-style: none; margin: 0; padding: 10px 0 0; border-top: 1px solid rgba(255, 211, 107, 0.18); display: grid; gap: 8px; }
+.cz-sum li { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; animation: cz-sum-row 0.32s ease-out both; animation-delay: calc(var(--i, 0) * 70ms + 140ms); }
+.cz-sum li i { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 40% 30%, var(--cz-plum-hi), var(--cz-plum) 70%); box-shadow: 0 0 0 1.5px var(--cz-gold); color: var(--ic, var(--cz-gold)); }
+.cz-sum li svg { width: 17px; height: 17px; }
+.cz-sum li .cz-num { font: 700 15px var(--display); line-height: 1; color: var(--cz-gold); }
+.cz-sum li div { display: grid; min-width: 0; line-height: 1.22; }
+.cz-sum li div b { font: 600 14.5px var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cz-sum li div span { font-size: 12px; color: #b3a8c8; }
+.cz-sum li em { font: 700 16px var(--display); font-style: normal; color: var(--cz-gold); font-variant-numeric: tabular-nums; }
+.cz-sum li em.zero { color: #8f86a6; }
+.cz-sum-more { margin: 8px 0 0 42px; font-size: 12px; color: #b3a8c8; }
+@keyframes cz-sum-in { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes cz-sum-row { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
 .cz-tokens { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
 .cz-tokens[hidden] { display: none; }
 .cz-ui .cz-token {
@@ -905,6 +941,8 @@ body.in-casino .places-toggle, body.in-casino #places, body.in-casino .nav-hint 
   .cz-leave span { display: none; }
   .cz-dock { left: 12px; right: 12px; width: auto; max-width: none; transform: none; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); align-items: stretch; gap: 8px; }
   .cz-say, .cz-tokens, .cz-felt { align-self: center; }
+  .cz-sum { align-self: center; width: 100%; max-width: 380px; padding: 10px 13px 12px 14px; }
+  .cz-sum-net b { font-size: 30px; }
   .cz-say { font-size: 16px; }
   .cz-ui .cz-token { height: 34px; padding: 0 13px; font-size: 13px; }
   .cz-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "bank act" "rack rack"; gap: 12px 10px; align-items: end; }
