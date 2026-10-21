@@ -24,6 +24,7 @@ import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createDemo } from './shots.js';
 import { createSpace } from './space.js';
 import { createAudio } from './audio.js';
+import './motion.js';
 import { createEntry } from './entry.js';
 import { createIntro } from './intro.js';
 import { createArrival } from './arrival.js';
@@ -939,7 +940,8 @@ function frame() {
   travel?.setEnv?.(env);
   entry?.apply(env, renderer);
   session?.update(dt);
-  casino?.show(!entry?.active && rig.room === casino.room.pod);
+  // (Only while its room is the one drawn: its chips once showed in the lobby, the user 10-21.)
+  casino?.show(!entry?.active && rig.room === casino.room.pod && casino.room.room.group.visible);
   casino?.update(dt, env);
   npcs?.update(dt, camera, env, renderer, travel?.active ? travel.chog?.root : null, travel?.boards);
   // Near your Chog out walking, else near what the camera looks at; hidden in rooms and in space.

@@ -855,7 +855,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const showRide = nearBoard >= 0 && !state.busy && !(state.board >= 0 && state.rideRise > 0.15);
     if (hud.ride.hidden === showRide) hud.ride.hidden = !showRide;
     const rideLabel = state.board >= 0 ? 'Hop off' : 'Ride the hoverboard';
-    if (showRide && hud.ride.textContent !== rideLabel) hud.ride.textContent = rideLabel;
+    if (showRide && hud.ride.textContent !== rideLabel) (hud.ride.textContent = rideLabel), (hud.ride.dataset.label = rideLabel), hud.ride.setAttribute('aria-label', rideLabel);
     lastT += dt;
     if (lastT > 1 / 30) {
       lastT = 0;
@@ -1551,17 +1551,70 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     m.stroke();
     m.fill();
     m.restore();
-    // North on the rim.
-    const nx = R + Math.sin(-look) * (R - 15), ny = R - Math.cos(-look) * (R - 15);
-    m.fillStyle = '#2a1f4a';
+    // The bezel (Celestial, the user's pick 10-21; it stands in for the compass strip): a gold rim, a tick
+    // every 15 degrees, the bearings turning with the view, north a gold diamond, and the places off the
+    // map as small gems on the rim at their bearing.
+    const GOLD = '#ecdcae', INK = 'rgba(20, 12, 40, 0.72)';
+    m.save();
+    m.translate(R, R);
+    m.lineWidth = 12;
+    m.strokeStyle = 'rgba(22, 16, 44, 0.5)';
     m.beginPath();
-    m.arc(nx, ny, 11, 0, Math.PI * 2);
-    m.fill();
-    m.fillStyle = '#fff';
-    m.font = '700 14px Fredoka, sans-serif';
+    m.arc(0, 0, R - 8, 0, Math.PI * 2);
+    m.stroke();
+    m.lineWidth = 5;
+    m.strokeStyle = GOLD;
+    m.beginPath();
+    m.arc(0, 0, R - 3, 0, Math.PI * 2);
+    m.stroke();
+    m.rotate(-look);
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI * 2, big = k % 6 === 0;
+      m.beginPath();
+      m.moveTo(Math.sin(a) * (R - (big ? 22 : 16)), -Math.cos(a) * (R - (big ? 22 : 16)));
+      m.lineTo(Math.sin(a) * (R - 6), -Math.cos(a) * (R - 6));
+      m.lineWidth = big ? 4 : 2.5;
+      m.strokeStyle = big ? GOLD : 'rgba(236, 220, 174, 0.65)';
+      m.stroke();
+    }
+    m.font = '700 30px Cinzel, serif';
     m.textAlign = 'center';
     m.textBaseline = 'middle';
-    m.fillText('N', nx, ny + 1);
+    m.lineJoin = 'round';
+    for (const [label, a] of [['E', Math.PI / 2], ['S', Math.PI], ['W', -Math.PI / 2]]) {
+      const x = Math.sin(a) * (R - 40), y = -Math.cos(a) * (R - 40);
+      m.lineWidth = 7;
+      m.strokeStyle = INK;
+      m.strokeText(label, x, y + 2);
+      m.fillStyle = GOLD;
+      m.fillText(label, x, y + 2);
+    }
+    m.save();
+    m.translate(0, -(R - 38));
+    m.rotate(Math.PI / 4);
+    m.fillStyle = GOLD;
+    m.strokeStyle = INK;
+    m.lineWidth = 5;
+    m.strokeRect(-12, -12, 24, 24);
+    m.fillRect(-12, -12, 24, 24);
+    m.fillStyle = '#fffaf0';
+    m.fillRect(-4.5, -4.5, 9, 9);
+    m.restore();
+    for (const l of landmarks) {
+      const dx = l.at.x - state.pos.x, dz = l.at.z - state.pos.z;
+      if (Math.hypot(dx, dz) * (R / metres) < R - 30) continue;
+      const a = bearingOf(_v.set(dx, 0, dz));
+      m.save();
+      m.translate(Math.sin(a) * (R - 13), -Math.cos(a) * (R - 13));
+      m.rotate(Math.PI / 4);
+      m.fillStyle = l.kind === 'stage' ? '#ffb4dc' : '#9be7ff';
+      m.strokeStyle = INK;
+      m.lineWidth = 3;
+      m.strokeRect(-6, -6, 12, 12);
+      m.fillRect(-6, -6, 12, 12);
+      m.restore();
+    }
+    m.restore();
     if (!hud.full.hidden) drawFull();
     return heading;
   }

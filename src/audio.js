@@ -110,7 +110,7 @@ export function createAudio({ button = null } = {}) {
     if (!button) return;
     button.classList.toggle('off', muted);
     button.setAttribute('aria-label', muted ? 'Sound on' : 'Sound off');
-    button.title = muted ? 'Sound on (M)' : 'Sound off (M)';
+    button.title = muted ? 'Sound on' : 'Sound off';
   };
   show();
 
@@ -165,7 +165,7 @@ export function createAudio({ button = null } = {}) {
   };
   button?.addEventListener('click', () => setMuted(!muted));
   addEventListener('keydown', (e) => {
-    if ((e.key === 'm' || e.key === 'M') && !e.target.closest?.('input, textarea, [contenteditable]')) setMuted(!muted);
+    // (No key: M opens the map.)
   });
 
   const fwd = new THREE.Vector3(), up = new THREE.Vector3();
