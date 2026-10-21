@@ -178,6 +178,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   for (const x of [-44, -30]) hubPost(x, 22.9, 0.2);
   for (const [x, z] of [[-41.5, 18.9], [-36.5, 21.4], [-32.5, 18.4]]) hubPost(x, z, 1.7);
   for (const cx of [-37, 37]) bar(HB(cx - 11.25, 11.0), HB(cx + 11.25, 11.0), 0.25);
+  // The bar wing's outer wall, square to its front corner.
+  bar(HB(-47.6, -2.5), HB(-47.6, 10.4), 0.6);
   // The lobby's front steps: a block (its door's reach, below, goes past them).
   bar(HB(-3.4, 19.3), HB(3.4, 19.3), 1.4);
   // The singer's stage takes in its fairy-light posts.
@@ -506,7 +508,11 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
           const px = c.ax + abx * t, pz = c.az + abz * t;
           const dx = to.x - px, dz = to.z - pz;
           const d = Math.hypot(dx, dz), r = c.r + rad;
-          if (d < r) to.set(px + (dx / (d || 1)) * r, to.y, pz + (dz / (d || 1)) * r);
+          // (Right on its line: out the way it came from.)
+          if (d < 1e-4) {
+            const fx = from.x - px, fz = from.z - pz, fl = Math.hypot(fx, fz) || 1;
+            to.set(px + (fx / fl) * r, to.y, pz + (fz / fl) * r);
+          } else if (d < r) to.set(px + (dx / d) * r, to.y, pz + (dz / d) * r);
         }
       }
     }

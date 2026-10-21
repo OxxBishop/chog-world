@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · Nothing on the islands is walk-through any more (rocks, bushes, trees, benches, the bar's corner)
+- **The cause** (the user: "it went through almost everything in the chog hub on its hoverboard"): `src/island.js` built the rocks, bushes and taller flowers before reading their spots for colliders, and building empties those lists. So only trees ever blocked a walker; every rock, bush and flower was walk-through. They're read before building now.
+- **Their shapes** (`footprint` in `src/island.js`, A's file): each rock, bush, tall flower and tree blocks by its own shape at a Chog's body height (0.3 to 3 m over its foot). That's one circle for something round, a short row for something long. Trees also block by their low branches (pines'), not just their trunks. Grass and low plants (ferns, mushrooms) stay walk-through. It adds about 0.3 s to the load.
+- `src/plaza.js`: the plaza's benches block to their square corners; a board's nose slipped in past the rounded ends.
+- `src/travel.js`: the bar wing's outer wall up to its front corner. A step that lands exactly on a post's line is pushed back out the way it came.
+- **How it was checked:**
+  - A geometry audit: every half metre over downtown and the three neighbourhoods, is there real geometry inside a Chog's body where collision lets it stand? Downtown went from about 4,200 such spots to 290. All that's left: the bridges' finer stair steps (the feet keep to those), Patrol's moving chopper, ferns and mushrooms, a few pine-branch tips, and the domes' doorways (glass that's cut away in its shader).
+  - A ride test: a hoverboard at full speed, and on foot, through the bar's terrace, posts and lamps, the statue and arch, the plaza's lamps and benches, the fountain, the casino's front and the banner poles. No frame had the Chog or the board's nose or tail inside anything, apart from a portal pad, which is ground.
+  - No collider sits on a dome's garden path, and only one (a tree's real branches) reaches 1.2 m into a road.
 ### 2026-10-21 · A · Arms without the twist, no waving, Toasty redrawn, Snooze's smaller tail, Peel's one blush
 
 From the user's phone test (10-21, three recordings):

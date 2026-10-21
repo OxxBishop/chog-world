@@ -62,6 +62,78 @@ function randomOnIslands(rng) {
   return [isl.x + Math.cos(a) * r, isl.z + Math.sin(a) * r];
 }
 
+/*
+ * What a walker bumps into, from a model's own shape (B, 10-21: the user's Chog went through rocks, bushes
+ * and trees). Its footprint at a Chog's body height, 0.3 to 3 m over its foot, as circles in the model's
+ * own frame: one for something round, a short row along something long (a long rock). Cached per model and
+ * scale step.
+ */
+const footCache = new Map();
+const _fv = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+function footprint(name, s) {
+  const step = Math.max(1, Math.round(s * 3));
+  const key = `${name}@${step}`;
+  if (footCache.has(key)) return footCache.get(key);
+  const y0 = 0.3 / (step / 3), y1 = 3.0 / (step / 3);
+  const pts = [];
+  // Each triangle cut to the band; the corners of what's left.
+  const cut = (poly, f) => {
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length], fa = f(a.y), fb = f(b.y);
+      if (fa >= 0) out.push(a);
+      if (fa >= 0 !== fb >= 0) out.push(a.clone().lerp(b, fa / (fa - fb)));
+    }
+    return out;
+  };
+  for (const p of info(name).parts) {
+    const pos = p.geometry.attributes.position, idx = p.geometry.index;
+    const n = idx ? idx.count / 3 : pos.count / 3;
+    const every = Math.max(1, Math.floor(n / 1200));
+    for (let t = 0; t < n; t += every) {
+      for (let k = 0; k < 3; k++) _fv[k].fromBufferAttribute(pos, idx ? idx.getX(t * 3 + k) : t * 3 + k).applyMatrix4(p.matrix);
+      if (Math.max(_fv[0].y, _fv[1].y, _fv[2].y) < y0 || Math.min(_fv[0].y, _fv[1].y, _fv[2].y) > y1) continue;
+      let poly = cut([_fv[0].clone(), _fv[1].clone(), _fv[2].clone()], (y) => y - y0);
+      if (poly.length >= 3) poly = cut(poly, (y) => y1 - y);
+      if (poly.length >= 3) for (const q of poly) pts.push([q.x, q.z]);
+    }
+  }
+  let circles = [];
+  if (pts.length >= 3) {
+    const pct = (arr, k) => arr.slice().sort((a, b) => a - b)[Math.min(arr.length - 1, Math.floor(arr.length * k))];
+    let mx = 0, mz = 0;
+    for (const [x, z] of pts) (mx += x), (mz += z);
+    mx /= pts.length;
+    mz /= pts.length;
+    let sxx = 0, szz = 0, sxz = 0;
+    for (const [x, z] of pts) (sxx += (x - mx) ** 2), (szz += (z - mz) ** 2), (sxz += (x - mx) * (z - mz));
+    const ang = 0.5 * Math.atan2(2 * sxz, sxx - szz), ux = Math.cos(ang), uz = Math.sin(ang);
+    const along = pts.map(([x, z]) => (x - mx) * ux + (z - mz) * uz), across = pts.map(([x, z]) => -(x - mx) * uz + (z - mz) * ux);
+    const a0 = pct(along, 0.03), a1 = pct(along, 0.97), b0 = pct(across, 0.03), b1 = pct(across, 0.97);
+    const wide = Math.max(0.05, b1 - b0), bm = (b0 + b1) / 2;
+    const count = a1 - a0 <= wide * 1.5 ? 1 : Math.min(5, Math.ceil((a1 - a0) / wide));
+    const centres = [];
+    for (let i = 0; i < count; i++) {
+      const a = count === 1 ? (a0 + a1) / 2 : a0 + wide / 2 + ((a1 - a0 - wide) * i) / (count - 1);
+      centres.push([mx + ux * a - uz * bm, mz + uz * a + ux * bm]);
+    }
+    const near = pts.map(([x, z]) => Math.min(...centres.map(([cx, cz]) => Math.hypot(x - cx, z - cz))));
+    const r = pct(near, 0.99);
+    circles = centres.map(([x, z]) => ({ x, z, r }));
+  }
+  footCache.set(key, circles);
+  return circles;
+}
+// Circles for one placed copy (its matrix m) into list, each r scaled by soft (foliage gives a little).
+const _fc = new THREE.Vector3();
+function addFootprint(list, name, m, soft) {
+  const s = m.getMaxScaleOnAxis();
+  for (const c of footprint(name, s)) {
+    _fc.set(c.x, 0, c.z).applyMatrix4(m);
+    list.push({ x: _fc.x, y: m.elements[13], z: _fc.z, r: Math.max(0.15, c.r * s * soft) });
+  }
+}
+
 export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   const noise = sky.uniforms.uNoise.value;
   const terrain = buildTerrain(scene);
@@ -264,6 +336,18 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
     }
   }
 
+  // Rocks, bushes and the taller flowers a walker goes round (src/travel.js), taken before building them:
+  // building empties each set's list, and these used to be read after, so none of them stopped anything
+  // (B, 10-21: the user's Chog rode through everything).
+  // Each by its own shape at body height (footprint): rocks firm, bushes and flowers a little soft. Not grass.
+  const propObstacles = [];
+  for (const [set, tallest, soft] of [[props, 0.55, 0.95], [low, 1.0, 0.85], [bloom, 0.85, 0.8]]) {
+    for (const [name, all] of set.items) {
+      if (/^Grass/.test(name)) continue;
+      const c = info(name);
+      for (const m of all) if (c.height * m.getMaxScaleOnAxis() >= tallest) addFootprint(propObstacles, name, m, soft);
+    }
+  }
   forest.build(scene, renderer);
   props.build(scene, { shadows: true, chunk: 64 });
   const lowMeshes = low.build(scene, { shadows: false, chunk: 40 });
@@ -273,20 +357,13 @@ export function buildIsland(scene, rng, renderer, sky, overlay = scene) {
   // What a walking Chog goes round (src/travel.js; A, the user 10-17: Chogs walked through flowers and
   // things): each tree by its trunk, rocks, bushes and the taller flowers by their footprint. Grass and low
   // plants it walks through.
-  const obstacles = [];
+  const obstacles = [...propObstacles];
   const reach = (box) => Math.max(...[box.min.x, box.max.x].flatMap((bx) => [box.min.z, box.max.z].map((bz) => Math.hypot(bx, bz))));
+  // Trees by their trunk, and their branches where they hang as low as a Chog (pines' do).
   for (const t of forest.trees) {
     const s = t.m.getMaxScaleOnAxis();
     obstacles.push({ x: t.x, y: t.m.elements[13], z: t.z, r: THREE.MathUtils.clamp(reach(info(t.name).box) * 0.16, 0.35, 1.1) * s });
-  }
-  for (const [set, tallest, share] of [[props, 0.55, 0.7], [low, 1.0, 0.45], [bloom, 0.85, 0.4]]) {
-    for (const [name, all] of set.items) {
-      const c = info(name);
-      for (const m of all) {
-        const s = m.getMaxScaleOnAxis();
-        if (c.height * s >= tallest) obstacles.push({ x: m.elements[12], y: m.elements[13], z: m.elements[14], r: c.radius * s * share });
-      }
-    }
+    addFootprint(obstacles, t.name, t.m, 0.95);
   }
   terrain.shade(shadeSpots);
 
