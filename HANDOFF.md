@@ -27,6 +27,76 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · The casino says "testnet chips" (A's note, the user's go-ahead)
+- `src/casino.js`: the line under the casino's buttons is "Testnet chips, topped up every day." (was "Free chips only, ..."). Out of chips, it says "Out of chips. More testnet chips tomorrow."
+- `src/hub.js`: the sign over the casino's door says "testnet chips" (it said "free chips only", the line the user asked about).
+- `src/casinoperks.js`: the perks read "200 more chips a day" and so on, without "free".
+- A's other notes: the framed NFT art on each home pod (left of the door) is clear of everything B added there; the dome lamp's collider is on the door's other side.
+- Seen on the laptop and a phone: the sign outside, the line in the room.
+
+### 2026-10-21 · A · The dino is out of the game
+
+- The user, after seeing the rebuilt dino on a phone at night: "horrid, you might as well remove the character
+  from the game". Its lap round the beacon island (`src/npcs.js` runner slot, its lines, the toy block), its
+  shader warm-up (`src/main.js` CAST_KINDS) and its own wave (`src/chog.js`) are gone. The beacon island's
+  loop road stays. `public/models/npcs/dino.glb` and the rebuild tools stay in the repo, unused.
+
+### 2026-10-21 · A · The dino: arms, the cast's moves, four claws, a clean suit
+
+- **What changed:** `public/models/npcs/dino.glb` rebuilt. It has arm bones now (Tripo gave it none, its arms
+  stuck over its head), its arms rest down, and it carries the cast's clips: the picked walk and jog, idle,
+  talk, wave, cheer. Four claws on each foot (it had one and a flat grey piece on the side). Its colour map
+  cleaned (smears where the green meets the purple, streaks and seam lines on the suit, the hands all pink,
+  a clean line where the pink feet meet the green legs) and repacked with gutters.
+- **Code:** `src/chog.js` `WAVE_MODEL` (the dino's wave sits lower and further out, so its big hood doesn't hide
+  the hand); `src/npcs.js` the dino waves when it greets you, like the rest.
+- **See it:** the beacon island. It laps with its block on its head; stand in its way and it waves and talks.
+  `tools/models/pose.html?m=dino&move=walk` (or run, wave, cheer, talk).
+- **Tools:** `tools/models/fix/addbones.mjs` (new bones in a skin), `patch.mjs --uv`, `ktx2.mjs --color uastc`,
+  `tools/models/view.html` (`?uv=1`, `?tex=`, `?plain=1`, `?side=front`, `?cy=&el=`), the scripts in
+  `tools/models/fix/dino/` (README, 10-21).
+- **Left:** nothing known.
+
+### 2026-10-20 · A · For B: the casino's "free chips only" line, and what of A's sits on the island
+- **The casino line** (the user, in a test run: "wth is that free chips only"): "Free chips only, topped up
+  every day." (src/casino.js:1848). A offered: remove it, "Play for fun", or "Testnet chips" (recommended), and
+  the user said to go ahead: **B, please make it "Testnet chips, topped up every day."** The "Free chips again
+  tomorrow" lines (casino.js:1032, :1165) can match or stay, your call.
+- **On the island, A's, so the revamp can keep clear of them:** each signed-in Chog's NFT art hangs framed on
+  its home pod, left of the door (dome-local -3.05, 2.95, `podDoor.hall.z` + 0.06, about 1.7 m with its name
+  plate; `hangPortrait()` in src/session.js). Restyle the pod front and tell A where it should go, or keep that
+  patch of wall. Grass is kept off the portal pads (src/island.js `nearPortal`) and bends from Chogs (`uPush`,
+  src/foliage.js). Pads are ground in travel.js `groundAt`.
+- **Local build:** WalletConnect (53225dd) needs `npm install`; a cut-off install left `valtio` half
+  unpacked here and the build failed on `valtio/vanilla` (delete node_modules/valtio and install again).
+
+### 2026-10-20 · A · Your Chog's own NFT art, framed on its home
+- The user's pick for "the NFT must be essential" with one day left (no 3D trait pieces): the world's Chog is
+  the plain body in its skin's shade, so its real art now hangs framed on the front of its home pod, left of
+  the door, with a brass name plate, the moment it steps out (`hangPortrait()` in src/session.js, from the
+  site's own `public/art/<id>.webp`; taken down on sign out). The chip and the wallet picker already show it.
+- src/main.js: one line, `domes: island.domes` handed to the session (for the pod's door).
+- Seen: the demo arrival by day and night, laptop and phone; production build OK.
+- Local setup note: WalletConnect (53225dd) needs `npm install`; a cut-off install can leave `valtio`
+  half-unpacked and the build fails to resolve `valtio/vanilla` (delete it and install again).
+
+### 2026-10-18 · A · Toasty: a round torso, flames all the way round, his arms cleaned
+- **The shape** (the user: "why is his back rectangular instead of round ... his side also sunk in ... his torso
+  is supposed to be round all the way through"): Tripo built him as a box with a ledge where the shirt's back
+  overhung the shorts. `cleanup.py round` rounds each slice's corners and draws the hem in onto the shorts;
+  `torso` holds every height of the torso with the same blend of hips, spine and chest all round (the sides
+  were the hips' and up to 85% the arms', so they sank in as the arms moved).
+- **The shirt** ("scuffed at the sides and at the back, for the umpteenth time"; "the hem overextends at his
+  back"): Tripo's flames are clean round the front to 77 degrees either side; `shirt` mirrors them texel for
+  texel round the back, so both sides meet on the middle of his back, the hem level all round at the shirt's
+  own edge, and the red and orange that ran down onto his shorts back to grey. Replaces `back`.
+- **His arms** ("what are those on toasty's arms?"): 10-17 cut his hat cords at the sleeves and left their
+  holes, and the skin round them was partly the head's, so it creased into a dark gash as his arms came down.
+  `arms` closes the holes with new skin-coloured triangles (`patch.mjs --append`), lets the head go of that
+  skin, lays spikes the arm holds back onto it and paints marks out. A faint mark is left at each elbow from
+  close up; the hat's ear flaps keep their fringe.
+- Checked at phone size: walk 1.9 and run 4.2 m/s, the stick, feet on the ground, no T-poses, no errors.
+  Portrait rendered again.
 ### 2026-10-19 · B · Things are solid now, hoverboards glide clean, fewer birds, and zero g is a swim
 - **Collision** (the user: "the chog and the hoverboard kept phasing through everything"). `src/travel.js` `collide`/`pushOut` now also keeps your Chog out of a new list of props (`props`, binned like the obstacles):
   - the street lamps (`island.lamps`, from `src/roads.js` via a one-line export in `src/island.js`, A's file);

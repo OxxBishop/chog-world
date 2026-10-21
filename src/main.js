@@ -187,8 +187,8 @@ function drawAlone(r) {
  * C's rigged cast loads as the camera comes near, after the loader, and each kind of shader it brings
  * is drawn once in the load first (B12), in every light setup, so its first draws never stall a frame
  * on Intel. The Chogs themselves come from makeChog (their shader has the grey-out and the dissolve
- * built in): the light copy seen about town, the full one your own Chog and the bar's regulars are, the
- * dino's two-sided one and the sniffer's, loaded with the rest of the downloads. The rest are stand-ins on the cast's
+ * built in): the light copy seen about town and the full one your own Chog and the bar's regulars are,
+ * loaded with the rest of the downloads. The rest are stand-ins on the cast's
  * vertex layout (meshopt-packed: normals in bytes, texture coordinates in shorts): the singer's material
  * with its normal and roughness maps, the mood badge (a sprite), and the plain materials props are made
  * of (standard, lambert, basic, physical, each with and without a texture), so a prop that loads later
@@ -197,7 +197,6 @@ function drawAlone(r) {
 const CAST_KINDS = [
   { model: 'models/npcs/plain.glb', keep: 0.3 },
   { model: 'models/npcs/plain.glb' },
-  { model: 'models/npcs/dino.glb', keep: 0.3 },
   // (The sniffer's texture coordinates are packed like the rest now (A, 10-16), so its shader is the
   // light plain Chog's and its 1.2 MB file stays out of the first load.)
   // The singer is a Chog now (A): its own two-sided material with normal and roughness maps.
@@ -521,6 +520,7 @@ async function init() {
     },
     camera,
     homes: island.rooms.filter((r) => r.id.startsWith('home')),
+    domes: island.domes,
     bar: island.rooms.find((r) => r.id === 'bar'),
     rooms: island.rooms,
     // A room's door cutscene is playing (src/entry.js): your Chog walks in at its end.

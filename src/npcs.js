@@ -15,7 +15,6 @@ import { angleLerp } from './util.js';
  *   plaza    the singer on their stage with a crowd watching, two Chogs strolling round the fountain,
  *            and one by the lobby door
  *   sniffer  out on the tree island, nose in its flowers
- *   runner   the dino lapping the loop on the beacon island with a toy block over its head
  *   walker   the astronaut, floating in zero g in his own dome on the middle island (src/cosmo.js)
  *
  * The bar's bartender and regulars are in src/barchat.js. Each Chog here is its own rigged model from
@@ -37,7 +36,6 @@ export const NPC_SLOTS = {
   // By the lobby door, in the Monad look.
   doorman: { id: 1151, glb: M('chog-1151'), plaza: [-5.2, 23.2] },
   sniffer: { glb: M('sniffer'), hood: 0 },
-  runner: { glb: M('dino'), hood: 2, speed: 0.22 },
   walker: { id: 68, glb: M('chog-68'), hood: 1, speed: -0.07 },
 };
 
@@ -297,14 +295,6 @@ function idler(chog, moves = ['wave'], every = [9, 16]) {
 // A few shades for the plain Chogs in the crowd, so they read as different Chogs.
 const SHADES = ['#ffffff', '#f3e3ff', '#ffe8d6', '#e2f4ff', '#e6ffe8', '#ffe1ee'];
 
-// A toy block: a chunky cube, a different colour on each face.
-function toyBlock() {
-  const mats = ['#e8484f', '#4f7fe0', '#f2c94c', '#5fbf6a', '#b07cf0', '#f08a3a'].map((c) => new THREE.MeshLambertMaterial({ color: c }));
-  const m = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), mats);
-  m.castShadow = true;
-  return m;
-}
-
 // A spot out on a neighbourhood: on the grass, off the roads, clear of domes and the landmark.
 function openSpot(hood, from, step = 0.35) {
   for (let i = 0; i < 40; i++) {
@@ -337,8 +327,6 @@ const CAST = {
   56: { name: 'Patrol', face: 'happy', pace: 0.85, lines: ['Afternoon. Please enjoy the plaza responsibly.', 'All clear here. Have a lovely day.', 'Pardon me. Just keeping an eye out.'], hi: ['All good, {n}?', 'Hey {n}. Stay safe out there.'] },
   66: { name: 'Quackers', face: 'excited', pace: 1.2, lines: ['Love the look. Mine is better, but love it.', 'Duck float? Iconic. Thanks for noticing.', 'Strike a pose with me. Quick!'], hi: ['{n}! Love the fit.', 'Hey {n}! Quack!'] },
   52: { name: 'Toasty', face: 'happy', pace: 1, lines: ['Did I ever tell you about the coldest night on these islands?', 'Brr. Sit down, I have a story for you.', 'You look warm. Stand a little closer, friend.'], hi: ['{n}! Warm enough?', 'Hey {n}, I owe you a story.'] },
-  // The dino on the beacon island (no wave of its own: it stands and talks).
-  dino: { name: 'Dino', face: 'excited', pace: 1, move: 'idle', lines: ['Rawr! Did I scare you? No? Okay.', 'Cannot stop, I am in training!', 'This block and I go everywhere together.', 'Race you round the island!'], hi: ['Rawr, {n}!', 'Hey {n}! Catch me if you can!'] },
 };
 // Greetings: two of the cast who come across each other, one of them walking, greet by name, the first
 // line and then the answer (the user, 10-18: "the chogs should say a greeting to each other if they come
@@ -832,82 +820,6 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
           sniffer.play(up ? 'idle' : 'sniff');
           left = up ? 3 : 8 + Math.random() * 6;
         },
-      };
-    },
-  );
-
-  // ---------- the dino, lapping the beacon island with its block ----------
-  const hood2 = HOODS[NPC_SLOTS.runner.hood];
-  const lap = new THREE.Group();
-  scene.add(lap);
-  const lapAt = (a, hood) => new THREE.Vector3(hood.x + Math.cos(a) * hood.loopR, 0, hood.z + Math.sin(a) * hood.loopR);
-  let runAngle = 0;
-  set(
-    (v) => v.copy(lapAt(runAngle, hood2)),
-    async () => {
-      const dino = await npc(NPC_SLOTS.runner.glb);
-      dino.root.scale.setScalar(OUTDOOR);
-      lap.add(dino.root);
-      const block = toyBlock();
-      dino.root.add(block);
-      const head = dino.root.getObjectByName('Head');
-      const hp = new THREE.Vector3();
-      // Its run at the speed its legs carry it (else its feet slide), easing up to speed and back down,
-      // in bursts: run a while, skid to a stop, look about with the block held up, now and then turn and
-      // run back the other way.
-      const top = (dino.speedOf('run') || 3) * OUTDOOR;
-      const R = hood2.loopR;
-      let speed = 0;
-      let dir = 1;
-      let yaw = Math.atan2(-Math.sin(runAngle), Math.cos(runAngle));
-      let mode = 'run';
-      let left = 7 + Math.random() * 5;
-      let lean = 0;
-      dino.play('run');
-      const step2 = (tt, dt) => {
-        left -= dt;
-        if (mode === 'run' && left <= 0) (mode = 'stop'), (left = 0.5);
-        else if (mode === 'stop' && speed < 0.15) {
-          mode = 'rest';
-          left = 2.2 + Math.random() * 2.5;
-          dino.play('idle');
-        } else if (mode === 'rest' && left <= 0) {
-          if (Math.random() < 0.35) dir = -dir;
-          mode = 'run';
-          left = 6 + Math.random() * 7;
-          dino.play('run');
-        }
-        const want = mode === 'run' ? top : 0;
-        speed += (want - speed) * (1 - Math.exp(-dt * (mode === 'stop' ? 5 : 2.2)));
-        runAngle += (dt * speed * dir) / R;
-        dino.setPace(mode === 'rest' ? 1 : THREE.MathUtils.clamp(speed / top, 0.35, 1.15));
-        const p = lapAt(runAngle, hood2);
-        dino.root.position.set(p.x, surfaceAt(p.x, p.z), p.z);
-        // Facing the way it's going; a turn back takes about half a second.
-        const heading = Math.atan2(-Math.sin(runAngle), Math.cos(runAngle)) + (dir < 0 ? Math.PI : 0);
-        yaw = angleLerp(yaw, heading, 1 - Math.exp(-dt * 7));
-        dino.root.rotation.y = yaw;
-        // Lean into the curve a little at speed.
-        lean += ((speed * speed) / R * 0.02 * dir - lean) * (1 - Math.exp(-dt * 4));
-        dino.root.rotation.z = lean;
-        // The block rides on its head; held higher, with a little wiggle, while it rests.
-        hp.set(0, 1.1, 0);
-        if (head) {
-          dino.root.updateMatrixWorld();
-          dino.root.worldToLocal(head.getWorldPosition(hp));
-        }
-        const proud = mode === 'rest' ? Math.min(1, 1.5 * (3 - left)) : 0;
-        block.position.set(hp.x, hp.y + 1.02 + Math.abs(Math.sin(tt * 9)) * 0.04 * (speed / top) + proud * 0.12, hp.z);
-        block.rotation.set(Math.sin(tt * 4.5) * 0.15 * (speed / top), proud * Math.sin(tt * 3) * 0.4, 0);
-      };
-      step2(0, 0);
-      // It notices you and greets the others like the cast; its run waits while it does.
-      const tick = own(dino, step2, { steer: true, who: CAST.dino, resume: () => dino.play(mode === 'rest' ? 'idle' : 'run') });
-      return {
-        group: lap,
-        chogs: await shown(lap, [dino]),
-        where: (v) => v.copy(lapAt(runAngle, hood2)),
-        tick: (tt, dt) => tick(tt, dt),
       };
     },
   );

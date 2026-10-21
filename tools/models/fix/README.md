@@ -77,6 +77,28 @@ Since 10-16 (A13, A14):
   chog-1151 `head sides hips hands face`; chog-66 `head sides hips hands duck face`; chog-56
   `head sides hips spill blush face`; chog-409 `head sides hips robe shoulders face sleeves`; the rest
   `head sides hips face` (chog-52 and chog-56 keep their colour maps painted earlier that day).
+- **10-18, Toasty** (chog-52): `head sides hips torso round shirt arms face`, from the shipped file of 10-17.
+  `arms` adds vertices (the holes' fills): `patch.mjs ... --index <out>/index.u32 --append <out>` takes them.
+  Checks: `tools/models/posedump.html` (a model's vertices as the world poses them) and `pick.html` (which
+  vertices show inside a box of pose.html's picture).
 - **Picker portraits**: `tools/models/portraits.html` renders each Chog's loop (one clip length at 20 fps) as
   JPEG frames; pack them with Pillow into animated WebP (`save_all`, `duration=50`, `loop=0`, `quality=65`,
   `method=6`), 320 px, into `public/faces/portraits/<id>.webp`.
+- **10-21, the dino** (the user: "stuck in a t pose", its legs not walking; then "he only has a single claw as
+  opposed to 4"). Tripo rigged it with its arms over its head and no arm bones. The scripts in `dino/`, run from a
+  work folder holding `w2/dino` (`dump.mjs` of the shipped file, its colour map out of the KTX2 as `base.png`):
+  1. `dino_find.py` (hands and shoulders), `dino_arm.py 0.24` (each arm's vertices), `dino_rig.py 0 0.13 0.22`
+     (weights along each arm, faded across the armpit; the arms brought down to level, the cast's T-pose).
+  2. `addbones.mjs <dino.glb> <a.glb> w2/dino-rig/bones.json` (UpperArm, ForeArm, Hand each side, under the
+     Chest), then `patch.mjs --pos --nrm --joints --weights` from `w2/dino-rig`.
+  3. Clips: `bake.html?dir=_wip&m=dino&spec=Idle:ual:Idle_Loop:0.85,Talk:ual:Idle_Talking_Loop:0.3,WalkCartoon:ual:Walk_Loop:0.85:0.5:arms=1.3;legs=1.2;spine=1.8;bob=2.5,JogCartoon:ual:Jog_Fwd_Loop:0.6:0.5:arms=1.4;legs=1.1;spine=1.5;bob=2,Wave:robot:Wave:0.75:0.5:arms=2.6;spine=1.4;bob=1.5,Cheer:robot:Jump:0.3:0.5:arms=2;spine=1.4;bob=1.6`
+     (arms held well out: its belly is wide, `handcheck.html` had its hands in it 40 to 60% of the time at the
+     default), then `addclips.mjs`.
+  4. The colour map: `dino_tex.py 8` (stray colours on the suit and spikes, the hood's green and purple edge
+     decided on the mesh, brush streaks, the hands all pink), `repack.py` (gutters), `patch.mjs --uv`,
+     `dino_edge.py` (the body's islands' outer texels from inside), `dino_scan.py` (marks found in renders:
+     `view.html?uv=1` and `?tex=`), `dino_feet.py` (pink cuff and green leg, a crisp line between).
+  5. `dino_claws.py 0.68 46` (four claws across each foot's front from its own claw, the old claw and the flat
+     side piece gone), `patch.mjs --append w2/dino-claws --index w2/dino-claws/index.u32`, then `ktx2.mjs --base`.
+  In the world its wave is its own (`WAVE_MODEL` in `src/chog.js`: lower and further out, so its hood doesn't
+  hide its hand).

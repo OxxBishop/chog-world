@@ -1,9 +1,11 @@
 /*
  * A cast model's textures as KTX2 (A14): the GPU keeps them compressed (about a sixth of the memory of a
  * JPEG's pixels), so the colour map can be 2048 and still cost less than the 1024 one did.
- *   node tools/models/fix/ktx2.mjs <in.glb> <out.glb> [--base base2048.png] [--normalmap normal.png] [--rmmap rm.png] [--normal etc1s|uastc]
+ *   node tools/models/fix/ktx2.mjs <in.glb> <out.glb> [--base base2048.png] [--normalmap normal.png] [--rmmap rm.png] [--normal etc1s|uastc] [--color etc1s|uastc]
  * --base: a new colour map (upres.py's), else the file's own; --normalmap and --rmmap likewise for the normal and metal-roughness maps. Colour and metal-roughness are ETC1S
- * (Basis LZ, mipmapped); the normal map ETC1S by default, UASTC (zstd) when asked. Needs KTX-Software's
+ * (Basis LZ, mipmapped); the normal map ETC1S by default, UASTC (zstd) when asked. --color uastc: the colour map
+ * UASTC too, for an atlas packed so tight that ETC1S's 4x4 blocks hold two islands' colours (one colour per
+ * block: the dino's green came out with purple lines along every seam). Needs KTX-Software's
  * toktx (C:\Program Files\KTX-Software\bin, or on the PATH). The world loads them with KTX2Loader
  * (src/chog.js, transcoder in public/basis/).
  */
@@ -42,7 +44,7 @@ async function encode(tex, { srgb, mode, png }) {
 }
 for (const [i, mat] of doc.getRoot().listMaterials().entries()) {
   // --base is the body's (the first material's): the singer's stage keeps its own.
-  await encode(mat.getBaseColorTexture(), { srgb: true, mode: 'etc1s', png: i === 0 ? opt.base : undefined });
+  await encode(mat.getBaseColorTexture(), { srgb: true, mode: opt.color ?? 'etc1s', png: i === 0 ? opt.base : undefined });
   await encode(mat.getNormalTexture(), { srgb: false, mode: opt.normal ?? 'etc1s', png: i === 0 ? opt.normalmap : undefined });
   await encode(mat.getMetallicRoughnessTexture(), { srgb: false, mode: 'etc1s', png: i === 0 ? opt.rmmap : undefined });
   await encode(mat.getEmissiveTexture(), { srgb: true, mode: 'etc1s' });

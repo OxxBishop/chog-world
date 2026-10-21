@@ -1,0 +1,34 @@
+<!doctype html><meta charset="utf-8"><title>Pose dump</title>
+<pre id="log"></pre>
+<script type="module">
+// A model's vertices as the world poses them (src/chog.js with its overlays), for checking its shape offline.
+// /tools/models/posedump.html?m=chog-52&move=idle&t=0.5 -> window.__out: base64 Float32Array, xyz per vertex of
+// its biggest skinned mesh, in the model's own space (its root at the origin, unscaled).
+import * as THREE from 'three';
+import { makeChog, setChogRenderer } from '/src/chog.js';
+const q = new URLSearchParams(location.search);
+setChogRenderer(new THREE.WebGLRenderer());
+const c = await makeChog({ model: `models/npcs/${q.get('m') || 'plain'}.glb` });
+await new Promise((r) => setTimeout(r, 300));
+c.play('idle');
+for (let k = 0; k < 40; k++) c.update(1 / 60, null);
+c.play(q.get('move') || 'idle');
+for (let k = 0; k < Math.round(+(q.get('t') || 0.5) * 60); k++) c.update(1 / 60, null);
+const { skin, model } = c.debug();
+model.updateMatrixWorld(true);
+skin.skeleton.update();
+const n = skin.geometry.attributes.position.count;
+const out = new Float32Array(n * 3);
+const v = new THREE.Vector3();
+const inv = new THREE.Matrix4().copy(skin.matrixWorld).invert();
+for (let i = 0; i < n; i++) {
+  skin.getVertexPosition(i, v);
+  out.set([v.x, v.y, v.z], i * 3);
+}
+const bytes = new Uint8Array(out.buffer);
+let bin = '';
+for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+window.__out = btoa(bin);
+document.getElementById('log').textContent = `${n} vertices`;
+window.__done = true;
+</script>

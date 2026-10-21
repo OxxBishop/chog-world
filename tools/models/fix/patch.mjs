@@ -1,9 +1,10 @@
 /*
  * Patch a shipped cast model in place of its vertex order (no reorder, so its face sheet, clips and every
  * other fix stay as they are):
- *   node tools/models/fix/patch.mjs <in.glb> <out.glb> [--pos pos.f32] [--nrm nrm.f32] [--joints joints.f32 --weights weights.f32]
+ *   node tools/models/fix/patch.mjs <in.glb> <out.glb> [--pos pos.f32] [--nrm nrm.f32] [--uv uv.f32] [--joints joints.f32 --weights weights.f32]
  *        [--base base.png] [--quality 92] [--requantize 1]
- * --index: Uint32 triangles to keep (cleanup.py cords). --pos / --nrm / --joints / --weights: Float32, the shipped file's vertex order (mane.py writes them). --base: a new
+ * --index: Uint32 triangles to keep (cleanup.py cords). --append <dir>: new vertices after the model's own
+ * (append_pos/nrm/uv/joints/weights.f32 there, cleanup.py's hole fills). --uv: new UVs (repack.py's, with its base.png). --pos / --nrm / --joints / --weights: Float32, the shipped file's vertex order (mane.py writes them). --base: a new
  * colour map (upres.py's 2048), stored as JPEG. --requantize: store its normals, UVs and weights the way the
  * rest of the cast does (the sniffer's UVs were floats: a vertex layout, so a shader, of its own on Intel).
  * Then compressed the way apply.mjs does it.
@@ -27,10 +28,14 @@ await MeshoptEncoder.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
 const doc = await io.read(src);
 const prim = doc.getRoot().listMeshes()[0].listPrimitives()[0];
-const f32 = (file) => new Float32Array(fs.readFileSync(file).buffer.slice(0));
+// (A small file comes back as a slice of Node's shared pool: read just its own bytes.)
+const f32 = (file) => {
+  const b = fs.readFileSync(file);
+  return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+};
 const n = prim.getAttribute('POSITION').getCount();
 
-if (opt.pos || opt.nrm || opt.weights || opt.requantize || opt.index) {
+if (opt.pos || opt.nrm || opt.uv || opt.weights || opt.requantize || opt.index || opt.append) {
   // Every attribute back to plain floats, so the re-quantising starts clean.
   for (const name of prim.listSemantics()) {
     const a = prim.getAttribute(name);
@@ -51,6 +56,11 @@ if (opt.pos || opt.nrm || opt.weights || opt.requantize || opt.index) {
     if (p.length !== n * 3) throw new Error(`--pos has ${p.length / 3} vertices, the model ${n}`);
     prim.setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(p).setBuffer(buf));
   }
+  if (opt.uv) {
+    const v = f32(opt.uv);
+    if (v.length !== n * 2) throw new Error(`--uv has ${v.length / 2} vertices, the model ${n}`);
+    prim.setAttribute('TEXCOORD_0', doc.createAccessor().setType('VEC2').setArray(v).setBuffer(buf));
+  }
   if (opt.nrm) {
     const v = f32(opt.nrm);
     if (v.length !== n * 3) throw new Error(`--nrm has ${v.length / 3} vertices, the model ${n}`);
@@ -62,8 +72,25 @@ if (opt.pos || opt.nrm || opt.weights || opt.requantize || opt.index) {
     prim.setAttribute('WEIGHTS_0', doc.createAccessor().setType('VEC4').setArray(w).setBuffer(buf));
     prim.setAttribute('JOINTS_0', doc.createAccessor().setType('VEC4').setArray(Uint8Array.from(j)).setBuffer(buf));
   }
+  if (opt.append) {
+    // New vertices after the model's own (cleanup.py fills holes with them): append_<pos|nrm|uv|joints|weights>.f32.
+    const add = { POSITION: 'pos', NORMAL: 'nrm', TEXCOORD_0: 'uv', JOINTS_0: 'joints', WEIGHTS_0: 'weights' };
+    const k = f32(path.join(opt.append, 'append_pos.f32')).length / 3;
+    for (const name of prim.listSemantics()) {
+      const a = prim.getAttribute(name);
+      const es = a.getElementSize(), old = a.getArray();
+      const extra = add[name] ? f32(path.join(opt.append, `append_${add[name]}.f32`)) : new Float32Array(k * es).map((_, i) => old[i % es]);
+      if (extra.length !== k * es) throw new Error(`--append ${name}: ${extra.length / es} vertices, not ${k}`);
+      const Arr = name.startsWith('JOINTS') ? old.constructor : Float32Array;
+      const out = new Arr(old.length + extra.length);
+      out.set(old);
+      out.set(Arr === Float32Array ? extra : Arr.from(extra), old.length);
+      prim.setAttribute(name, doc.createAccessor().setType(a.getType()).setArray(out).setBuffer(buf));
+    }
+  }
   if (opt.index) {
-    const ix = new Uint32Array(fs.readFileSync(opt.index).buffer.slice(0));
+    const ib = fs.readFileSync(opt.index);
+    const ix = new Uint32Array(ib.buffer.slice(ib.byteOffset, ib.byteOffset + ib.byteLength));
     prim.setIndices(doc.createAccessor().setType('SCALAR').setArray(ix).setBuffer(buf));
   }
   await doc.transform(quantize({ pattern: /^(NORMAL|TEXCOORD_\d+|WEIGHTS_\d+)$/, quantizeNormal: 8, quantizeTexcoord: 12 }));

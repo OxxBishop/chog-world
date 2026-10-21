@@ -674,7 +674,7 @@ export function buildHub() {
   stringOfBulbs(new THREE.Vector3(cx + mw / 2, my + mh / 2, mz), new THREE.Vector3(cx + mw / 2, my - mh / 2, mz), 0.55, 0, marquee);
   props.add(box(mw + 0.6, 0.3, 0.25, mats.gold, cx, my + mh / 2 + 0.05, mz - 0.15));
   for (const sx of [-1, 1]) props.add(box(0.3, mh, 0.25, mats.gold, cx + (sx * mw) / 2, my, mz - 0.15));
-  const casinoSign = signMesh(signTexture('CASINO', 'free chips only', '#e8b84a', 'rgba(60,14,26,0.95)'), 8.5);
+  const casinoSign = signMesh(signTexture('CASINO', 'testnet chips', '#e8b84a', 'rgba(60,14,26,0.95)'), 8.5);
   casinoSign.position.set(cx, 7.4, WING_FRONT + 0.3);
   signs.push(casinoSign);
   // Its door, cut through the wing's front like the bar's and framed in gold: two red lacquered leaves
