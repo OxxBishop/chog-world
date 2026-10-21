@@ -1259,9 +1259,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     to.charge = 0;
     chog.play('wave');
     state.move = 'wave';
-    // (Still on the pad: its picker comes up with every other place, without stepping off and on again:
-    // the user, 10-21.)
-    state.onPortal = null;
+    // (Arriving, its picker stays away till you step off the pad and on again: the user, 10-21.)
+    state.onPortal = k;
     state.busy = null;
     setTimeout(() => state.move === 'wave' && ((state.move = ''), 0), 1800);
   }

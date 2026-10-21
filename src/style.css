@@ -1183,6 +1183,13 @@ body.walking .places-toggle, body.walking #places, body.walking .nav-hint, body.
 .tv-portal-go button strong { font: 600 14px var(--display); }
 .tv-portal-go button span { font-size: 11px; color: var(--muted); }
 .tv-portal-go button:hover { border-color: #8ff3ff; box-shadow: 0 0 14px rgba(126, 232, 255, 0.3); }
+/* A: on touch screens, above the fixed joystick (it covered it: the user, 10-21), and compact. */
+@media (pointer: coarse) {
+  .tv-portal { bottom: calc(env(safe-area-inset-bottom, 0px) + 236px); padding: 10px; gap: 8px; }
+  .tv-portal-head strong { font-size: 15px; }
+  .tv-portal-go { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .tv-portal-go button { padding: 8px 10px; }
+}
 .tv-full { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(12, 6, 30, 0.55); backdrop-filter: blur(4px); pointer-events: auto; }
 .tv-full[hidden] { display: none; }
 .tv-full-card { width: min(92vw, 86vh, 760px); background: var(--panel); border: 1px solid var(--panel-line); border-radius: 22px; padding: 14px; display: grid; gap: 10px; }
