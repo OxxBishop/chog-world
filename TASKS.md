@@ -105,7 +105,7 @@ doesn't yet, stub it and move on, then come back.
 | 16 | B16 | A clean HUD for judges: the prototype and fps badge only with `?debug`, four places (Hub, Home, Neighbourhood, Sky) and the tour instead of the eight view buttons | Oct 18 | B14 | todo (A's rig is live) |
 | 17 | B17 | A quality toggle in the HUD (light, full, ultra), remembered per browser | Oct 18 | | todo |
 | 18 | B18 | Proof on chain: a "verified on Monad testnet" link to your Chog on the explorer, on the welcome screen | Oct 18 | | todo |
-| 19 | B19 | A photo button: the current view with your Chog as a framed postcard, saved as a PNG | Oct 19 | | todo |
+| 19 | B19 | A photo button: the current view with your Chog as a framed postcard, saved as a PNG | Oct 19 | | done |
 | 20 | B20 | A time-lapse button: 24 hours in 20 seconds, then back to the live clock | Oct 19 | | todo |
 | 21 | B21 | The pixel runner on the loading screen is playable (tap or Space to jump) while a long first load runs | Oct 19 | | todo |
 | 22 | B22 | A compact casino panel on narrower screens, so it never covers a machine | Oct 19 | | part of B23 |

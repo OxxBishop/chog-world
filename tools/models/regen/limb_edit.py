@@ -45,6 +45,8 @@ if task == 'arms':
         L = t[sure].max()
         arm = (x * sgn > sh - 0.03) & (t > 0) & (radial < rmax) & (z < P.get("top", 0.88) + P.get("topslack", 0.05))
         tw = L - hand
+        # target=<metres>: this side's arm made that long, whatever it is now (overrides k).
+        if P.get('target'): k = float(np.clip((P['target'] - hand) / max(tw, 1e-3), 0.3, 1))
         # Eased in over the first few centimetres so the sleeve's join to the body stays smooth.
         ease = np.clip(t / 0.06, 0, 1)
         new_t = np.where(t <= tw, t * (1 - (1 - k) * ease), tw * k + (t - tw))

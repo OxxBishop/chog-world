@@ -27,6 +27,7 @@ import { createEntry } from './entry.js';
 import { createIntro } from './intro.js';
 import { createArrival } from './arrival.js';
 import { createCasino } from './casino.js';
+import { postcard } from './fx/postcard.js';
 import { createTravel } from './travel.js';
 import { createBirds } from './birds.js';
 
@@ -582,6 +583,8 @@ async function init() {
       }),
   });
   // The casino's game (B8): its panel shows while you're inside.
+  // The postcard camera (B19): the view, framed and saved as a PNG.
+  $('btn-photo')?.addEventListener('click', () => postcard({ frame, canvas: renderer.domElement, name: session?.active?.info?.name ?? 'Chog World' }));
   casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active, sky });
   // The session warms its Chogs' shaders as it starts: the loader waits for those too.
   await Promise.race([Promise.all([session.warmed, space.ready, ...warming]), new Promise((r) => setTimeout(r, 15000))]);
@@ -912,7 +915,7 @@ function frame() {
   session?.update(dt);
   casino?.show(!entry?.active && rig.room === casino.room.pod);
   casino?.update(dt, env);
-  npcs?.update(dt, camera, env, renderer, travel?.active ? travel.chog?.root : null);
+  npcs?.update(dt, camera, env, renderer, travel?.active ? travel.chog?.root : null, travel?.boards);
   // Near your Chog out walking, else near what the camera looks at; hidden in rooms and in space.
   if (birds) {
     const me = travel?.active && travel.chog ? travel.chog.root.getWorldPosition(birdMe) : null;

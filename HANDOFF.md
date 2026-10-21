@@ -27,6 +27,35 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · The postcard camera (B19)
+
+- A **Postcard** button beside Live (`index.html`, one line in `src/main.js`, new `src/fx/postcard.js`): the current view framed in cream with a Chog World stamp, "Greetings from Chog World", your Chog's name and the date, saved as a PNG. Checked on the laptop: the file saves, no errors.
+- **Left:** not yet checked on a phone (the button sits in the bottom HUD row); the in-casino HUD hides it.
+### 2026-10-21 · A · B's island work, refined (B is out of its weekly limit; the user asked A)
+
+From the user's phone recordings (10-21, 12:30). A edited B's files for these, small and commented:
+- **Climbing onto a hoverboard** (`src/travel.js` hopStep): your Chog was raised to the deck's height half a
+  metre short of the board and walked on air, then the board shot up under it; a dome door's sill popped
+  it up and down. Now: it walks to the board's tail (slowing as it comes), waits for the board to arrive,
+  and hops up onto the deck (0.42 s, a 30 cm arc), landing on it; the board rises with it. Off is the same
+  in reverse. The ground under its feet eases over sills. Measured per frame: soles on the deck throughout.
+- **The camera on a bridge, riding** (`placeCamera`): riding high, the camera behind went up through the
+  hoops' glass and was pulled in onto the back of your Chog's head. Under the hoops it now comes lower
+  instead (the lowest look along the bridge with room), and a board rises less for the stairs.
+- **Patrol's chopper** (`src/rider.js`, `src/npcs.js`, `src/main.js`, a `boards` getter in travel):
+  - his legs reach the pegs by IK in the bike's frame (the new cast's thighs turned the wrong way and
+    hung down inside the bike), the pegs out beside a narrower engine so his boots show;
+  - the tank sits ahead of his tummy, measured from his mesh (it was inside him);
+  - he steers clear of you (and the board you ride), every hoverboard and the cast, or stops and waits
+    if there's no way round (he rode through a board and Dash);
+  - your Chog bumps into him instead of passing through (`solid` in the roots list travel collides with).
+  - `tools/models/ridercheck.html` renders him on the bike from any side.
+- **Mantas and the whale** (`src/birds.js`): every flight checks its whole path first (high over land, wings
+  included, clear of the bridges' hoops), lifts it or picks a shorter run, else doesn't fly. The whale's far
+  arc crossed another island low. Watched 70 s with `?birds=now`: nothing big within 25 m of land.
+- **Arms:** Petal and Dash (and Monty again) rebuilt with arms levelled and 0.42 m long, like King Pom's and
+  Toasty's (`limb_edit.py` `target=`).
+
 ### 2026-10-21 · B · The casino's odds rise with every tier, capped at 98.5%, and a card shows what your edges paid (B36)
 
 - **Tier lift** (`perksFor()` in `src/casinoperks.js`): every win pays more by tier, slots +0 / 2 / 4 / 6 / 8%, roulette +0 / 0.3 / 0.6 / 0.9 / 1.25%, trimmed per Chog so neither game returns more than `CAP` (98.5%). The tier badge says it ("every win pays 7.9% more at the slots and 1.2% more at the roulette") and lights up on each win it pays. Fractions of a chip are kept as change (`state.carry`) and paid on a later win.

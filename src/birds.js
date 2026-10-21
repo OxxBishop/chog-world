@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'meshoptimizer';
-import { DOMES, DOME_R } from './layout.js';
+import { DOMES, DOME_R, BRIDGES } from './layout.js';
 import { islandAt, rimPoint, heightAt } from './terrain.js';
 import { info } from './assets.js';
 
@@ -421,6 +421,36 @@ export function createBirds({ scene, island, quality = 'high', prewarm = null })
     if (c.bank) c.roll = c.bank * Math.sin(Math.PI * c.f);
     pose(c);
   }
+  // Whether a flyer's curve keeps clear of the islands, wingtips included: over land (or under it, by the
+  // rock below) high over the domes, trees and the Hub's roofs; past a bridge, well over its hoops (the
+  // user, 10-21: "a flying manta fly into the island"; the swoop's long run along the edge cut across
+  // another stretch of the island).
+  const OVER_LAND = 32, WING = 7;
+  const _cv = new THREE.Vector3();
+  const clearOf = (q) => {
+    for (let i = 0; i <= 80; i++) {
+      at(q, i / 80, _cv);
+      for (const [ox, oz] of [[0, 0], [WING, 0], [-WING, 0], [0, WING], [0, -WING]]) {
+        const x = _cv.x + ox, z = _cv.z + oz;
+        if (islandAt(x, z) && _cv.y < heightAt(x, z) + OVER_LAND) return false;
+      }
+      for (const br of BRIDGES) {
+        const bx = br.bx - br.ax, bz = br.bz - br.az, l2 = bx * bx + bz * bz;
+        const t = THREE.MathUtils.clamp(((_cv.x - br.ax) * bx + (_cv.z - br.az) * bz) / l2, 0, 1);
+        const deck = Math.max(br.ay, br.by);
+        if (Math.hypot(_cv.x - br.ax - bx * t, _cv.z - br.az - bz * t) < 12 && _cv.y < deck + 16) return false;
+      }
+    }
+    return true;
+  };
+  // Raised until it clears (at most 60 m), or null.
+  const lifted = (q) => {
+    for (let up = 0; up <= 60; up += 6) {
+      const r = { a: q.a.clone().setY(q.a.y + up), m: q.m.clone().setY(q.m.y + up), c: q.c.clone().setY(q.c.y + up) };
+      if (clearOf(r)) return r;
+    }
+    return null;
+  };
   // A flight of mantas across the islands, high, on a long gentle curve near you.
   function startFlight(focus) {
     const free = flights.filter((c) => c.mode === 'off');
@@ -437,7 +467,8 @@ export function createBirds({ scene, island, quality = 'high', prewarm = null })
     for (let i = 0; i < n; i++) {
       const c = free[i];
       const o = side.clone().multiplyScalar((i % 2 ? 1 : -1) * Math.ceil(i / 2) * 8).addScaledVector(d, -i * 7).add(new THREE.Vector3(0, rand(-2, 2), 0));
-      c.q = curve(a.clone().add(o), mid.clone().add(o), b.clone().add(o));
+      c.q = lifted(curve(a.clone().add(o), mid.clone().add(o), b.clone().add(o)));
+      if (!c.q) continue;
       c.dur = 380 / speed;
       c.f = 0;
       c.mode = 'start';
@@ -458,18 +489,26 @@ export function createBirds({ scene, island, quality = 'high', prewarm = null })
     camera.getWorldDirection(_v);
     if (_v.setY(0).normalize().dot(out) < -0.3) return false;
     const sign = new THREE.Vector3().crossVectors(_v, UP).dot(along) > 0 ? 1 : -1;
-    let a, m, b;
+    let a, m, b, q = null;
     if (rim.distanceTo(focus) < 80) {
-      m = rim.clone().addScaledVector(out, 7).add(new THREE.Vector3(0, rand(1, 4), 0));
-      a = m.clone().addScaledVector(along, -110 * sign).addScaledVector(out, 18).add(new THREE.Vector3(0, -8, 0));
-      b = m.clone().addScaledVector(along, 110 * sign).addScaledVector(out, 22).add(new THREE.Vector3(0, 6, 0));
+      // Along the edge, just off it; a shorter run (or further out) where the island bends back into its way.
+      for (const [run, off] of [[110, 11], [80, 13], [60, 16], [45, 20]]) {
+        m = rim.clone().addScaledVector(out, off).add(new THREE.Vector3(0, rand(1, 4), 0));
+        a = m.clone().addScaledVector(along, -run * sign).addScaledVector(out, off + 11).add(new THREE.Vector3(0, -8, 0));
+        b = m.clone().addScaledVector(along, run * sign).addScaledVector(out, off + 15).add(new THREE.Vector3(0, 6, 0));
+        if (clearOf((q = curve(a, m, b)))) break;
+        q = null;
+      }
     } else {
       m = focus.clone().add(new THREE.Vector3(0, 21, 0)).addScaledVector(_v, 14);
       const r = new THREE.Vector3().crossVectors(_v, UP).normalize();
       a = m.clone().addScaledVector(r, -120).add(new THREE.Vector3(0, 8, 0));
       b = m.clone().addScaledVector(r, 120).add(new THREE.Vector3(0, 10, 0));
+      q = lifted(curve(a, m, b));
+      if (q) m = at(q, 0.5, new THREE.Vector3());
     }
-    swoop.q = curve(a, m, b);
+    if (!q) return false;
+    swoop.q = q;
     // It rolls its back toward you as it comes past (the wing on your side down; roll right is positive).
     const f = b.clone().sub(a).setY(0).normalize();
     const right = new THREE.Vector3(-f.z, 0, f.x);
@@ -481,10 +520,20 @@ export function createBirds({ scene, island, quality = 'high', prewarm = null })
     return true;
   }
   // The whale: far out over the clouds, drifting along a wide arc round you.
+  // (An arc that keeps clear of every island: far out round you it could cross another one, low: the
+  // user, 10-21. A few tries, else none this time.)
   function startWhale(focus) {
-    const r = rand(210, 280), a0 = rand(0, Math.PI * 2), sweep = rand(0.7, 1.0) * (Math.random() < 0.5 ? 1 : -1);
-    const P = (a) => focus.clone().add(new THREE.Vector3(Math.cos(a) * r, rand(-24, 4), Math.sin(a) * r));
-    whale.q = curve(P(a0), P(a0 + sweep / 2), P(a0 + sweep));
+    let r, sweep, q = null;
+    for (let i = 0; i < 10 && !q; i++) {
+      r = rand(210, 280);
+      sweep = rand(0.7, 1.0) * (Math.random() < 0.5 ? 1 : -1);
+      const a0 = rand(0, Math.PI * 2);
+      const P = (a) => focus.clone().add(new THREE.Vector3(Math.cos(a) * r, rand(-24, 4), Math.sin(a) * r));
+      q = curve(P(a0), P(a0 + sweep / 2), P(a0 + sweep));
+      if (!clearOf(q)) q = null;
+    }
+    if (!q) return;
+    whale.q = q;
     whale.dur = (r * Math.abs(sweep)) / 5;
     whale.f = 0;
     whale.mode = 'start';

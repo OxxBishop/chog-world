@@ -1,0 +1,54 @@
+<!doctype html><meta charset="utf-8"><title>Rider check</title>
+<style>body{margin:0;background:#2a2633}canvas{display:block}</style>
+<script type="module">
+// Patrol on his hover chopper (src/rider.js) as the world poses him, from a few sides, at a few moments,
+// on flat ground (A, 10-21: the user saw his arms and legs sunk into the bike). Run under vite:
+// /tools/models/ridercheck.html?m=chog-56&t=0.2,0.8&v=side,threeq,front,back&size=300
+import * as THREE from 'three';
+import { makeChog, setChogRenderer, CHOG_HEIGHT } from '/src/chog.js';
+import { createRider } from '/src/rider.js';
+const q = new URLSearchParams(location.search);
+const ts = (q.get('t') || '0.2,0.8').split(',').map(Number);
+const views = (q.get('v') || 'side,threeq,front,back').split(',');
+const S = +(q.get('size') || 300), zoom = +(q.get('zoom') || 1);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(S * ts.length, S * views.length);
+renderer.setScissorTest(true);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.append(renderer.domElement);
+setChogRenderer(renderer);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#d9d4e4');
+scene.add(new THREE.HemisphereLight('#ffffff', '#8a80a0', 2.0));
+const sun = new THREE.DirectionalLight('#fff4e0', 2.2);
+sun.position.set(3, 6, 4);
+scene.add(sun);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(400, 48), new THREE.MeshLambertMaterial({ color: '#bdb3cf' }));
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+const chog = await makeChog({ model: `models/npcs/${q.get('m') || 'chog-56'}.glb` });
+await new Promise((r) => setTimeout(r, 800));
+const OUT = +(q.get('scale') || 1.6);
+chog.root.scale.setScalar(OUT);
+const rider = createRider({ chog, groundAt: () => 0 });
+scene.add(rider.group);
+if (q.get('nobike')) rider.group.children[0].children[0].visible = false;
+const cam = new THREE.PerspectiveCamera(30, 1, 0.05, 200);
+let now = 0;
+for (let ti = 0; ti < ts.length; ti++) {
+  while (now < ts[ti]) (rider.update(1 / 60, { night: 0 }, null, null), (now += 1 / 60));
+  rider.group.updateMatrixWorld(true);
+  const c = rider.group.position.clone().add(new THREE.Vector3(0, CHOG_HEIGHT * OUT * +(q.get('cy') ?? 0.45), 0));
+  for (let vi = 0; vi < views.length; vi++) {
+    const a = { front: 0, threeq: Math.PI / 4, side: Math.PI / 2, back: Math.PI, lside: -Math.PI / 2 }[views[vi]] ?? +views[vi];
+    const yaw = rider.group.rotation.y + a;
+    cam.position.set(Math.sin(yaw), 0.2, Math.cos(yaw)).normalize().multiplyScalar((CHOG_HEIGHT * OUT * 2.6) / zoom).add(c);
+    cam.lookAt(c);
+    const x = ti * S, y = (views.length - 1 - vi) * S;
+    renderer.setViewport(x, y, S, S);
+    renderer.setScissor(x, y, S, S);
+    renderer.render(scene, cam);
+  }
+}
+window.__done = true;
+</script>
