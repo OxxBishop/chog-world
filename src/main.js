@@ -23,6 +23,7 @@ import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createDemo } from './shots.js';
 import { createSpace } from './space.js';
+import { createAudio } from './audio.js';
 import { createEntry } from './entry.js';
 import { createIntro } from './intro.js';
 import { createArrival } from './arrival.js';
@@ -324,6 +325,15 @@ let intro = null;
 let arrival = null;
 let casino = null;
 let npcs = null;
+
+// The island's sound (src/audio.js): the themes, and the singer's song placed at her stage.
+const audio = createAudio({ button: document.getElementById('btn-sound') });
+const stageAt = new THREE.Vector3();
+let stageNode = null;
+function stagePos() {
+  if (!stageNode && npcs) stageNode = scene.getObjectByName('Stage');
+  return stageNode ? stageNode.getWorldPosition(stageAt) : null;
+}
 // The island's wildlife (B35, src/birds.js).
 let birds = null;
 const birdFocus = new THREE.Vector3(), birdMe = new THREE.Vector3();
@@ -622,7 +632,7 @@ async function init() {
       });
     }
   }
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, audio, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: one of the demo video's shots (src/shots.js), with the interface hidden. What a shot
@@ -921,6 +931,7 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
+  audio.update(dt, { camera, night: env.night, indoors: rig.room instanceof RoomBox || !!inRoom, stage: stagePos() });
   travel?.setEnv?.(env);
   entry?.apply(env, renderer);
   session?.update(dt);

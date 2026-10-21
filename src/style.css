@@ -1260,3 +1260,9 @@ body.walking .places-toggle, body.walking #places, body.walking .nav-hint, body.
 }
 @media (max-width: 520px) { .pc-close { top: 6px; right: 6px; } }
 
+/* The sound button in the time bar (A, 10-21): a speaker, its waves swapped for a cross when muted. */
+#btn-sound { flex: none; display: grid; place-items: center; width: 36px; height: 34px; padding: 0; }
+#btn-sound svg { width: 20px; height: 20px; fill: none; stroke: var(--text); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#btn-sound .spk { fill: var(--text); }
+#btn-sound .slash, #btn-sound.off .wave { display: none; }
+#btn-sound.off .slash { display: inline; }
