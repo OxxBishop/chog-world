@@ -2,12 +2,15 @@
  * The casino's rules, and what a Chog's traits give it there (B23).
  *
  * The house keeps its edge whatever the Chog. The slots return 94% of what is bet and the roulette
- * 97.3%; a Chog's always-on edges lift that a little, to 98.65% at most, never to an even game. The big
+ * 97.3%. A Chog's always-on edges lift that, more for each tier up (Uncommon, Rare, Epic, Legendary: every
+ * win pays a little more), and never past CAP, 98.5%: perksFor() works out each Chog's return and trims
+ * the tier's lift to keep it there, so the house always keeps at least 1.5% in the long run. The big
  * moments come from power-ups a Chog gets a few of each day (free spins, wild spins, re-rolls, nudges,
- * a second spin of the wheel, a lost bet back, a near miss saved), so traits change a day's luck, not
- * the odds. Every Chog has edges in both games:
+ * a second spin of the wheel, a lost bet back, a near miss saved, a shield on zero). They are worth a
+ * fixed number of chips a day, so over a short visit they can put a Chog ahead; the house is back ahead
+ * after about 80 to 160 spins a day (scripts/casino-sim.mjs). Every Chog has edges in both games:
  *
- *   Tier        the day's free chips (Rare and up, free spins too)
+ *   Tier        the day's free chips (Rare and up, free spins too), and from Uncommon up, wins pay more
  *   Eyes        a skill at the slots: wild spins, re-rolls, nudges, a hot streak
  *   Body        how the slots pay: a symbol that pays a bit more, free spins, a lost bet back
  *   Head        luck at the roulette: a lucky number that can pay 50 to 1, a shield on zero, a second spin
@@ -73,30 +76,52 @@ function slotOdds(p, wild = null) {
 }
 
 /**
- * The slots' long-run return for these perks (1 = an even game), with the hot streak counted: a win
- * after j wins in a row pays streak x j more (up to 4).
+ * The slots' long-run return for these perks (1 = an even game), with the hot streak counted (a win
+ * after j wins in a row pays streak x j more, up to 4) and the tier's lift (every win pays lift more).
  */
 export function slotsReturn(p) {
+  const { o, w } = slotParts(p);
+  return o.back + w * (p?.slots.lift ?? 0);
+}
+// The return without the lift, and what each unit of lift adds to it (the wins, streak included).
+function slotParts(p) {
   const o = slotOdds(p);
   const q = o.win;
   const run = q + q * q + q ** 3 + q ** 4;
-  return o.back + o.winBack * (p?.slots.streak ?? 0) * run;
+  const streak = o.winBack * (p?.slots.streak ?? 0) * run;
+  return { o: { ...o, back: o.back + streak }, w: o.winBack + streak };
 }
 /** What one wild spin returns, for these perks. */
-export const wildSpinReturn = (p) => slotOdds(p, p.slots.wild).back;
+export const wildSpinReturn = (p) => {
+  const o = slotOdds(p, p.slots.wild);
+  return o.back + o.winBack * (p.slots.lift ?? 0);
+};
 
 // ---------- the roulette ----------
 // The European wheel's red numbers.
 export const REDS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 
 /**
- * The roulette's long-run return for these perks, for the best bet there is (1 = an even game). Only
- * the shield is always on: zero gives back half of the bets it covers. Every other roulette edge is a
- * few times a day.
+ * The roulette's long-run return for these perks (1 = an even game), the same for every bet: the tier's
+ * lift (every winning bet pays lift more) is the only always-on roulette edge. The rest, the shield on
+ * zero included, are a few times a day.
  */
 export function rouletteReturn(p) {
-  return p.roulette.shield ? 36.5 / 37 : 36 / 37;
+  return (36 / 37) * (1 + (p.roulette.lift ?? 0));
 }
+
+// ---------- the cap ----------
+// The most either game returns to any Chog in the long run, power-ups aside: the house keeps 1.5%.
+export const CAP = 0.985;
+// How much more every win pays, by tier, before the cap: the slots' (the bigger house edge) and the
+// roulette's. Legendary's are trimmed to the cap.
+const LIFT = {
+  Common: { slots: 0, roulette: 0 },
+  Uncommon: { slots: 0.02, roulette: 0.003 },
+  Rare: { slots: 0.04, roulette: 0.006 },
+  Epic: { slots: 0.06, roulette: 0.009 },
+  Legendary: { slots: 0.08, roulette: 0.0125 },
+};
 
 // ---------- the perks ----------
 function blank() {
@@ -109,6 +134,7 @@ function blank() {
       rerolls: 1, // after a losing spin, spin one reel again
       nudges: 0, // after a losing spin, move one reel one stop
       streak: 0, // each win in a row pays this much more, up to four times
+      lift: 0, // every win (more than the bet back) pays this much more: the tier's, within the cap
       three: { ...THREE_OF },
       twoChogs: 6,
     },
@@ -118,6 +144,8 @@ function blank() {
       luckyBig: 0, // a day: a straight bet on the lucky number that wins pays 50 to 1
       anyBig: 0, // a day: any straight bet that wins pays 50 to 1
       shield: null, // 'outside' or 'all': zero gives back half of those bets
+      shields: 0, // a day: the spins the shield covers
+      lift: 0, // every winning bet pays this much more: the tier's, within the cap
       second: 0, // a day: after a losing spin, the lost bets ride again for free
       near: 0, // a day: a straight bet that misses by one pocket comes back
       colour: { red: 0, black: 0 }, // a day: a losing bet on that colour comes back
@@ -134,9 +162,9 @@ function blank() {
 const TAG_OF = {
   daily: 'daily', cashback: 'cashback', 'slots.free': 'free', 'slots.wild.n': 'wild', 'slots.rerolls': 'rerolls',
   'slots.nudges': 'nudges', 'slots.streak': 'streak', 'slots.twoChogs': 'pays:two',
-  'roulette.luckyBig': 'luckyBig', 'roulette.anyBig': 'anyBig', 'roulette.shield': 'shield', 'roulette.second': 'second',
+  'roulette.luckyBig': 'luckyBig', 'roulette.anyBig': 'anyBig', 'roulette.shield': 'shield', 'roulette.shields': 'shield', 'roulette.second': 'second',
   'roulette.near': 'near', 'roulette.colour.red': 'red', 'roulette.colour.black': 'black', 'roulette.even': 'even',
-  'roulette.dozen': 'dozen', aura: 'aura',
+  'roulette.dozen': 'dozen', aura: 'aura', 'slots.lift': 'lift', 'roulette.lift': 'lift',
 };
 function flat(o, pre = '', out = {}) {
   for (const [k, v] of Object.entries(o)) {
@@ -171,6 +199,11 @@ const wilds = (n, symbol) => (q) => {
 };
 const wildText = (n, s) => `${plural(n, 'wild spin')} a day: the ${ONE[s]}${s === 'chog' ? '' : ' on the middle reel'} stands in for any symbol`;
 const streak = (k) => (q) => (q.slots.streak = Math.max(q.slots.streak, k));
+// A shield on zero for 3 spins a day: 'all' bets, or the outside ones (a wider one wins).
+const shield = (kind) => (q) => {
+  q.roulette.shield = q.roulette.shield === 'all' ? 'all' : kind;
+  q.roulette.shields += 3;
+};
 const streakText = (k) => `each win in a row pays ${Math.round(k * 100)}% more, up to +${Math.round(k * 400)}%`;
 
 const tierChips = { Common: 500, Uncommon: 600, Rare: 800, Epic: 1000, Legendary: 1500 };
@@ -232,10 +265,10 @@ function head(p, v, id) {
     q.roulette.luckyBig += times;
   };
   const bigText = (n, times = 1) => `lucky number ${n}: a straight bet on it pays 50 to 1, not 35, ${times === 1 ? 'once' : 'twice'} a day`;
-  if (has(/^crown$/i, v)) return edge(p, v, 'Royal', 'when zero comes up, half of every bet comes back', R, (q) => (q.roulette.shield = 'all'));
+  if (has(/^crown$/i, v)) return edge(p, v, 'Royal', 'when zero comes up, half of every bet comes back, 3 times a day', R, shield('all'));
   if (has(/diamond/i, v)) return edge(p, v, 'Diamond', bigText(id % 37, 2), R, big(id % 37, 2));
-  if (has(/wreath|thorn|holy seal/i, v)) return edge(p, v, 'Blessed', 'when zero comes up, half of every bet comes back, and 1 second spin a day', R, (q) => {
-    q.roulette.shield = 'all';
+  if (has(/wreath|thorn|holy seal/i, v)) return edge(p, v, 'Blessed', 'when zero comes up, half of every bet comes back, 3 times a day, and 1 second spin a day', R, (q) => {
+    shield('all')(q);
     q.roulette.second += 1;
   });
   if (has(/wizard/i, v)) return edge(p, v, 'Second sight', '1 second spin a day: after a loss, the bets ride again for free', R, (q) => (q.roulette.second += 1));
@@ -245,7 +278,7 @@ function head(p, v, id) {
   });
   if (has(/void horn/i, v)) return edge(p, v, 'Void', 'the first 2 losing bets on black each day come back', R, (q) => (q.roulette.colour.black += 2));
   if (has(/horn/i, v)) return edge(p, v, 'Red devil', 'the first 2 losing bets on red each day come back', R, (q) => (q.roulette.colour.red += 2));
-  if (has(/spartan|headband|durag|head wrap/i, v)) return edge(p, v, 'Shield', 'when zero comes up, half of your outside bets come back', R, (q) => (q.roulette.shield ??= 'outside'));
+  if (has(/spartan|headband|durag|head wrap/i, v)) return edge(p, v, 'Shield', 'when zero comes up, half of your outside bets come back, 3 times a day', R, shield('outside'));
   if (has(/bucket|russian|beanie|bob hair/i, v)) return edge(p, v, 'Good neighbours', 'a straight bet that misses by one pocket comes back, twice a day', R, (q) => (q.roulette.near += 2));
   if (has(/robber|mafia|bandana/i, v)) return edge(p, v, 'Heist', '2 lost bets back a day', BOTH, (q) => (q.cashback += 2));
   if (has(/plumber/i, v)) return edge(p, v, 'Pipe dream', '1 second spin a day: after a loss, the bets ride again for free', R, (q) => (q.roulette.second += 1));
@@ -261,12 +294,12 @@ function mouth(p, v) {
   if (has(/gold tooth/i, v)) return edge(p, v, 'Gold tooth', 'your first straight win each day pays 50 to 1, not 35', R, (q) => (q.roulette.anyBig += 1));
   if (has(/btc coin|mon coin/i, v)) return edge(p, v, 'Coin in the mouth', '2 lost bets back a day', BOTH, (q) => (q.cashback += 2));
   if (has(/bubblegum|lip bite|grit/i, v)) return edge(p, v, has(/bubblegum/i, v) ? 'Bubble' : 'Nerve', '1 second spin a day: after a loss, the bets ride again for free', R, (q) => (q.roulette.second += 1));
-  if (has(/rainbow/i, v)) return edge(p, v, 'Rainbow', 'when zero comes up, half of every bet comes back', R, (q) => (q.roulette.shield = 'all'));
+  if (has(/rainbow/i, v)) return edge(p, v, 'Rainbow', 'when zero comes up, half of every bet comes back, 3 times a day', R, shield('all'));
   if (has(/drool/i, v)) return edge(p, v, 'Sweet spot', 'a straight bet that misses by one pocket comes back, twice a day', R, (q) => (q.roulette.near += 2));
   if (has(/clown/i, v)) return edge(p, v, 'Big grin', 'a straight bet that misses by one pocket comes back, 3 times a day', R, (q) => (q.roulette.near += 3));
   if (has(/^wo$/i, v)) return edge(p, v, 'Whistle', 'the first 2 losing even-money bets each day come back', R, (q) => (q.roulette.even += 2));
   if (has(/sad|worried/i, v)) return edge(p, v, 'Sympathy', 'your first lost bet each day comes back', BOTH, (q) => (q.cashback += 1));
-  if (has(/flat/i, v)) return edge(p, v, 'Poker face', 'when zero comes up, half of your outside bets come back', R, (q) => (q.roulette.shield ??= 'outside'));
+  if (has(/flat/i, v)) return edge(p, v, 'Poker face', 'when zero comes up, half of your outside bets come back, 3 times a day', R, shield('outside'));
   // Smiles.
   return edge(p, v, 'Charm', 'the first losing even-money bet each day comes back', R, (q) => (q.roulette.even += 1));
 }
@@ -348,7 +381,27 @@ export function perksFor(traits = {}, id = 7) {
   const r = p.roulette;
   r.lucky ??= id % 37;
   p.list.push({ trait: `#${id}`, name: `Lucky ${r.lucky}`, text: `once a day, when ${r.lucky} comes up, every bet you lost on that spin comes back`, game: R, tags: ['luckySave'] });
+  lift(p, tier);
   return p;
+}
+
+// The tier's lift, trimmed so neither game returns more than CAP: the one place the cap is kept. Every
+// always-on edge is in by now, so the return without the lift is known exactly; the lift fills the room
+// left under the cap, up to the tier's. A stack of trait edges already past the cap (no Chog has one)
+// gets a negative lift, its wins trimmed, and a line on the panel that says so.
+function lift(p, tier) {
+  const { o, w } = slotParts(p);
+  p.slots.lift = Math.min(LIFT[tier].slots, (CAP - o.back) / w);
+  p.roulette.lift = Math.min(LIFT[tier].roulette, CAP / (36 / 37) - 1);
+  const pc = (x) => `${+(Math.abs(x) * 100).toFixed(1)}%`;
+  const up = [p.slots.lift > 0.0005 && `${pc(p.slots.lift)} more at the slots`, p.roulette.lift > 0.0005 && `${pc(p.roulette.lift)} more at the roulette`].filter(Boolean);
+  // The tier's line: its chips, its free spins, its lift.
+  const spins = tierSpins[tier] ?? 0;
+  const parts = [`${tierChips[tier]} chips a day`, spins && plural(spins, 'free spin'), up.length && `every win pays ${up.join(' and ')}`].filter(Boolean);
+  const t = p.list[0];
+  t.text = parts.length > 1 ? `${parts.slice(0, -1).join(', ')}, and ${parts.at(-1)}` : parts[0];
+  if (up.length) t.tags.push('lift');
+  if (p.slots.lift < 0) p.list.push({ trait: 'House', name: 'House cap', text: `slot wins pay ${pc(p.slots.lift)} less, so the slots never return more than ${pc(CAP)}`, game: S, tags: [] });
 }
 
 /** A day's power-ups, fresh: what the panel counts down. */
@@ -357,7 +410,7 @@ export function chargesFor(p) {
   return {
     free: p.slots.free, wild: p.slots.wild?.n ?? 0, rerolls: p.slots.rerolls, nudges: p.slots.nudges,
     cashback: p.cashback,
-    second: r.second, near: r.near, luckySave: r.luckySave, luckyBig: r.luckyBig, anyBig: r.anyBig,
+    shield: r.shields, second: r.second, near: r.near, luckySave: r.luckySave, luckyBig: r.luckyBig, anyBig: r.anyBig,
     red: r.colour.red, black: r.colour.black, even: r.even, dozen: r.dozen,
   };
 }

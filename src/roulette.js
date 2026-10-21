@@ -41,12 +41,15 @@ const EVEN_MONEY = new Set(['red', 'black', 'odd', 'even', 'low', 'high']);
 /**
  * One spin's bets settled on n, with a Chog's roulette edges (perks.roulette) and the day's power-ups
  * left (charges, used up here as they pay). bets: [{ key, amount }].
- * { results: [{ key, amount, back, why }], staked, back, lost, saved: [why] }: back counts every
- * stake that came home, lost the stakes that didn't.
+ * { results: [{ key, amount, back, why }], staked, back, lost, saved: [why], bonus }: back counts every
+ * stake that came home (whole chips), lost the stakes that didn't; bonus is what the tier's lift adds
+ * to the winning bets (perks.roulette.lift, a fraction of a chip on a small bet: the casino keeps the
+ * change till it makes a whole one).
  */
 export function settleSpin(bets, n, perks, charges) {
   const r = perks.roulette;
   const results = [];
+  let bonus = 0, shielded = false;
   for (const { key, amount } of bets) {
     const { type, pick } = betOf(key);
     const b = BETS[type];
@@ -63,13 +66,16 @@ export function settleSpin(bets, n, perks, charges) {
         why = 'first straight win';
       }
       back = amount * (1 + pays);
+      bonus += back * (r.lift ?? 0);
     } else if (type === 'number' && charges.near > 0 && neighboursOf(pick).includes(n)) {
       charges.near--;
       back = amount;
       why = 'near miss';
-    } else if (n === 0 && r.shield && (r.shield === 'all' || b.outside)) {
+    } else if (n === 0 && r.shield && charges.shield > 0 && (r.shield === 'all' || b.outside)) {
+      // One of the day's shields covers every bet it can on this spin.
       back = Math.floor(amount / 2);
       why = 'shield';
+      shielded = true;
     } else if ((type === 'red' || type === 'black') && charges[type] > 0) {
       charges[type]--;
       back = amount;
@@ -85,6 +91,7 @@ export function settleSpin(bets, n, perks, charges) {
     }
     results.push({ key, amount, back, why });
   }
+  if (shielded) charges.shield--;
   // The lucky number coming up saves every bet that lost, once a day.
   if (n === r.lucky && charges.luckySave > 0 && results.some((x) => x.back < x.amount && !x.why)) {
     charges.luckySave--;
@@ -96,7 +103,7 @@ export function settleSpin(bets, n, perks, charges) {
   const staked = results.reduce((a, x) => a + x.amount, 0);
   const back = results.reduce((a, x) => a + x.back, 0);
   const lost = results.reduce((a, x) => a + (x.back === 0 ? x.amount : 0), 0);
-  return { results, staked, back, lost, saved: [...new Set(results.map((x) => x.why).filter(Boolean))] };
+  return { results, staked, back, lost, saved: [...new Set(results.map((x) => x.why).filter(Boolean))], bonus };
 }
 
 // The pocket ring, as seen from above: 37 coloured sectors with their numbers, frets between.

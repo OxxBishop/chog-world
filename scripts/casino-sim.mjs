@@ -5,12 +5,13 @@
 // number it prints comes out the same each run. Free testnet chips only; nothing here touches a chain.
 //
 // Prints:
-//   A. the long-run return of each game (always-on edges only), worked out exactly and checked by
-//      simulation, for no traits, typical and rare Chogs, a Legendary, and the best stack the traits allow;
+//   A. the long-run return of each game (always-on edges only: the traits' and the tier's lift, under the
+//      98.5% cap), worked out exactly and checked by simulation, for no traits, typical and rare Chogs, a
+//      Legendary, and the best stack the traits allow;
 //   B. a 20-round session with the day's power-ups (free and wild spins, re-rolls, nudges, lost bets
 //      back, second spins, lucky numbers), for the same Chogs;
 //   C. every Chog in the collection by tier: return, what a day's power-ups are worth, and how many
-//      spins it takes before the house is ahead again;
+//      spins it takes before the house is ahead again; and whether the return rises with every tier;
 //   D. head to head over 15 and 20 rounds: a random Chog of each tier against a random Common.
 //
 // The player is the same for every Chog: slots at 10 a spin (free spins first, then wild spins; after a
@@ -19,7 +20,7 @@
 // one, else a lost bet back).
 
 import fs from 'fs';
-import { perksFor, chargesFor, payout, STRIP, slotsReturn, rouletteReturn, wildSpinReturn } from '../src/casinoperks.js';
+import { perksFor, chargesFor, payout, STRIP, slotsReturn, rouletteReturn, wildSpinReturn, CAP } from '../src/casinoperks.js';
 import { settleSpin } from '../src/roulette.js';
 
 const SEED = Number(process.argv[2] ?? 20261022);
@@ -38,20 +39,22 @@ function mulberry(seed) {
   };
 }
 
-// One slots session: R presses of SPIN at bet B. { net, staked }.
+// One slots session: R presses of SPIN at bet B. { net, staked, sq, R, B }: sq for the spread.
 function slotsSession(p, R, B, rnd, powerups = true) {
   const ch = chargesFor(p);
-  let net = 0, staked = 0, run = 0;
+  let net = 0, staked = 0, run = 0, sq = 0;
   const k = (stops, wild) => payout(stops.map((i) => STRIP[i]), p, wild).k;
   const land = (stops, stake, wild) => {
     const kk = k(stops, wild);
     let extra = 0;
     if (kk > 1) extra = p.slots.streak * Math.min(run++, 4);
     else run = 0;
-    net += Math.round(kk * stake * (1 + extra));
+    // The game pays whole chips and keeps the change for the next win, so in the long run it pays this.
+    net += kk * stake * (1 + extra) * (kk > 1 ? 1 + p.slots.lift : 1);
     return kk;
   };
   for (let r = 0; r < R; r++) {
+    const n0 = net;
     let paid = B, wild = null;
     if (powerups && ch.free > 0) ch.free--, (paid = 0);
     else if (powerups && ch.wild > 0) ch.wild--, (wild = p.slots.wild);
@@ -93,39 +96,40 @@ function slotsSession(p, R, B, rnd, powerups = true) {
       if (ch.cashback > 0 && paid > 0) ch.cashback--, (net += Math.min(paid, CASHBACK_MAX));
       break;
     }
+    sq += (net - n0) ** 2;
   }
-  return { net, staked };
+  return { net, staked, sq, R, B };
 }
 
-const NONE = { second: 0, near: 0, luckySave: 0, luckyBig: 0, anyBig: 0, red: 0, black: 0, even: 0, dozen: 0, cashback: 0 };
+const NONE = { shield: 0, second: 0, near: 0, luckySave: 0, luckyBig: 0, anyBig: 0, red: 0, black: 0, even: 0, dozen: 0, cashback: 0 };
 const MIXED = (p) => [{ key: 'red', amount: 10 }, { key: 'd2', amount: 10 }, { key: `n${p.roulette.lucky}`, amount: 5 }];
 const RED = () => [{ key: 'red', amount: 25 }];
 const LUCKY = (p) => [{ key: `n${p.roulette.lucky}`, amount: 25 }];
 
-// One roulette session: R spins of the same bets. { net, staked }.
+// One roulette session: R spins of the same bets. { net, staked, sq, R, B }: sq for the spread.
 function rouletteSession(p, R, betsOf, rnd, powerups = true) {
   const ch = powerups ? chargesFor(p) : { ...NONE };
   const bets = betsOf(p);
   const total = bets.reduce((a, b) => a + b.amount, 0);
-  let net = 0, staked = 0;
+  let net = 0, staked = 0, sq = 0;
   for (let r = 0; r < R; r++) {
+    const n0 = net;
     net -= total;
     staked += total;
     let res = settleSpin(bets, Math.floor(rnd() * 37), p, ch);
-    net += res.back;
-    if (res.results.some((x) => x.back > x.amount)) continue;
-    const lost = res.results.filter((x) => x.back === 0);
-    if (!lost.length) continue;
-    if (ch.second > 0) {
+    net += res.back + res.bonus;
+    const lost = res.results.some((x) => x.back > x.amount) ? [] : res.results.filter((x) => x.back === 0);
+    if (lost.length && ch.second > 0) {
       ch.second--;
       res = settleSpin(lost, Math.floor(rnd() * 37), p, ch);
-      net += res.back;
-    } else if (ch.cashback > 0) {
+      net += res.back + res.bonus;
+    } else if (lost.length && ch.cashback > 0) {
       ch.cashback--;
       net += Math.min(lost.reduce((a, x) => a + x.amount, 0), CASHBACK_MAX);
     }
+    sq += (net - n0) ** 2;
   }
-  return { net, staked };
+  return { net, staked, sq, R, B: total };
 }
 
 const pct = (x, d = 2) => `${(x * 100).toFixed(d)}%`;
@@ -148,14 +152,16 @@ const CAST = [
 
 console.log(`Chog World casino sim, seed ${SEED}. Slots 10 a spin; roulette 25 a spin.\n`);
 
-console.log('A. LONG RUN, always-on edges only. Return to player (RTP) exact, then simulated over 2,000,000 spins; house edge = 100% - RTP.');
+console.log(`A. LONG RUN, always-on edges only (the tier's lift included, capped at ${pct(CAP, 1)}). Return to player (RTP) exact, then simulated over 10,000,000 spins (± covers 95% of runs); house edge = 100% - RTP.`);
 for (const [name, p] of CAST) {
   const rnd = mulberry(SEED);
-  const s = slotsSession(p, 2_000_000, 10, rnd, false);
-  const r = rouletteSession(p, 2_000_000, RED, rnd, false);
-  console.log(`  ${name.padEnd(32)} slots ${pct(slotsReturn(p))} (sim ${pct(1 + s.net / s.staked)}), edge ${pct(1 - slotsReturn(p))}   roulette ${pct(rouletteReturn(p))} (sim ${pct(1 + r.net / r.staked)}), edge ${pct(1 - rouletteReturn(p))}`);
+  const s = slotsSession(p, 10_000_000, 10, rnd, false);
+  const r = rouletteSession(p, 10_000_000, RED, rnd, false);
+  // The simulated return, give or take two standard errors (95% of runs land inside).
+  const sim = (o) => `${pct(1 + o.net / o.staked)} ±${pct(2 * Math.sqrt((o.sq / o.R - (o.net / o.R) ** 2) / o.R) / o.B)}`;
+  console.log(`  ${name.padEnd(32)} slots ${pct(slotsReturn(p))} (sim ${sim(s)}), edge ${pct(1 - slotsReturn(p))}   roulette ${pct(rouletteReturn(p))} (sim ${sim(r)}), edge ${pct(1 - rouletteReturn(p))}`);
 }
-console.log('  * no real Chog has this stack: Coin vision + Royal + Green candle + an aura (slots), a Crown (roulette).\n');
+console.log('  * no real Chog has this stack (Coin vision, Royal, Green candle, an aura, a Legendary): the cap trims it.\n');
 
 console.log("B. A 20-ROUND SESSION with the day's power-ups (50,000 sessions each). House edge on the chips you staked; negative = the player is ahead.");
 for (const [name, p] of CAST) {
@@ -198,6 +204,14 @@ for (const T of TIERS) {
   const f = (k) => g.map((x) => x[k]);
   console.log(`  ${T.padEnd(10)} ${String(g.length).padStart(4)}   ${pct(avg(f('sr')))} (${pct(Math.min(...f('sr')))} to ${pct(Math.max(...f('sr')))})   ${pct(avg(f('rr')))}       ${avg(f('daily')).toFixed(0).padStart(5)}      +${avg(f('sVal')).toFixed(0)} chips, ${median(f('sAfter')).toFixed(0)} spins                    +${avg(f('rVal')).toFixed(0)} chips, ${median(f('rAfter')).toFixed(0)} spins`);
 }
+
+const tierStats = TIERS.map((T) => {
+  const g = per.filter((x) => x.tier === T);
+  return { T, s: g.map((x) => x.sr), r: g.map((x) => x.rr) };
+});
+const rising = (k, f) => tierStats.every((x, i) => i === 0 || f(x[k]) > f(tierStats[i - 1][k]));
+const highest = Math.max(...per.map((x) => Math.max(x.sr, x.rr)));
+console.log(`  Rises with every tier: slots average ${rising('s', avg) ? 'yes' : 'NO'}, slots lowest ${rising('s', (a) => Math.min(...a)) ? 'yes' : 'NO'}, roulette average ${rising('r', avg) ? 'yes' : 'NO'}, roulette lowest ${rising('r', (a) => Math.min(...a)) ? 'yes' : 'NO'}. Highest return of any Chog: ${pct(highest, 3)} (cap ${pct(CAP, 1)}).`);
 
 console.log('\nD. HEAD TO HEAD (50,000 pairings each): a random Chog of the tier against a random Common, same bets, own luck.');
 const by = {};

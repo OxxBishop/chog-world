@@ -27,7 +27,8 @@ import { spinBall, settleSpin, colourOf, BETS as TABLE_BETS } from './roulette.j
  * buildCasinoRoom() is the room itself (src/hub.js places it); createCasino() is the games, their
  * controls and camera moves (src/main.js). The controls are the user's pick, "Chips in hand" (10-16): no
  * panel, a rack of chips along the bottom, a round SPIN, and your Chog's edges as badges at the top
- * left that light up when they fire.
+ * left that light up when they fire. Stepping back from a game shows the visit so far: your net, and what
+ * each edge paid (the visit's card).
  */
 
 const BASE = import.meta.env?.BASE_URL ?? '/';
@@ -721,7 +722,7 @@ const COLOUR_NAME = { red: 'Red', black: 'Black', green: 'Green' };
 const TOUCH = typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
 // The day's charges each game counts down on its badges.
 const SLOT_CHARGES = new Set(['free', 'wild', 'rerolls', 'nudges', 'cashback']);
-const WHEEL_CHARGES = new Set(['second', 'near', 'luckySave', 'luckyBig', 'anyBig', 'red', 'black', 'even', 'dozen', 'cashback']);
+const WHEEL_CHARGES = new Set(['shield', 'second', 'near', 'luckySave', 'luckyBig', 'anyBig', 'red', 'black', 'even', 'dozen', 'cashback']);
 // What saved or paid a roulette bet (src/roulette.js settleSpin), as the edge that did it.
 const WHY_TAG = { 'lucky number': 'luckyBig', 'first straight win': 'anyBig', 'near miss': 'near', shield: 'shield', red: 'red', black: 'black', 'even money': 'even', dozen: 'dozen', 'lucky save': 'luckySave' };
 const TIERS = new Set(['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']);
@@ -768,6 +769,7 @@ const UI_HTML = `${ICONS}
   <div class="cz-tip" role="tooltip" hidden></div>
   <button type="button" class="cz-leave"><i><svg aria-hidden="true"><use href="#czi-leave"/></svg></i><span>Step back</span></button>
   <div class="cz-dock">
+    <section class="cz-sum" aria-label="This visit" hidden></section>
     <p class="cz-say" aria-live="polite"></p>
     <div class="cz-tokens" hidden></div>
     <div class="cz-felt" hidden>On the felt <b>0</b></div>
@@ -810,7 +812,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     img: q$('.cz-who img'), name: q$('.cz-who b'), sub: q$('.cz-who span'), badges: q$('.cz-badges'), tip: q$('.cz-tip'),
     leave: q$('.cz-leave'), leaveText: q$('.cz-leave span'), say: q$('.cz-say'), tokens: q$('.cz-tokens'), felt: q$('.cz-felt'),
     feltN: q$('.cz-felt b'), bankLabel: q$('.cz-bank small'), bankN: q$('.cz-bank b'), chips: [...ui.querySelectorAll('.cz-chip')],
-    undo: q$('.cz-undo'), clear: q$('.cz-clear'), rebet: q$('.cz-rebet'), spin: q$('.cz-spin'),
+    undo: q$('.cz-undo'), clear: q$('.cz-clear'), rebet: q$('.cz-rebet'), spin: q$('.cz-spin'), sum: q$('.cz-sum'),
   };
   const banner = document.createElement('div');
   banner.className = `cz-banner look-${look.name}`;
@@ -847,6 +849,9 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   let sweepAt = 0; // then seconds before the spin's chips are swept off the felt
   // The show.
   let flash = 0, push = 0, shake = 0, show = null, wake = 0, shownChips = 0, t = 0;
+  // This visit: your chips when you walked in, and what each edge (by its tag) did and paid since.
+  let visit = null; // { start, tally: Map(tag -> { n, chips }) }
+  let sumOpen = false;
   const fx = { spin: 0, win: 0, jackpot: 0 };
   const auraCol = new THREE.Color('#ffd27a');
   c.burst.count = 0;
@@ -915,12 +920,14 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       state.chips = Math.max(state.chips, who.perks.daily);
       state.charges = chargesFor(who.perks);
     }
-    state.charges ??= chargesFor(who.perks);
+    // Today's charges, with any kind added since they were stored (the shield's) counted fresh.
+    state.charges = { ...chargesFor(who.perks), ...state.charges };
     delete state.rerolls;
     all[who.key] = state;
     saveStore(all);
     shownChips = state.chips - owed;
     message = owed > 0 ? `Your last spin paid ${fmt(owed)}.` : '';
+    newVisit();
     offer = false;
     picking = null;
     run = 0;
@@ -956,14 +963,42 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     delete st.pending;
     let back = 0;
     try {
-      if (x.game === 'slots') back = Math.round(payout(x.stops.map((i) => STRIP[i]), who.perks, x.wild).k * x.stake);
-      else if (x.game === 'roulette') back = settleSpin(x.bets, x.n, who.perks, (st.charges ??= chargesFor(who.perks))).back;
+      if (x.game === 'slots') {
+        const k = payout(x.stops.map((i) => STRIP[i]), who.perks, x.wild).k;
+        back = pay(k * x.stake * (k > 1 ? 1 + who.perks.slots.lift : 1), st);
+      } else if (x.game === 'roulette') {
+        const res = settleSpin(x.bets, x.n, who.perks, (st.charges = { ...chargesFor(who.perks), ...st.charges }));
+        back = res.back + pay(res.bonus, st);
+      }
     } catch {
       back = 0;
     }
     st.chips += back;
     st.best = Math.max(st.best ?? 0, st.chips);
     return back;
+  }
+
+  // A payout in whole chips: the tier's lift makes fractions (2% more on a 30-chip win is 30.6), and
+  // the change is kept for the next win, so over many wins every fraction is paid.
+  function pay(x, st = state) {
+    const t = x + (st.carry ?? 0);
+    const n = Math.floor(t + 1e-9);
+    st.carry = Math.max(0, t - n);
+    return n;
+  }
+
+  // ---------- this visit: what your Chog's edges paid, shown when you step back from a game ----------
+  function newVisit() {
+    visit = { start: state.chips, tally: new Map() };
+    sumOpen = false;
+  }
+  // An edge did its work (tag, as on its badge), adding these chips (0 for a free spin that lost).
+  function credit(tag, chips = 0) {
+    if (!visit || !tag) return;
+    const x = visit.tally.get(tag) ?? { n: 0, chips: 0 };
+    x.n++;
+    x.chips += chips;
+    visit.tally.set(tag, x);
   }
 
   function save() {
@@ -1102,11 +1137,22 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       run++;
       extra = p.slots.streak * Math.min(run - 1, 4);
     } else run = 0;
-    const won = Math.round(k * stake * (1 + extra));
+    const lift = k > 1 ? p.slots.lift : 0;
+    const won = pay(k * stake * (1 + extra) * (1 + lift));
     state.chips += won;
+    // What each edge added to this spin: the spin itself if it was a power-up's, then what paid more.
+    const base = payout(line, null, wild).k; // the plain pay table
+    if (kind === 'free') credit('free', base * stake);
+    else if (kind === 'reroll') credit('rerolls', base * stake);
+    else if (kind === 'nudge') credit('nudges', base * stake);
+    else if (kind === 'wild') credit('wild', (base - payout(line, null, null).k) * stake);
+    if (k > base) credit(res.three ? `pays:${res.three}` : 'pays:two', (k - base) * stake);
+    if (extra > 0) credit('streak', k * stake * extra);
+    if (lift > 0) credit('lift', k * stake * (1 + extra) * lift);
     sweep(machine, 1);
     // The edges that paid more on this line light up.
     if (extra > 0) fire('streak');
+    if (lift > 0) fire('lift');
     if (res.three && p.slots.three[res.three] > THREE_OF[res.three]) fire(`pays:${res.three}`);
     if (!res.three && k > 1 && p.slots.twoChogs > 6) fire('pays:two');
     const streakNote = extra > 0 ? ` Streak +${Math.round(extra * 100)}%.` : '';
@@ -1148,6 +1194,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     fire('cashback');
     const back = Math.min(amount, CASHBACK_MAX);
     state.chips += back;
+    credit('cashback', back);
     message = `${fmt(back)} back.`;
     offer = false;
     picking = null;
@@ -1284,7 +1331,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     coast = wheel.step;
     wheel = null;
     lastN = n;
-    state.chips += res.back;
+    const bonus = pay(res.bonus);
+    state.chips += res.back + bonus;
     const colour = colourOf(n);
     const wins = new Set(res.results.filter((x) => x.back > x.amount).map((x) => x.key));
     // The felt: what came back stacked where it was won (or saved), the rest swept off.
@@ -1297,16 +1345,29 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     sparkleAt(table.group.localToWorld(table.ball.position.clone()), 14, 0.7, false);
     // Each edge that saved or paid a bet lights up.
     for (const x of res.results) if (x.why) fire(WHY_TAG[x.why]);
+    if (res.bonus > 0) fire('lift');
+    // What each edge added: a 50 to 1 the 15 over 35, a saved bet its stake, the lift its bonus; a second
+    // spin the rest of what came back (all of it was lost before).
+    const paidBy = new Map();
+    for (const x of res.results) if (x.why) {
+      const tag = WHY_TAG[x.why];
+      paidBy.set(tag, (paidBy.get(tag) ?? 0) + (tag === 'luckyBig' || tag === 'anyBig' ? x.amount * 15 : x.back));
+    }
+    if (res.bonus > 0) paidBy.set('lift', res.bonus);
+    for (const [tag, chips] of paidBy) credit(tag, chips);
+    if (kind === 'second') credit('second', res.back + res.bonus - [...paidBy.values()].reduce((a, v) => a + v, 0));
     const notes = [];
+    // A shield or near misses over several bets: what came back in all.
+    const backBy = (why) => res.results.reduce((a, x) => a + (x.why === why ? x.back : 0), 0);
     for (const x of res.results) {
-      if (x.why === 'near miss') notes.push(`Near miss: ${fmt(x.back)} back.`);
-      if (x.why === 'shield') notes.push(`Shield: ${fmt(x.back)} back.`);
+      if (x.why === 'near miss') notes.push(`Near miss: ${fmt(backBy('near miss'))} back.`);
+      if (x.why === 'shield') notes.push(`Shield: ${fmt(backBy('shield'))} back.`);
       if (x.why === 'red' || x.why === 'black') notes.push(`${COLOUR_NAME[x.why]} bet saved.`);
       if (x.why === 'even money' || x.why === 'dozen') notes.push(`Bet saved.`);
     }
     if (res.saved.includes('lucky save')) notes.unshift(`Lucky ${n}! Your lost bets come back.`);
     const head = `${n} ${COLOUR_NAME[colour]}.`;
-    const win = res.back;
+    const win = res.back + bonus;
     const big = res.results.some((x) => x.why === 'lucky number' || x.why === 'first straight win');
     if (wins.size) {
       message = `${head} +${fmt(win)}. ${[...new Set(notes)].join(' ')}`.trim();
@@ -1871,7 +1932,14 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     // What just happened, or how to play.
     const hint = !message ? (mode ? (hinted[mode] ? '' : HINT[mode]) : 'Testnet chips, topped up every day.') : '';
     const text = message || hint;
-    el.say.hidden = !text;
+    // The visit's card, back in the room after playing (it stands in for the room's hint).
+    const sum = sumOpen && !mode ? sumHtml() : '';
+    if (sum !== sumDrawn) {
+      sumDrawn = sum;
+      el.sum.innerHTML = sum;
+    }
+    el.sum.hidden = !sum;
+    el.say.hidden = !text || (!!sum && !message);
     el.say.classList.toggle('quiet', !message);
     if (text !== said) {
       said = text;
@@ -1886,8 +1954,68 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     el.tokens.hidden = !el.tokens.innerHTML;
   }
 
+  // What each edge did this visit, in words, by its tag (n times).
+  const times = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  const DID = {
+    free: (n) => times(n, 'free spin'),
+    wild: (n) => times(n, 'wild spin'),
+    rerolls: (n) => times(n, 're-roll'),
+    nudges: (n) => times(n, 'nudge'),
+    cashback: (n) => `${times(n, 'lost bet')} back`,
+    streak: (n) => `${times(n, 'win')} on a streak`,
+    lift: (n) => `${times(n, 'win')} paid more`,
+    shield: (n) => (n === 1 ? 'zero came up: half back' : `zero came up ${n} times: half back`),
+    second: (n) => times(n, 'second spin'),
+    near: (n) => `${times(n, 'near miss', 'near misses')} back`,
+    luckyBig: (n) => `your number paid 50 to 1${n > 1 ? `, ${n} times` : ''}`,
+    anyBig: () => 'a straight win paid 50 to 1',
+    red: (n) => `${times(n, 'bet')} on red saved`,
+    black: (n) => `${times(n, 'bet')} on black saved`,
+    even: (n) => `${times(n, 'even-money bet')} saved`,
+    dozen: (n) => `${times(n, 'dozen bet')} saved`,
+    luckySave: (n) => `${who.perks.roulette.lucky} came up: lost bets back${n > 1 ? `, ${n} times` : ''}`,
+  };
+  const didOf = (tag, n) => {
+    if (DID[tag]) return DID[tag](n);
+    const s = tag.slice(5);
+    if (s === 'two') return `${times(n, 'two-Chog win')} paid more`;
+    return `three ${s === 'chog' ? 'Chogs' : NAMES[s].toLowerCase()} paid more${n > 1 ? `, ${n} times` : ''}`;
+  };
+  let sumDrawn = '';
+  function sumHtml() {
+    const rows = [];
+    let paid = 0;
+    for (const [tag, x] of visit.tally) {
+      if (!x.n) continue;
+      paid += x.chips;
+      const from = who.perks.list.filter((e) => e.tags.includes(tag));
+      // The tier's lift reads as its odds (its free spins keep the tier's name).
+      const name = tag === 'lift' ? `${from[0]?.name ?? 'Tier'} odds` : from.length ? [...new Set(from.map((e) => e.name))].join(' + ') : tag === 'rerolls' ? 'Daily re-roll' : capital(tag);
+      const icon = ICON_OF[tag] ?? (tag.startsWith('pays:') ? 'star' : from[0] ? iconOf(from[0]) : 'spark');
+      const face = tag === 'luckySave' ? `<b class="cz-num">${who.perks.roulette.lucky}</b>` : `<svg aria-hidden="true"><use href="#czi-${icon}"/></svg>`;
+      const tint = tag === 'red' ? ' style="--ic:#ff6f61"' : tag === 'black' ? ' style="--ic:#dcd6ea"' : tag === 'pays:chog' && who.perks.aura ? ` style="--ic:${who.perks.aura}"` : '';
+      rows.push({ x, html: `<i${tint}>${face}</i><div><b>${name}</b><span>${didOf(tag, x.n)}</span></div>` });
+    }
+    if (!rows.length) return '';
+    rows.sort((a, b) => b.x.chips - a.x.chips || b.x.n - a.x.n);
+    const net = Math.round(state.chips - visit.start);
+    const shown = rows.slice(0, 4), rest = rows.slice(4);
+    const chips = (v) => `<em${Math.round(v) > 0 ? '' : ' class="zero"'}>+${fmt(v)}</em>`;
+    return `<header><small>This visit</small><button type="button" class="cz-sum-x" aria-label="Close"><svg aria-hidden="true"><use href="#czi-clear"/></svg></button></header>`
+      + `<p class="cz-sum-net"><b class="${net < 0 ? 'down' : ''}">${net < 0 ? '\u2212' : '+'}${fmt(Math.abs(net))}</b><span>chips</span></p>`
+      + `<p class="cz-sum-paid">${who.key === 'guest' ? 'Your edges' : "Your Chog's edges"} paid <b>+${fmt(paid)}</b></p>`
+      + `<ul>${shown.map((r, i) => `<li style="--i:${i}">${r.html}${chips(r.x.chips)}</li>`).join('')}</ul>`
+      + (rest.length ? `<p class="cz-sum-more">and ${times(rest.length, 'more edge')}, +${fmt(rest.reduce((a, r) => a + r.x.chips, 0))}</p>` : '');
+  }
+  el.sum.addEventListener('click', (e) => {
+    if (!e.target.closest('.cz-sum-x')) return;
+    sumOpen = false;
+    render();
+  });
+
   function goPlay(game = 'slots') {
     if (game === 'roulette' && !table) return;
+    sumOpen = false;
     mode = game;
     picking = null;
     message = '';
@@ -1906,6 +2034,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   }
   function stepBack() {
     finishNow();
+    // Back in the room after playing: the visit so far, if an edge has done something.
+    sumOpen = !!visit && [...visit.tally.values()].some((x) => x.n > 0);
     mode = null;
     picking = null;
     message = '';
@@ -1967,8 +2097,10 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     show(inside) {
       if (inside && ui.hidden) {
         identify();
+        newVisit();
         board.refresh();
       }
+      if (!inside) sumOpen = false;
       if (!inside && mode) {
         finishNow();
         mode = null;
