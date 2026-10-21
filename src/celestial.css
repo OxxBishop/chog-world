@@ -56,7 +56,7 @@ body .chog-chip > img { width: 46px; height: 46px; border-radius: 50%; border: 0
 body .chog-chip .cel-who { display: flex; flex-direction: column; gap: 4px; line-height: 1.05; }
 body .chog-chip .cel-who strong { font: 600 17px/1 var(--cel-display); color: #fff; text-shadow: var(--cel-halo); }
 body .chog-chip .cel-who span { font: 600 9.5px/1 var(--cel-label); letter-spacing: 0.24em; text-transform: uppercase; color: var(--cel-gold); text-shadow: var(--cel-halo); }
-body .chog-chip .cel-acts { display: flex; gap: 10px; margin-left: 6px; }
+body .chog-chip .cel-acts { display: flex; flex-direction: row; gap: 10px; margin-left: 6px; margin-right: 0; }
 body .chog-chip .cel-well { width: 38px; height: 38px; }
 body .chog-chip .cel-well svg { width: 19px; height: 19px; }
 

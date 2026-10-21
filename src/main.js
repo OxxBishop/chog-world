@@ -484,6 +484,7 @@ async function init() {
   if (params.has('hour')) {
     time.live = false;
     time.hour = parseFloat(params.get('hour'));
+    $('time-slider').value = time.hour;
     $('btn-live').classList.remove('active');
   }
   if (VIEWS[params.get('view')]) {
