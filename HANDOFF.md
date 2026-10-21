@@ -27,6 +27,40 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · Nothing on the islands is walk-through any more (rocks, bushes, trees, benches, the bar's corner)
+- **The cause** (the user: "it went through almost everything in the chog hub on its hoverboard"): `src/island.js` built the rocks, bushes and taller flowers before reading their spots for colliders, and building empties those lists. So only trees ever blocked a walker; every rock, bush and flower was walk-through. They're read before building now.
+- **Their shapes** (`footprint` in `src/island.js`, A's file): each rock, bush, tall flower and tree blocks by its own shape at a Chog's body height (0.3 to 3 m over its foot). That's one circle for something round, a short row for something long. Trees also block by their low branches (pines'), not just their trunks. Grass and low plants (ferns, mushrooms) stay walk-through. It adds about 0.3 s to the load.
+- `src/plaza.js`: the plaza's benches block to their square corners; a board's nose slipped in past the rounded ends.
+- `src/travel.js`: the bar wing's outer wall up to its front corner. A step that lands exactly on a post's line is pushed back out the way it came.
+- **How it was checked:**
+  - A geometry audit: every half metre over downtown and the three neighbourhoods, is there real geometry inside a Chog's body where collision lets it stand? Downtown went from about 4,200 such spots to 290. All that's left: the bridges' finer stair steps (the feet keep to those), Patrol's moving chopper, ferns and mushrooms, a few pine-branch tips, and the domes' doorways (glass that's cut away in its shader).
+  - A ride test: a hoverboard at full speed, and on foot, through the bar's terrace, posts and lamps, the statue and arch, the plaza's lamps and benches, the fountain, the casino's front and the banner poles. No frame had the Chog or the board's nose or tail inside anything, apart from a portal pad, which is ground.
+  - No collider sits on a dome's garden path, and only one (a tree's real branches) reaches 1.2 m into a road.
+### 2026-10-21 · A · Arms without the twist, no waving, Toasty redrawn, Snooze's smaller tail, Peel's one blush
+
+From the user's phone test (10-21, three recordings):
+- **"The characters arms look twisted, all of them":** the library clips roll the arm about its own length
+  as it swings (a human's palm turning); on a Chog's mitten arm that read as a corkscrew, up to half a turn
+  in the cheer. `tools/models/retarget.js` now keeps only the shortest turn from the bind line for each arm
+  bone (`untwistArms`), measured along the arm's mesh (`meshArmLines`), so a T-pose that droops still hangs
+  and swings where the library means. Every cast model's clips baked again. `tools/models/twist.html`
+  measures each arm bone's twist per clip.
+- **The wave, cut** (the user: "just cut it out" after three tries): `play('wave')` and `play('wake')` now
+  play the talk with the hello bubble (`NO_WAVE` in `src/chog.js`), so every caller (casino, travel,
+  cutscenes, greetings) says hello without the arm. The procedural wave code is gone. Petal's idle is a
+  happy jump now and then.
+- **Toasty #52:** redrawn in Nano Banana with his spikes out from under the hat on both sides (as his NFT) and
+  rebuilt; his arms shortened and levelled in the mesh before the rig (`tools/models/regen/limb_edit.py`,
+  "arms longer than his legs"). New face sheet (`build.py`: `protect` keeps the eye covers off his hat brim,
+  `no_brows`).
+- **Snooze #124:** tail scaled to 55% about where it joins (`limb_edit.py tail`), rebuilt; face unchanged.
+- **Cosmo #68:** the rigger had his shoulders at his elbows (his arms could not hang); re-rigged with
+  `shoulder=0.45`.
+- **Peel's second blush:** the small one came with King Pom's eyes that Peel borrows; the borrowed eye art
+  now drops its owner's blush (`no_blush` in `build.py`). Puff, the plain Chog and the singer rebuilt too.
+- Picker portraits rendered again.
+- Tripo credits left: 110.
+
 ### 2026-10-21 · B · The compass never prints a distance over another (A's note from the user's phone test)
 - `src/travel.js` `drawHud`: the markers' distances are placed nearest first. One that would overlap a label already printed is nudged aside (up to 30 px) if that clears it, else left off. The marker itself still shows.
 - Seen: four spots where portals and landmarks line up on the compass; every label stands clear.

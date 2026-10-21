@@ -107,6 +107,80 @@ function straightenArms(root, map) {
   }
 }
 
+/*
+ * Arms that point where the library's point, with no turn about their own length (the user, 10-21: "the
+ * characters arms look twisted, all of them"). The libraries' arms roll as they swing (a human's palm turns
+ * in and back), and the robot's straightened arms start out rolled: on a Chog's mitten arm that roll reads as
+ * a corkscrew, up to half a turn between elbow and hand in the cheer. Each arm bone keeps only the shortest
+ * turn from its bind line to where it points now (palm down in the T-pose, palm in at the side, palm forward
+ * raised), in place, frame by frame, parents first. rot: { bone: Float32Array of local quaternions }.
+ */
+/*
+ * Where each arm's mesh really points in the bind (model space): from the shoulder joint to the middle of the
+ * forearm's and hand's vertices. Tripo's T-poses hold the arms some 30 degrees down while the rig's arm bones run level, so
+ * matching bones to the library put every arm that much lower than the library has it (hands hugging the
+ * body, a wave that never got the hand up). Returns { L, R: { line, fix } }: fix turns the mesh's line onto
+ * the bone's, so a library turn measured from its level T-pose lands on the mesh's own arm.
+ */
+function meshArmLines(dst, d0) {
+  let mesh = null;
+  dst.traverse((o) => o.isSkinnedMesh && (!mesh || o.geometry.attributes.position.count > mesh.geometry.attributes.position.count) && (mesh = o));
+  const out = {};
+  if (!mesh) return out;
+  dst.updateMatrixWorld(true);
+  const toModel = new THREE.Matrix4().copy(dst.matrixWorld).invert().multiply(mesh.matrixWorld);
+  const pos = mesh.geometry.attributes.position, si = mesh.geometry.attributes.skinIndex, sw = mesh.geometry.attributes.skinWeight;
+  const v = new THREE.Vector3();
+  for (const side of ['L', 'R']) {
+    const hi = mesh.skeleton.bones.findIndex((b) => b.name === 'Hand' + side);
+    const fi = mesh.skeleton.bones.findIndex((b) => b.name === 'ForeArm' + side);
+    if (hi < 0 || fi < 0 || !d0['UpperArm' + side] || !d0['ForeArm' + side]) continue;
+    const c = new THREE.Vector3();
+    let n = 0;
+    for (let i = 0; i < pos.count; i++) {
+      let w = 0;
+      for (let j = 0; j < 4; j++) if (si.getComponent(i, j) === hi || si.getComponent(i, j) === fi) w += sw.getComponent(i, j);
+      if (w < 0.5) continue;
+      c.add(v.fromBufferAttribute(pos, i).applyMatrix4(toModel));
+      n++;
+    }
+    if (n < 10) continue;
+    c.divideScalar(n);
+    const line = c.sub(d0['UpperArm' + side].p).normalize();
+    const bone = d0['ForeArm' + side].p.clone().sub(d0['UpperArm' + side].p).normalize();
+    out[side] = { line, fix: new THREE.Quaternion().setFromUnitVectors(line, bone), droop: THREE.MathUtils.radToDeg(line.angleTo(bone)) };
+  }
+  return out;
+}
+
+const ARM_BONES = ['UpperArmL', 'ForeArmL', 'HandL', 'UpperArmR', 'ForeArmR', 'HandR'];
+const LINE_OF = { UpperArmL: ['UpperArmL', 'ForeArmL'], ForeArmL: ['ForeArmL', 'HandL'], HandL: ['ForeArmL', 'HandL'], UpperArmR: ['UpperArmR', 'ForeArmR'], ForeArmR: ['ForeArmR', 'HandR'], HandR: ['ForeArmR', 'HandR'] };
+function untwistArms(rot, n, allDst, bindLocal, d0, parentQ, arms = {}) {
+  const line = {};
+  for (const b of ARM_BONES) {
+    const [a, c] = LINE_OF[b];
+    const own = arms[b.slice(-1)]?.line;
+    if (rot[b] && d0[a] && d0[c]) line[b] = own ? own.clone() : d0[c].p.clone().sub(d0[a].p).normalize();
+  }
+  const q = new THREE.Quaternion(), dq = new THREE.Quaternion(), d = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    const world = new Map();
+    for (const b of allDst) {
+      const pw = world.get(b.parent) ?? parentQ(b.parent);
+      const local = rot[b.name] ? q.fromArray(rot[b.name], i * 4).clone() : bindLocal.get(b).q.clone();
+      let w = pw.clone().multiply(local);
+      if (line[b.name]) {
+        // Its turn from the bind, model space; where that points the bind line; the shortest turn there.
+        dq.copy(w).multiply(d0[b.name].q.clone().invert());
+        d.copy(line[b.name]).applyQuaternion(dq);
+        w = new THREE.Quaternion().setFromUnitVectors(line[b.name], d).multiply(d0[b.name].q);
+        pw.clone().invert().multiply(w).toArray(rot[b.name], i * 4);
+      }
+      world.set(b, w);
+    }
+  }
+}
+
 export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name = srcClip.name, fps = 30, armsOut = 0.12, armsFwd = 0, srcToe = null, headK = 0.5, amp = null, srcTPose = false, adjust = null }) {
   // three.js drops reserved characters from node names on load (DEF-upper_arm.L is DEF-upper_armL).
   const clean = THREE.PropertyBinding.sanitizeNodeName;
@@ -136,6 +210,7 @@ export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name 
   dst.traverse((o) => o.isBone && allDst.push(o));
   const bindLocal = new Map(allDst.map((b) => [b, { q: b.quaternion.clone(), p: b.position.clone() }]));
   const d0 = modelSpace(dst, allDst.map((b) => b.name));
+  const arms = meshArmLines(dst, d0);
   // Turn the library so it faces +z like the Chogs: its toes (or, failing that, +z) forward.
   let fwd = new THREE.Vector3(0, 0, 1);
   if (srcToe && s0[srcToe] && s0[map.FootL]) fwd = s0[srcToe].p.clone().sub(s0[map.FootL].p).setY(0);
@@ -179,7 +254,9 @@ export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name 
         const chestDelta = want.Chest.clone().multiply(d0.Chest.q.clone().invert());
         delta.copy(chestDelta.clone().slerp(delta, headK));
       }
-      want[b] = delta.multiply(d0[b].q);
+      // An arm bone: the library's turn applied to the arm as if its mesh lay level like the library's.
+      const side = ARM_BONES.includes(b) ? arms[b.slice(-1)] : null;
+      want[b] = side ? delta.multiply(side.fix).multiply(d0[b].q) : delta.multiply(d0[b].q);
     }
     // Arms a touch further from the body: a Chog is round and its arms are short. armsFwd brings them
     // forward too, so hands rest in front of a wide robe instead of sinking into it (King Pom).
@@ -215,6 +292,7 @@ export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name 
   }
   mixer.stopAllAction();
   mixer.uncacheRoot(src);
+  untwistArms(rot, n, allDst, bindLocal, d0, parentQ, arms);
   // Unwrap quaternion signs so interpolation takes the short way.
   for (const b of dstNames) {
     const a = rot[b];
@@ -243,6 +321,18 @@ export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name 
       let my = 0;
       for (let i = 0; i < n; i++) my += hipPos[i * 3 + 1] / n;
       for (let i = 0; i < n; i++) hipPos[i * 3 + 1] = my + (hipPos[i * 3 + 1] - my) * amp.bob;
+    }
+  }
+  // The exaggeration above can bring a little twist back: once more, and the signs again.
+  if (amp) {
+    untwistArms(rot, n, allDst, bindLocal, d0, parentQ, arms);
+    for (const b of ARM_BONES) {
+      const a = rot[b];
+      if (!a) continue;
+      for (let i = 1; i < n; i++) {
+        const dot = a[i * 4] * a[i * 4 - 4] + a[i * 4 + 1] * a[i * 4 - 3] + a[i * 4 + 2] * a[i * 4 - 2] + a[i * 4 + 3] * a[i * 4 - 1];
+        if (dot < 0) for (let k = 0; k < 4; k++) a[i * 4 + k] *= -1;
+      }
     }
   }
   const tracks = dstNames.filter((b) => rot[b] && d0[b] && src.getObjectByName(map[b])).map((b) => new THREE.QuaternionKeyframeTrack(`${b}.quaternion`, times, rot[b]));

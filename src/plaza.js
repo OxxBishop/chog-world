@@ -136,7 +136,10 @@ export function buildPlaza() {
     b.rotation.y = Math.atan2(faceX - x, faceZ - z);
     props.add(b);
     benchSpots.push([x, z]);
-    solid.benches.push({ x, y, z, rot: b.rotation.y, half: 1.25 * BENCH_SCALE, r: 0.42 * BENCH_SCALE });
+    // Its whole footprint, square corners and all (the slats run 1.3 either side, back to front 0.71, a
+    // little behind its middle): a rounded end short of a corner let a board's nose in (the user, 10-21).
+    const back = -0.055 * BENCH_SCALE;
+    solid.benches.push({ x: x + Math.sin(b.rotation.y) * back, y, z: z + Math.cos(b.rotation.y) * back, rot: b.rotation.y, half: 1.5 * BENCH_SCALE, r: 0.42 * BENCH_SCALE });
   };
   for (let k = 0; k < 4; k++) {
     for (const side of [-1, 1]) {

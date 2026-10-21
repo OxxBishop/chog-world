@@ -44,7 +44,8 @@ CFG = {
     'chog-1151': dict(eyes=[0, 1], mouth=4, rest='own', lids='ink', keep_blue=[420, 700, 620, 900]),
     'chog-409': dict(eyes=[[303, 612, 447, 748], [578, 612, 722, 748]], mouth=4, rest='own', lids='ink'),
     'dino': dict(eyes=[0, 1], mouth=2, rest='own', lids='ink', open_mouth=True),
-    'chog-52': dict(eyes=[[266, 466, 449, 654], [576, 466, 759, 654]], mouth=[484, 690, 536, 735], rest='own', lids='ink', skin=[0.39, 0.2, 0.16], mk=1.4),
+    # (10-21 second round: redrawn with his spikes out from under the hat and shorter arms.)
+    'chog-52': dict(eyes=[[276, 543, 450, 717], [576, 543, 750, 717]], mouth=[488, 748, 538, 798], rest='own', lids='ink', skin=[0.39, 0.2, 0.16], mk=1.4, protect=[[0.68, 0.6, 0.47]], no_brows=True),
     'chog-56': dict(eyes=[], mouth=0, rest='own', mk=0.62),
     'chog-68': dict(eyes=[0, 1], mouth=5, rest='own', lids='ink', mk=1.7),
     # The two who took the sniffer's and the dino's places (10-21): Petal (#271) and Dash (#471).
@@ -96,6 +97,18 @@ def sprite(name, box, pad=10):
     col = np.clip((c - (1 - aa) * skin) / aa, 0, 1)
     rgba = np.dstack([col, a])
     return rgba, np.array([(x0 + x1) / 2, (y0 + y1) / 2]), np.array([x1 - x0, y1 - y0], np.float32)
+
+
+def no_blush(sp):
+    """A borrowed eye without the blush its owner had painted under it: every Chog keeps its own (the user,
+    10-21: Peel showed "two blushes", his own and a smaller one that came with King Pom's eyes)."""
+    rgba, ctr, size = sp
+    r, g, b = rgba[..., 0], rgba[..., 1], rgba[..., 2]
+    pink = np.clip((r - g - 0.1) / 0.12, 0, 1) * np.clip((r - 0.35) / 0.12, 0, 1) * np.clip((b - g + 0.08) / 0.1, 0, 1)
+    pink = np.maximum(pink, ndi.grey_dilation(pink, size=3) * 0.8)
+    out = rgba.copy()
+    out[..., 3] *= 1 - pink
+    return out, ctr, size
 
 
 def harmonic_fill(rgb, mask, iters=500, skin=None):
@@ -216,10 +229,10 @@ KIT = {}
 def kit():
     if KIT:
         return KIT
-    KIT['king'] = [sprite('kit-409', b) for b in boxes('kit-409', [0, 1])]
-    KIT['barkeep'] = [sprite('bartender', b) for b in boxes('bartender', [0, 1])]
-    KIT['shut'] = [sprite('kit-124', b) for b in boxes('kit-124', [0, 1])]
-    KIT['squint'] = [sprite('plain', b) for b in boxes('plain', [0, 1])]
+    KIT['king'] = [no_blush(sprite('kit-409', b)) for b in boxes('kit-409', [0, 1])]
+    KIT['barkeep'] = [no_blush(sprite('bartender', b)) for b in boxes('bartender', [0, 1])]
+    KIT['shut'] = [no_blush(sprite('kit-124', b)) for b in boxes('kit-124', [0, 1])]
+    KIT['squint'] = [no_blush(sprite('plain', b)) for b in boxes('plain', [0, 1])]
     KIT['m_open'] = sprite('bartender', box_of('bartender', 2))
     KIT['m_laugh'] = sprite('singer', box_of('singer', 0))
     KIT['m_o'] = sprite('dino', box_of('dino', 2))
@@ -270,13 +283,19 @@ def build(name):
     def layer():
         return np.zeros((H, W, 4), np.float32)
 
+    # protect: colours a cover never paints over (Toasty's hat brim sits just over his eyes).
+    keep_off = np.ones(alpha.shape, np.float32)
+    for col in cfg.get('protect', []):
+        d = np.linalg.norm(rgb - np.array(col, np.float32), axis=-1)
+        keep_off *= ndi.gaussian_filter(np.clip((d - 0.1) / 0.08, 0, 1), 1.2)
+
     def base_cover(mask, grow=4):
         """A cell that paints the old features out: the clean skin, feathered."""
         c = layer()
         # Solid over the old feature and a little round it, feathering out beyond.
         a = ndi.gaussian_filter(ndi.binary_dilation(mask, iterations=grow + 4).astype(np.float32), 2.2)
         c[..., :3] = clean
-        c[..., 3] = np.clip(a * 2.0, 0, 1)
+        c[..., 3] = np.clip(a * 2.0, 0, 1) * keep_off
         return c
 
     own_eyes = [sprite(name, b) for b in sorted(eye_boxes, key=lambda b: b[0])] if cfg['rest'] == 'own' else None
@@ -320,7 +339,8 @@ def build(name):
                 paste(c, rgba, (e[0], e[1] + (0 if kind == 'squint' else eh * 0.1)), k)
 
     def brows(c, kind):
-        if not eyes:
+        # (no_brows: a hat brim right over the eyes leaves no forehead to draw them on.)
+        if not eyes or cfg.get('no_brows'):
             return
         col = LASH if cfg.get('lids') != 'ink' else INK
         if brow_boxes:
