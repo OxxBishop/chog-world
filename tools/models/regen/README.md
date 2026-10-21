@@ -26,6 +26,10 @@ Tripo round. Steps per Chog:
    to k of its length with the hand kept whole (Toasty: "arms longer than his legs"), `EDIT="tail k=0.55"`
    scales the tail about where it joins (Snooze: "tail is way too big"). Toasty was also redrawn in Nano
    Banana from his first picture with the spikes out from under the hat on both sides, like his NFT; after
-   the arm edit the rigger needs `shoulder=0.37;z_arm=0.65` (his spikes are wider than his arms now).
+   the arm edit the rigger needs `shoulder=0.37` and `level=1` in the edit (his T-pose drooped 30 degrees:
+   levelled, the rig's level arm bones run down the middle of his arms). Monty, Patrol and Cosmo had their
+   arms brought to King Pom's and Toasty's length the same way (the user: "monad cap chog arms are longer").
+   Puff is left as he is: his wings and tail confuse the arm's line, and his arms are close to the others'.
+   Idle and Talk are baked with `lean` (0.3, 0.4): the library's stand-on-one-hip tilt read as crooked.
 7. **Checks:** `../view.html`, `../pose.html` (walk, run, wave), `../stretchmoves.html` (triangles that
    stretch; the ones hidden under a big head count too, so look as well), `../handcheck.html`.

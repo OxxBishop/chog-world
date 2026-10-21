@@ -322,6 +322,25 @@ export function retarget({ src, srcClip, srcRest = null, map: rawMap, dst, name 
       for (let i = 0; i < n; i++) my += hipPos[i * 3 + 1] / n;
       for (let i = 0; i < n; i++) hipPos[i * 3 + 1] = my + (hipPos[i * 3 + 1] - my) * amp.bob;
     }
+    // lean: how much of the body's tilt and sideways shift from straight up it keeps (hips to head). A
+    // human idle stands on one hip with the spine tilted back over it; under a Chog's big head that read as
+    // crooked (the user, 10-21: "peely looks crooked").
+    if (amp.lean !== undefined && amp.lean !== 1) {
+      const q = new THREE.Quaternion(), q0 = new THREE.Quaternion();
+      for (const b of dstNames) {
+        if (!rot[b] || !/^(Hips|Spine|Chest|Neck|Head)$/.test(b)) continue;
+        q0.copy(bindLocal.get(allDst.find((o) => o.name === b)).q);
+        for (let i = 0; i < n; i++) q0.clone().slerp(q.fromArray(rot[b], i * 4), amp.lean).toArray(rot[b], i * 4);
+      }
+      // The hips' sideways shift, in the model's space.
+      const rootQ = d0.Root?.q ?? new THREE.Quaternion(), rootP = d0.Root?.p ?? new THREE.Vector3();
+      const v = new THREE.Vector3();
+      for (let i = 0; i < n; i++) {
+        v.fromArray(hipPos, i * 3).applyQuaternion(rootQ).add(rootP);
+        v.x = d0.Hips.p.x + (v.x - d0.Hips.p.x) * amp.lean;
+        v.sub(rootP).applyQuaternion(rootQ.clone().invert()).toArray(hipPos, i * 3);
+      }
+    }
   }
   // The exaggeration above can bring a little twist back: once more, and the signs again.
   if (amp) {

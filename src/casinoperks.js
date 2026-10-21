@@ -2,7 +2,7 @@
  * The casino's rules, and what a Chog's traits give it there (B23).
  *
  * The house keeps its edge whatever the Chog. The slots return 94% of what is bet and the roulette
- * 97.3%; a Chog's always-on edges lift that a little, to 98.5% at most, never to an even game. The big
+ * 97.3%; a Chog's always-on edges lift that a little, to 98.65% at most, never to an even game. The big
  * moments come from power-ups a Chog gets a few of each day (free spins, wild spins, re-rolls, nudges,
  * a second spin of the wheel, a lost bet back, a near miss saved), so traits change a day's luck, not
  * the odds. Every Chog has edges in both games:
@@ -300,10 +300,16 @@ function aura(p, v) {
 }
 
 function rare(p, t, id) {
-  if (t.Base === 'Skull' || t.Form === 'Skull') edge(p, 'Skull', 'Lucky 13', 'lucky number 13: a straight bet on it pays 50 to 1, not 35, once a day', R, (q) => {
-    q.roulette.lucky = 13;
-    q.roulette.luckyBig = Math.max(q.roulette.luckyBig, 1);
-  });
+  if (t.Base === 'Skull' || t.Form === 'Skull') {
+    // 13 becomes the lucky number, and a head that gave another one moves its 50 to 1 onto 13 (its line
+    // says so), so every line on the panel names the number the wheel plays.
+    const had = p.roulette.lucky;
+    edge(p, 'Skull', 'Lucky 13', 'lucky number 13: a straight bet on it pays 50 to 1, not 35, once a day', R, (q) => {
+      q.roulette.lucky = 13;
+      q.roulette.luckyBig += 1;
+    });
+    if (had != null && had !== 13) for (const x of p.list) x.text = x.text.replace(`lucky number ${had}:`, 'lucky number 13:');
+  }
   if (t.Base === 'Radioactive') edge(p, 'Radioactive', 'Glow', '3 free spins a day', S, (q) => (q.slots.free += 3));
   if (t.Base === '1:1') edge(p, '1:1', 'One of one', `${wildText(2, 'chog')}, and 1 second spin of the wheel`, BOTH, (q) => {
     wilds(2, 'chog')(q);
@@ -321,6 +327,9 @@ function rare(p, t, id) {
  * plays as a Common, lucky number 7.
  */
 export function perksFor(traits = {}, id = 7) {
+  // Missing or broken metadata plays as a Common with no trait edges, never a crash.
+  if (!traits || typeof traits !== 'object') traits = {};
+  if (!Number.isFinite(id)) id = 7;
   const p = blank();
   const tier = tierChips[traits.Tier] ? traits.Tier : 'Common';
   const spins = tierSpins[tier] ?? 0;
