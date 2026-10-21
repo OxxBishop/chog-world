@@ -903,8 +903,12 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     const chog = s?.info ? { key: String(s.info.id ?? s.id), id: s.info.id ?? s.id, name: s.info.name, traits: s.info.traits ?? {}, image: s.info.image } : null;
     const next = chog ?? { key: 'guest', id: null, name: 'Guest', traits: {}, image: `${BASE}art/43.webp` };
     if (who?.key === next.key) return;
+    // A spin still turning when you switch Chogs (or sign out) pays the Chog that staked it.
+    if (who && (spinning || wheel)) finishNow();
     who = { ...next, perks: perksFor(next.traits, Number(next.id ?? 7)) };
     state = all[who.key] ?? { chips: 0, day: '', best: 0 };
+    // A spin the page was closed or reloaded on: its result was drawn when it started, so it pays now.
+    const owed = state.pending ? settlePending(state) : 0;
     // A new day: chips topped up to the day's free amount, the power-ups back.
     if (state.day !== today()) {
       state.day = today();
@@ -915,8 +919,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     delete state.rerolls;
     all[who.key] = state;
     saveStore(all);
-    shownChips = state.chips;
-    message = '';
+    shownChips = state.chips - owed;
+    message = owed > 0 ? `Your last spin paid ${fmt(owed)}.` : '';
     offer = false;
     picking = null;
     run = 0;
@@ -944,6 +948,22 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     }
     render();
     board.refresh();
+  }
+
+  // Pays a stored spin that never landed on screen (see identify). Returns the chips it paid.
+  function settlePending(st) {
+    const x = st.pending;
+    delete st.pending;
+    let back = 0;
+    try {
+      if (x.game === 'slots') back = Math.round(payout(x.stops.map((i) => STRIP[i]), who.perks, x.wild).k * x.stake);
+      else if (x.game === 'roulette') back = settleSpin(x.bets, x.n, who.perks, (st.charges ??= chargesFor(who.perks))).back;
+    } catch {
+      back = 0;
+    }
+    st.chips += back;
+    st.best = Math.max(st.best ?? 0, st.chips);
+    return back;
   }
 
   function save() {
@@ -1059,6 +1079,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     });
     const durations = machine.reels.map((_, i) => (kind === 'reroll' ? (i === only ? 1.2 : 0) : kind === 'nudge' ? (i === only ? 0.42 : 0) : 1.1 + i * 0.4));
     spinning = { t: 0, stops, from: machine.reels.map((reel) => reel.userData.angle), durations, kind, only, wild, stake, paid };
+    state.pending = { game: 'slots', stops, stake, wild };
     message = kind === 'wild' ? `Wild spin: the ${ONE[wild.symbol]}${wild.mid ? ' on the middle reel' : ''} is wild.` : kind === 'free' ? `Free spin for ${bet}.` : '';
     lever.pull = kind === 'reroll' || kind === 'nudge' ? null : 0;
     save();
@@ -1069,6 +1090,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   function land() {
     const { stops, kind, wild, stake, paid } = spinning;
     spinning = null;
+    delete state.pending;
     const line = stops.map((i) => STRIP[i]);
     lastLine = line;
     last = { wild, stake, paid };
@@ -1245,6 +1267,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     settledFelt = false;
     const n = forced ?? randomInt(37);
     wheel = { step: spinBall(table, n), n, bets: [...bets].map(([key, amount]) => ({ key, amount })), kind };
+    state.pending = { game: 'roulette', n, bets: wheel.bets };
     coast = null;
     table.mark(null);
     table.aim(null);
@@ -1257,6 +1280,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   function settleWheel() {
     const { n, kind } = wheel;
     const res = settleSpin(wheel.bets, n, who.perks, state.charges);
+    delete state.pending;
     coast = wheel.step;
     wheel = null;
     lastN = n;
@@ -2108,7 +2132,11 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       if (mode !== 'slots') mode = 'slots';
       if (kind === 'reroll' || kind === 'nudge') offer = true;
       spin(kind, only);
-      if (spinning && stops) spinning.stops = stops;
+      if (spinning && stops) {
+        spinning.stops = stops;
+        state.pending.stops = stops;
+        save();
+      }
     },
     _roulette(n, placed = { red: 10 }) {
       identify();

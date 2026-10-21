@@ -27,6 +27,15 @@ are real but free.
 
 ## Log
 
+### 2026-10-21 · B · The casino audited by simulation; a spin can no longer pay the wrong Chog or vanish on a reload
+
+- **`node scripts/casino-sim.mjs [seed]`** (new, about 70 s): plays both games the way `src/casino.js` does, on a seeded draw, and prints the long-run return per Chog (exact, checked by simulation), a 20-round session with the day's power-ups, every Chog by tier, and rare-vs-Common head to head. Same seed, same numbers.
+- **Switching Chogs mid-spin** (another wallet, or signing out) used to pay the spin into the new Chog with the new Chog's edges. A turning spin now settles with the Chog that staked it first (`identify()`).
+- **Reloading or closing the page mid-spin** lost the stake. A spin's result is stored when it starts (`state.pending`), and pays out the next time that Chog walks in ("Your last spin paid 200.").
+- **Skull Chogs with a lucky-number head** (21 of them): the head's badge named its own number but the wheel played 13. Now the head's 50 to 1 moves onto 13 and its badge says so; the Skull's own charge adds to it.
+- `perksFor()` no longer throws on `null` traits or a bad id (plays as a Common). The always-on ceiling in `casinoperks.js`'s header corrected to 98.65%.
+- **Found, not changed (the user's call):** rarity barely moves the odds (a Legendary 1:1 has the same always-on return as a guest; Rares and Legendaries finish ahead of a Common about half the time over 20 rounds), and the day's power-ups put the player ahead for roughly the first 80 to 100 spins of each day. Chips and the board are client-side, so the shared board trusts the number it is sent.
+
 ### 2026-10-21 · A · The cast stands straight, arms the same length all round, Puff's small tail
 
 The user's next look (10-21): "peely looks crooked", "monad cap chog arms are longer than king pom's and
