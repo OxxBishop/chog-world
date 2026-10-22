@@ -1224,7 +1224,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   }
   function drawFelt(result = null) {
     if (!result) table.setStacks([...bets].map(([key, amount]) => ({ key, amount })));
-    table.highlight({ bets: new Set(bets.keys()), lucky: who.perks.roulette.lucky, ...(result ?? {}) });
+    table.highlight({ bets: new Set(bets.keys()), lucky: who?.perks?.roulette?.lucky, ...(result ?? {}) });
   }
   function placeBet(key) {
     if (!table || wheel || show) return;
