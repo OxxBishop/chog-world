@@ -937,7 +937,8 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
-  audio.update(dt, { camera, night: env.night, indoors: rig.room instanceof RoomBox || !!inRoom, stage: stagePos() });
+  // (Quiet over the connect screen and through the flights down: it starts when you land, the user 10-22.)
+  audio.update(dt, { camera, night: env.night, indoors: rig.room instanceof RoomBox || !!inRoom, stage: stagePos(), quiet: document.body.classList.contains('intro-open') || !!arrival?.active || !!space?.active || !!entry?.active && !rig.room });
   travel?.setEnv?.(env);
   entry?.apply(env, renderer);
   session?.update(dt);

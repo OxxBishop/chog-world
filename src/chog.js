@@ -573,6 +573,10 @@ const ARM_FWD_MAX = THREE.MathUtils.degToRad(42);
 // Peel's belly bulges out in front: his arms hung at its back from the side (the user, 10-21).
 const ARM_BACK = -4;
 const ARM_BACK_BY = { 'chog-132': 16 };
+// Models whose arms are fused into their clothes: an arm swung away from rest tears the sleeve into a flat
+// flap (Patrol's jacket: the user, 10-22, "patrol's arms are deformed as hell"). Their arms keep this
+// share of the way back to rest, every state but singing and cheering.
+const ARM_HOLD_BY = { 'chog-56': 0.85 };
 // Chog arms are short tubes with no elbow to speak of (the user, 10-17): a forearm bends no further than
 // this from the line of its upper arm.
 const ELBOW_MAX = THREE.MathUtils.degToRad(28);
@@ -942,6 +946,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   let arm = null;
   // Both upper arms, kept from lifting too high (ARM_LIFT_MAX) or, for some, dropping too low (ARM_DROP_MAX).
   let lifts = [];
+  let armHold = 0, idleT = 0;
   let armDrop = null;
   let armOut = 0;
   let armBack = 0;
@@ -1036,6 +1041,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       const up = model.getObjectByName('UpperArmR'), fore = model.getObjectByName('ForeArmR'), hand = model.getObjectByName('HandR');
       if (up && fore && hand) arm = { up, fore, hand, held: hand.getObjectByName('Mic'), at: new THREE.Vector3(), target: null, left: 0, w: 0, mouth: null, mw: 0, ww: 0, wt: 0 };
       lifts = ['L', 'R'].map((s) => ({ out: s === 'L' ? 1 : -1, up: model.getObjectByName(`UpperArm${s}`), fore: model.getObjectByName(`ForeArm${s}`) })).filter((l) => l.up && l.fore);
+      armHold = ARM_HOLD_BY[base.match(/([\w-]+)\.glb$/)?.[1]] ?? 0;
       armBack = THREE.MathUtils.degToRad(-(ARM_BACK_BY[base.match(/([\w-]+)\.glb$/)?.[1]] ?? ARM_BACK));
       armOut = THREE.MathUtils.degToRad(ARM_OUT_BY[base.match(/([\w-]+)\.glb$/)?.[1]] ?? ARM_OUT);
       const drop = ARM_DROP_MAX[base.match(/([\w-]+)\.glb$/)?.[1]];
@@ -1289,6 +1295,10 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         for (const h of handFix) h.base.copy(h.bone.quaternion), h.bone.quaternion.multiply(h.fix), (h.applied = true);
         strideUpdate(dt);
         armClamp();
+        // (Held to how they hang standing, caught from the idle once it has settled; the bind pose holds them
+        // straight out.)
+        if (armHold && state === 'idle' && !lifts[0]?.upRest && (idleT += dt) > 0.4) for (const L of lifts) (L.upRest = L.up.quaternion.clone()), (L.foreRest = L.fore.quaternion.clone());
+        if (armHold && state !== 'idle' && state !== 'sing' && state !== 'cheer') for (const L of lifts) if (L.upRest) L.up.quaternion.slerp(L.upRest, armHold), L.fore.quaternion.slerp(L.foreRest, armHold);
         micUpdate(dt);
         reachUpdate(dt);
         groundUpdate(dt, camera);

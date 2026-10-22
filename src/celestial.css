@@ -170,3 +170,6 @@ body .cz-ui .cz-rack, body .cz-ui :has(> .cz-act) {
   box-shadow: inset 0 0 0 1px var(--cel-line) !important; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
 body .cz-ui .cz-act { background: var(--cel-well) !important; box-shadow: inset 0 0 0 1.5px var(--cel-gold) !important; border: 0 !important; color: #fff !important; }
+/* The portal card's places: a plain face so the long names fit on one line. */
+body .tv-portal-go button strong { font: 600 14px/1.15 var(--cel-label); letter-spacing: 0.01em; color: #fff; text-transform: none; white-space: nowrap; }
+body .tv-portal-go button span { font: 500 11px/1.2 var(--cel-label); color: var(--cel-gold); text-transform: none; letter-spacing: 0.04em; }

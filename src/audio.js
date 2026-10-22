@@ -169,7 +169,7 @@ export function createAudio({ button = null } = {}) {
   });
 
   const fwd = new THREE.Vector3(), up = new THREE.Vector3();
-  let nightK = null, inK = 0;
+  let nightK = null, inK = 0, heard = 0;
   return {
     get muted() {
       return muted;
@@ -181,14 +181,17 @@ export function createAudio({ button = null } = {}) {
     duck(k) {
       ducked = k;
     },
-    update(dt, { camera, night: n = 0, indoors = false, stage = null }) {
+    update(dt, { camera, night: n = 0, indoors = false, stage = null, quiet = false }) {
       if (!ctx || ctx.state !== 'running') return;
       const now = ctx.currentTime;
       // Day into night over the dusk, not at a switch.
       nightK = nightK === null ? n : nightK + (n - nightK) * Math.min(1, dt * 0.5);
       const k = THREE.MathUtils.smoothstep(nightK, 0.25, 0.75);
-      day.on = k < 0.999;
-      night.on = k > 0.001;
+      // Nothing plays until you land (quiet: the connect screen, the flights down).
+      if (quiet) heard = 0;
+      else heard = Math.min(1, heard + dt / 3);
+      day.on = !quiet && k < 0.999;
+      night.on = !quiet && k > 0.001;
       day.gain.gain.setTargetAtTime(Math.cos((k * Math.PI) / 2), now, 0.1);
       night.gain.gain.setTargetAtTime(Math.sin((k * Math.PI) / 2), now, 0.1);
       // The listener is the camera.
@@ -214,7 +217,7 @@ export function createAudio({ button = null } = {}) {
       let near = 0;
       if (stage) {
         const d = p.distanceTo(stage);
-        singer.on = d < 140;
+        singer.on = !quiet && d < 140;
         if (panner.positionX) {
           panner.positionX.setTargetAtTime(stage.x, now, 0.05);
           panner.positionY.setTargetAtTime(stage.y + 1.5, now, 0.05);
@@ -222,7 +225,7 @@ export function createAudio({ button = null } = {}) {
         } else panner.setPosition(stage.x, stage.y + 1.5, stage.z);
         near = 1 - THREE.MathUtils.smoothstep(d, 10, 45);
       } else singer.on = false;
-      music.gain.setTargetAtTime(LEVEL.theme * (1 - near * 0.75) * ducked, now, 0.3);
+      music.gain.setTargetAtTime(LEVEL.theme * (1 - near * 0.75) * ducked * heard, now, 0.3);
       // Indoors, the outside is muffled and quieter.
       inK += ((indoors ? 1 : 0) - inK) * Math.min(1, dt * 3);
       muffle.frequency.setTargetAtTime(20000 * Math.pow(900 / 20000, inK), now, 0.1);

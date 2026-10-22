@@ -727,6 +727,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const chog = state.chog;
     // A room, a cutscene or the session has your Chog (going home, the sale): step aside.
     if (state.own && chog && world.session()?.active?.chog !== chog) end();
+    // Signing in while out as a guest: the guest goes at once (it came back for a moment between the
+    // wake-up and your own Chog stepping out: the user, 10-22).
+    else if (!state.own && chog && world.session()?.active) end();
     const inRoom = rig.room instanceof RoomBox || world.entryActive() || world.spaceActive();
     // Your own Chog went home with the session while you were in a room (src/session.js sendHome): back
     // out it comes with you, unless it's leaving (the goodbye, the sale).
