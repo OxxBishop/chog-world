@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createPlanet, RADIUS } from './planet.js';
 import { createWarp } from './warp.js';
+import { createClips } from './clips.js';
 import { createCosmos } from './cosmos.js';
 
 /*
@@ -48,6 +49,8 @@ export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip, qu
   const sphere = cosmos.sky;
   planet.group.add(cosmos.debris);
   const warp = createWarp({ quality });
+  // The filmed flights (src/clips.js), when they're in: they stand in for the warp.
+  const clips = createClips();
   group.add(sphere, planet.group);
   scene.add(group);
   // The warp draws over everything, in the world too.
@@ -140,6 +143,16 @@ export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip, qu
         }
         return new Promise((resolve) => dip(() => (go(), resolve())));
       }
+      // Out by film when it's ready: white, up through the clouds, the planet; orbit takes over on its last frame.
+      if (clips.ready('departure')) {
+        state = 'out';
+        return clips.play('departure', { intro: 'white' }).then(() => {
+          into(true);
+          state = 'there';
+          run = null;
+          fov = null;
+        });
+      }
       state = 'out';
       // Where the view starts: the camera this frame, looking where the rig looks.
       const p0 = camera.position.clone();
@@ -190,6 +203,14 @@ export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip, qu
         state = 'held';
         warp.set({ flash: 1 });
         return Promise.resolve();
+      }
+      // In by film when it's ready: the planet, the dive, the clouds, white; the white is held for the caller.
+      if (clips.ready('arrival')) {
+        state = 'in';
+        return clips.play('arrival').then(() => {
+          state = 'held';
+          warp.set({ flash: 1 });
+        });
       }
       state = 'in';
       return new Promise((resolve) => {
