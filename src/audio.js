@@ -12,6 +12,12 @@ import * as THREE from 'three';
  *
  * createAudio({ button }) -> { update(dt, { camera, night, indoors, stage }), duck(k), muted }
  *   stage: the singer's stage in world space, or null while it isn't built.
+ *
+ * Effects (B, 10-22): anything can ask for one with
+ *   dispatchEvent(new CustomEvent('chog-sfx', { detail: 'chip' }))
+ * The casino's: chip (a chip down), chips (chips gathered up), spin (the ball round the wheel, about
+ * 6 s), drop (the ball into its pocket), win, nowin. Each plays public/audio/sfx/<name>.mp3 when there
+ * is one (ElevenLabs takes can go straight in there), else its own synthesized take below.
  */
 const BASE = import.meta.env?.BASE_URL ?? '/';
 const XFADE = 6; // seconds of overlap at each loop
@@ -99,6 +105,135 @@ function loopTrack(ctx, url, out) {
   };
 }
 
+// ---------- effects: synthesized takes (a file in audio/sfx/ wins over these) ----------
+const SFX = ['chip', 'chips', 'spin', 'drop', 'win', 'nowin'];
+// White noise, made once a context.
+const noiseOf = (() => {
+  const made = new WeakMap();
+  return (ctx) => {
+    if (!made.has(ctx)) {
+      const b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      made.set(ctx, b);
+    }
+    return made.get(ctx);
+  };
+})();
+// A clay chip on felt or on another chip: a short bright knock with a ring in it.
+function knock(ctx, out, t, { pitch = 1, level = 0.5 } = {}) {
+  const n = ctx.createBufferSource();
+  n.buffer = noiseOf(ctx);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 3400 * pitch;
+  bp.Q.value = 5;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(level, t + 0.0015);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+  n.connect(bp).connect(g).connect(out);
+  n.start(t, Math.random() * 1.5, 0.06);
+  // The ring: two inharmonic partials, quick to die.
+  for (const [f, a] of [[2650, 0.22], [4180, 0.12]]) {
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f * pitch;
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0, t);
+    og.gain.linearRampToValueAtTime(level * a, t + 0.002);
+    og.gain.exponentialRampToValueAtTime(0.0008, t + 0.07);
+    o.connect(og).connect(out);
+    o.start(t);
+    o.stop(t + 0.09);
+  }
+}
+// A soft bell note (two sines, an octave and a fifth's shimmer), for the win's little tune.
+function bell(ctx, out, t, f, level, dur = 0.9) {
+  for (const [m, a] of [[1, 1], [2, 0.28], [3.01, 0.08]]) {
+    const o = ctx.createOscillator();
+    o.type = m === 1 ? 'triangle' : 'sine';
+    o.frequency.value = f * m;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(level * a, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur * (m === 1 ? 1 : 0.6));
+    o.connect(g).connect(out);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+}
+const SYNTH = {
+  chip(ctx, out, t) {
+    // Two knocks: it lands, then settles on the stack.
+    const p = 0.94 + Math.random() * 0.12;
+    knock(ctx, out, t, { pitch: p, level: 0.42 });
+    knock(ctx, out, t + 0.032 + Math.random() * 0.01, { pitch: p * 1.06, level: 0.2 });
+  },
+  chips(ctx, out, t) {
+    // A handful raked in: a quick patter of knocks, thinning out.
+    let at = t;
+    for (let i = 0; i < 11; i++) {
+      knock(ctx, out, at, { pitch: 0.88 + Math.random() * 0.26, level: 0.34 * (1 - i / 14) });
+      at += 0.022 + Math.random() * 0.045;
+    }
+  },
+  spin(ctx, out, t) {
+    // The ball round the track: a rolling hiss that circles (louder as it passes near), slowing and
+    // falling in pitch; then it rattles across the frets, the clicks spacing out.
+    const T = 4.6;
+    const n = ctx.createBufferSource();
+    n.buffer = noiseOf(ctx);
+    n.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 2.2;
+    bp.frequency.setValueAtTime(1500, t);
+    bp.frequency.exponentialRampToValueAtTime(520, t + T);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.16, t + 0.25);
+    g.gain.setValueAtTime(0.16, t + T - 1.2);
+    g.gain.linearRampToValueAtTime(0, t + T);
+    // Laps: a tremolo whose rate falls as the ball slows.
+    const lap = ctx.createOscillator();
+    lap.frequency.setValueAtTime(3.2, t);
+    lap.frequency.linearRampToValueAtTime(1.1, t + T);
+    const depth = ctx.createGain();
+    depth.gain.setValueAtTime(0.07, t);
+    depth.gain.linearRampToValueAtTime(0, t + T);
+    lap.connect(depth).connect(g.gain);
+    n.connect(bp).connect(g).connect(out);
+    n.start(t);
+    n.stop(t + T + 0.1);
+    lap.start(t);
+    lap.stop(t + T + 0.1);
+    // Over the frets.
+    let at = t + T - 0.9, gap = 0.05;
+    while (at < t + T + 1.0) {
+      knock(ctx, out, at, { pitch: 0.7 + Math.random() * 0.15, level: 0.16 });
+      at += gap;
+      gap *= 1.16;
+    }
+  },
+  drop(ctx, out, t) {
+    // Into the pocket: a hop, a smaller one, and still.
+    knock(ctx, out, t, { pitch: 0.78, level: 0.4 });
+    knock(ctx, out, t + 0.11, { pitch: 0.82, level: 0.22 });
+    knock(ctx, out, t + 0.19, { pitch: 0.8, level: 0.1 });
+  },
+  win(ctx, out, t) {
+    // A bright little rise, E major, and a shimmer over it.
+    [659.3, 830.6, 987.8, 1318.5].forEach((f, i) => bell(ctx, out, t + i * 0.085, f, 0.14, 1.1));
+    bell(ctx, out, t + 0.36, 1975.5, 0.05, 1.4);
+  },
+  nowin(ctx, out, t) {
+    // Two soft notes down: no fuss.
+    bell(ctx, out, t, 440, 0.08, 0.5);
+    bell(ctx, out, t + 0.16, 329.6, 0.07, 0.7);
+  },
+};
+
 export function createAudio({ button = null } = {}) {
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return { update() {}, duck() {}, muted: true };
@@ -149,7 +284,31 @@ export function createAudio({ button = null } = {}) {
     sg.connect(panner);
     singer = loopTrack(ctx, `${BASE}audio/singer.mp3`, sg);
     for (const t of [day, night, singer]) t.prime();
+    // Effects: straight to the master (heard indoors or out, never muffled).
+    sfxBus = ctx.createGain();
+    sfxBus.gain.value = 0.9;
+    sfxBus.connect(master);
+    for (const name of SFX) {
+      fetch(`${BASE}audio/sfx/${name}.mp3`)
+        .then((r) => (r.ok && (r.headers.get('content-type') ?? '').includes('audio') ? r.arrayBuffer() : null))
+        .then((b) => b && ctx.decodeAudioData(b))
+        .then((buf) => buf && (takes[name] = buf))
+        .catch(() => {});
+    }
   };
+  let sfxBus = null;
+  const takes = {};
+  const sfx = (name) => {
+    if (!ctx || ctx.state !== 'running' || muted || !sfxBus) return;
+    const t = ctx.currentTime + 0.01;
+    if (takes[name]) {
+      const src = ctx.createBufferSource();
+      src.buffer = takes[name];
+      src.connect(sfxBus);
+      src.start(t);
+    } else SYNTH[name]?.(ctx, sfxBus, t);
+  };
+  addEventListener('chog-sfx', (e) => sfx(e.detail));
   for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, unlock, { capture: true, passive: true });
   document.addEventListener('visibilitychange', () => {
     if (!ctx) return;
@@ -177,6 +336,8 @@ export function createAudio({ button = null } = {}) {
     get state() {
       return { ctx: ctx?.state ?? 'locked', nightK, day: day?.state, night: night?.state, singer: singer?.state };
     },
+    // An effect by name (see SFX); the same as dispatching a 'chog-sfx' event.
+    sfx,
     // Something with its own sound (a cutscene) wants the music down: 0 silent to 1 full.
     duck(k) {
       ducked = k;
