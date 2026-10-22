@@ -547,9 +547,9 @@ async function init() {
       }),
     // The world seen from space (src/space.js): carried out to it from a room or wherever the view
     // is, and back (at once, or flying back over duration seconds).
-    enterSpace: ({ from, duration } = {}) => {
+    enterSpace: ({ from, duration, clip } = {}) => {
       leaveRoomUI();
-      return space.enter({ from, duration });
+      return space.enter({ from, duration, clip });
     },
     leaveSpace: (opts) => space.leave(opts),
     // The first screen (src/intro.js) and the flight to your Chog's home (src/arrival.js), for A11:

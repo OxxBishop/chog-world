@@ -272,7 +272,7 @@ export async function playGreyOut({ chog, name, room, world }) {
     chog.setFade(1 - THREE.MathUtils.smoothstep(k, 0.25, 0.8));
   });
   chog.root.visible = false;
-  await world.enterSpace({ from: room, duration: 5 });
+  await world.enterSpace({ from: room, duration: 5, clip: 'sale' });
   await world.blackout('Your Chog has moved on.', 'It goes grey and wanders off when it leaves your wallet. Its next owner can wake it again.');
 }
 

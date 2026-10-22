@@ -1,26 +1,29 @@
 /*
- * The fly-in and fly-out, filmed (A, 10-22: made in Google Flow from the game's own frames; the user wanted
- * the sign-in, sign-out and sale flights redone in Flow). Each clip is played full screen over the world:
- *   arrival     the planet, a dive through the clouds, white   (signing in; the dome wake-up follows)
- *   departure   white, up through the clouds, out to the planet (signing out, a sale)
- * A phone held upright gets the tall cut. The files load quietly once the world is up; a clip that isn't
+ * The fly-in and the sale, filmed (A, 10-22: the user wanted these flights redone as video). Each clip is
+ * played full screen over the world:
+ *   arrival   the planet, a dive through the clouds, white  (signing in; the dome wake-up follows)
+ *   sale      a dome at dusk going dark, up through the clouds, out to the planet  (a sale)
+ * Both made with Seedance (ElevenLabs) from the game's frames (video/frames). On a phone held upright the
+ * picture is cropped to fill the screen. The files load quietly once the world is up; a clip that isn't
  * ready (or fails) is skipped and the game's own warp plays instead, so nothing ever waits on a video.
  *
  * clips.ready(name) -> bool; clips.play(name, { intro }) -> Promise (resolves on its last frame, with the
  * video still up for two more frames so the world behind is drawn before it goes). intro 'white': the view
- * fades to white first (the departure starts on white).
+ * fades to white first, then out of the white into the film.
  */
 const BASE = import.meta.env?.BASE_URL ?? '/';
-const NAMES = ['arrival', 'departure'];
+const NAMES = ['arrival', 'sale'];
+// Stretches to leave out, as [from, to] seconds: the sale's island came out as a lone cut-off chunk
+// (the user, 10-22), so it blinks white from the dome straight into the clouds.
+const SKIP = { sale: [1.55, 3.45] };
 
 export function createClips() {
-  const tall = () => innerHeight > innerWidth;
   const vids = {};
   const ok = {};
   const load = () => {
     for (const name of NAMES) {
       const v = document.createElement('video');
-      v.src = `${BASE}video/${name}${tall() ? '-tall' : ''}.mp4`;
+      v.src = `${BASE}video/${name}.mp4`;
       v.preload = 'auto';
       v.playsInline = true;
       v.setAttribute('playsinline', '');
@@ -40,6 +43,8 @@ export function createClips() {
     const el = document.createElement('div');
     el.className = 'clip-cover';
     el.style.background = color;
+    // (Over the film: it fades in and out over it.)
+    el.style.zIndex = '61';
     document.body.append(el);
     return el;
   };
@@ -75,7 +80,22 @@ export function createClips() {
           return;
         }
       }
-      white?.remove();
+      // Out of the white into the film.
+      if (white) white.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500, fill: 'forwards', easing: 'ease-out' }).onfinish = () => white.remove();
+      const skip = SKIP[name];
+      if (skip) {
+        const blink = cover('#f2eef8');
+        const watch = () => {
+          if (v.currentTime >= skip[0] - 0.2 && !blink.dataset.on) {
+            blink.dataset.on = '1';
+            blink.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, fill: 'forwards' }).onfinish = () => {
+              v.currentTime = skip[1];
+              blink.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 450, fill: 'forwards' }).onfinish = () => blink.remove();
+            };
+          } else if (!v.ended) requestAnimationFrame(watch);
+        };
+        requestAnimationFrame(watch);
+      }
       await new Promise((r) => {
         v.onended = r;
         // Never hold the game on a stalled video.
