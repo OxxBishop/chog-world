@@ -223,6 +223,8 @@ export class Room {
     p.position.set(x, y, z);
     p.rotation.y = rot;
     if (swaps) recolour(p, swaps);
+    // Rugs lie flat: a Chog's feet sank into their thickness (the user, 10-21).
+    if (name.startsWith('rug')) p.scale.y *= 0.2;
     p.traverse((o) => {
       if (o.isMesh) o.castShadow = false;
     });
@@ -330,41 +332,6 @@ export function buildLobbyRoom() {
       { wall: 'right', x: -2, y: 2.2, w: 5, h: 4.2 },
     ],
   });
-  // The wallet wall: a big glowing screen on the back wall, framed in brass.
-  const wallet = screen((g, w, h) => {
-    const grad = g.createLinearGradient(0, 0, w, h);
-    grad.addColorStop(0, '#2a1650');
-    grad.addColorStop(1, '#4b2a8c');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, w, h);
-    g.strokeStyle = '#b89cff';
-    g.lineWidth = 8;
-    g.strokeRect(14, 14, w - 28, h - 28);
-    g.fillStyle = '#fff6e8';
-    g.textAlign = 'center';
-    g.font = '600 64px Fredoka, sans-serif';
-    g.fillText('Connect your wallet', w / 2, h * 0.36);
-    g.fillStyle = '#d9c8ff';
-    g.font = '500 30px Figtree, sans-serif';
-    g.fillText('Your Chog lives here. Sign in to go home.', w / 2, h * 0.52);
-    // Three slots for wallets, glowing softly.
-    for (let i = 0; i < 3; i++) {
-      const x = w / 2 + (i - 1) * 150;
-      g.fillStyle = 'rgba(184,156,255,0.25)';
-      g.beginPath();
-      g.roundRect(x - 55, h * 0.64, 110, 80, 18);
-      g.fill();
-      g.strokeStyle = '#e8b84a';
-      g.lineWidth = 4;
-      g.stroke();
-    }
-  }, 10, 4.6, 1024);
-  wallet.position.set(0, 4.2, 0.08);
-  room.onWall('back').add(wallet);
-  const back = room.onWall('back');
-  for (const [fw, fh, x, y] of [[10.6, 0.3, 0, 6.65], [10.6, 0.3, 0, 1.75], [0.3, 5.2, -5.15, 4.2], [0.3, 5.2, 5.15, 4.2]]) {
-    back.add(new THREE.Mesh(new THREE.BoxGeometry(fw, fh, 0.25).translate(x, y, 0.12), room.mats.brass));
-  }
   // Reception desk in front of it: cabinets in a row under a long wooden top.
   for (const x of [-2.4, 0, 2.4]) room.put('cabinet_medium', x, -5.2, Math.PI);
   room.group.add(new THREE.Mesh(new THREE.BoxGeometry(7.8, 0.22, 1.8).translate(0, 1.32, -5.2), room.mats.trim));

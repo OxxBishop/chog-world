@@ -440,16 +440,23 @@ export function initSession(world) {
   }
 
   // ---------- signed in ----------
+  // The chip's buttons in the Celestial look (the user's pick, 10-21): line icons in gold-ringed wells.
+  const ICONS = {
+    talk: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 5.5h13a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7.2L7 20v-3.5H5.5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01" stroke-width="2.6"/></svg>',
+    home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 19.5h17"/><path d="M5.5 19.5V13a6.5 6.5 0 0 1 13 0v6.5"/><path d="M10 19.5v-3.4a2 2 0 0 1 4 0v3.4"/></svg>',
+    out: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5H7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h7"/><path d="M11 12h9.5M17 8.5l3.5 3.5-3.5 3.5"/></svg>',
+  };
   function showChip() {
     const chip = $('chog-chip');
     const s = session;
     chip.innerHTML = `
       ${s.info.image ? `<img src="${esc(s.info.image)}" data-alt="${esc(s.info.images.slice(1).join(' '))}" alt="">` : ''}
-      <div><strong>${esc(s.info.name)}</strong><span class="muted small">${s.demo ? 'Demo Chog' : esc(short(s.address))}</span></div>
-      <button class="talk">Talk</button>
-      <button class="home">Home</button>
-      ${s.demo ? '<button class="sale">Simulate sale</button>' : ''}
-      <button class="out">Sign out</button>`;
+      <div class="cel-who"><strong>${esc(s.info.name)}</strong><span>${s.demo ? 'Demo Chog' : esc(short(s.address))}</span></div>
+      <div class="cel-acts">
+        <button class="talk cel" aria-label="Talk"><span class="cel-well">${ICONS.talk}</span><span class="cel-lb">Talk</span></button>
+        <button class="home cel" aria-label="Home"><span class="cel-well">${ICONS.home}</span><span class="cel-lb">Home</span></button>
+        <button class="out cel" aria-label="Sign out"><span class="cel-well">${ICONS.out}</span><span class="cel-lb">Sign out</span></button>
+      </div>`;
     artFallbacks(chip);
     chip.hidden = false;
     $('btn-signin').hidden = true;

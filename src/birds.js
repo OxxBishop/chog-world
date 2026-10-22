@@ -546,6 +546,43 @@ export function createBirds({ scene, island, quality = 'high', prewarm = null })
     get ready() {
       return ready;
     },
+    /**
+     * For a demo shot (src/shots.js): the whale, the big manta ('swoop') or a flight of mantas ('flight')
+     * sent along the curve through a, m, c (world points; m is passed through at the middle) over dur
+     * seconds, from now. A flight is n mantas in loose formation round that line. Returns what was sent,
+     * each with .pos (world, updated as it goes).
+     */
+    stage(kind, a, m, c, dur, n = 3) {
+      if (!ready) return [];
+      const send = (cr, q) => {
+        cr.q = q;
+        cr.dur = dur;
+        cr.f = 0;
+        cr.mode = 'start';
+        cr.bank = 0;
+        cr.obj.visible = true;
+        at(q, 0, cr.pos);
+      };
+      if (kind === 'whale' || kind === 'swoop') {
+        const cr = kind === 'whale' ? whale : swoop;
+        send(cr, curve(a.clone(), m.clone(), c.clone()));
+        // No other of its kind comes along in the middle of the shot.
+        if (kind === 'whale') whaleIn = 1e6;
+        else swoopIn = 1e6;
+        return [cr];
+      }
+      flightIn = 1e6;
+      const d = c.clone().sub(a).setY(0).normalize();
+      const side = new THREE.Vector3(-d.z, 0, d.x);
+      const sent = [];
+      for (let i = 0; i < Math.min(n, flights.length); i++) {
+        const o = side.clone().multiplyScalar((i % 2 ? 1 : -1) * Math.ceil(i / 2) * 8).addScaledVector(d, -i * 7).add(new THREE.Vector3(0, (i % 3) - 1, 0));
+        send(flights[i], curve(a.clone().add(o), m.clone().add(o), c.clone().add(o)));
+        flights[i].idle.timeScale = 0.55 + i * 0.05;
+        sent.push(flights[i]);
+      }
+      return sent;
+    },
     /** Each frame. focus: where the action is (your Chog out walking, else what the camera looks at); me:
      * your Chog's position (or null); outdoors: false in a room or in space (they all hide). */
     update(dt, camera, env, { focus, me = null, outdoors = true } = {}) {

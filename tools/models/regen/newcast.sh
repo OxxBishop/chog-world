@@ -19,7 +19,7 @@ cd $REPO
 node tools/models/slim_cast.mjs $SCR/w3/rig/chog-$ID.glb --out public/models/_wip/new 2>&1 | tail -1
 cd $SCR
 A=""; [ -n "$ARMS" ] && A="&arms=chog-$ID=$ARMS"
-SPEC='Idle:ual:Idle_Loop:0.12:0.5:lean=0.3,Talk:ual:Idle_Talking_Loop:0.12:0.5:lean=0.4,WalkCartoon:ual:Walk_Loop:0.12:0.5:arms=1.6;legs=1.2;spine=1.8;bob=2.5,JogCartoon:ual:Jog_Fwd_Loop:0.12:0.5:arms=1.4;legs=1.1;spine=1.5;bob=2,Wave:robot:Wave:0.12:0.5:arms=2.6;spine=1.4;bob=1.5,Cheer:robot:Jump:0.12:0.5:arms=2;spine=1.4;bob=1.6'
+SPEC='Idle:ual:Idle_Loop:0.12:0.5:lean=0,Talk:ual:Idle_Talking_Loop:0.12:0.5:lean=0,WalkCartoon:ual:Walk_Loop:0.12:0.5:arms=1.6;legs=1.2;spine=1.8;bob=2.5,JogCartoon:ual:Jog_Fwd_Loop:0.12:0.5:arms=1.4;legs=1.1;spine=1.5;bob=2,Wave:robot:Wave:0.12:0.5:arms=2.6;spine=1.4;bob=1.5,Cheer:robot:Jump:0.12:0.5:arms=2;spine=1.4;bob=1.6'
 timeout 280 node grab.mjs "http://127.0.0.1:5173/tools/models/bake.html?dir=_wip/new&m=chog-$ID&spec=$SPEC$A" w3/clips-$ID.json 2>&1 | grep -v Assert
 cd $REPO
 node tools/models/fix/addclips.mjs $SCR/w3/clips-$ID.json public/models/_wip/new chog-$ID

@@ -116,11 +116,23 @@ void main() {
 
   vec2 hd = normalize(d.xz + 1e-5);
 
-  // Stars.
-  if (h > 0.0) {
-    float s = hash3(floor(d * 220.0));
-    float tw = 0.6 + 0.4 * sin(uTime * 2.0 + s * 50.0);
-    col += vec3(0.9, 0.85, 1.0) * step(0.9965, s) * smoothstep(0.02, 0.25, h) * tw * uNight;
+  // Stars: a round soft point somewhere in each lit cell of a grid round the sky (a whole cell lit, they
+  // drew as little rectangles: the user, 10-21), a few of them bigger and bluer or warmer.
+  if (h > 0.0 && uNight > 0.01) {
+    vec3 g = d * 220.0;
+    vec3 cell = floor(g);
+    float s = hash3(cell);
+    if (s > 0.995) {
+      vec3 at = vec3(hash3(cell + 1.7), hash3(cell + 3.1), hash3(cell + 5.3)) - 0.5;
+      float r = length(fract(g) - 0.5 - at * 0.5);
+      float big = fract(s * 913.7);
+      float size = mix(0.07, 0.16, big * big);
+      float core = smoothstep(size, size * 0.25, r);
+      float glow = exp(-r * r / (size * size * 6.0)) * 0.35;
+      float tw = 0.65 + 0.35 * sin(uTime * (1.4 + big * 2.0) + s * 50.0);
+      vec3 tint = mix(vec3(0.82, 0.86, 1.0), vec3(1.0, 0.9, 0.82), fract(s * 377.3));
+      col += tint * (core + glow) * (0.7 + big * 0.8) * smoothstep(0.02, 0.25, h) * tw * uNight;
+    }
   }
 
   // A soft glow along the horizon at night, so sea and sky meet without a hard edge.

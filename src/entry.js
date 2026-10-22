@@ -287,9 +287,11 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
   // The bar has two more: its counter's two places for the Chog-to-Chog chat (src/barchat.js LAYOUTS),
   // where your own Chog joins in.
   const ROUTES = {
+    // (A guest's Chog joins the bar's pair at the near end of the counter, turned to them; it stood between
+    // them staring at the camera: the user, 10-21.)
     bar: {
-      tall: { guest: [[1.35, -1.55]], a: [[0.2, -2.3]], b: [[2.3, -2.3]] },
-      wide: { guest: [[1.35, -1.85]], a: [[0, -2.3]], b: [[2.6, -2.3]] },
+      tall: { guest: [[-0.45, -1.95]], a: [[0.55, -2.3]], b: [[2.1, -2.3]] },
+      wide: { guest: [[-0.85, -1.95]], a: [[0, -2.3]], b: [[2.6, -2.3]] },
     },
     casino: { tall: { guest: [[-2.55, -2.45]] }, wide: { guest: [[0.15, -1.85]] } },
     lobby: { tall: { guest: [[0.65, -0.35]] }, wide: { guest: [[0.65, -0.35]] } },
@@ -415,15 +417,23 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
           root.scale.setScalar(1);
           root.position.set(x, 0, z);
           root.rotation.set(0, Math.atan2(view.x - x, view.z - z), 0);
+          // At the bar as a guest: turned to the pair at the counter (a little open to the view, so its face
+          // shows), listening in.
+          if (r.id === 'bar' && !way.chat) {
+            const toPair = Math.atan2(1.25 - x, -2.3 - z), toView = root.rotation.y;
+            root.rotation.y = toPair + Math.atan2(Math.sin(toView - toPair), Math.cos(toView - toPair)) * 0.35;
+          }
           resident.set(r.id, { walker: { ...walker, scale: sc0 }, route: way.pts, chat: way.chat });
           arrived?.();
           arrived = null;
           chog.play('idle');
           chog.setPace?.(1);
-          rig.views.entry = { pos: r.view.pos.clone(), target: r.view.target.clone(), enter: true };
+          // At the bar as a guest, the view settles on all three (trioAim).
+          const target = r.id === 'bar' && !way.chat ? trioAim(r, root) ?? r.view.target.clone() : r.view.target.clone();
+          rig.views.entry = { pos: r.view.pos.clone(), target, enter: true };
           rig.jump('entry');
           camera.position.copy(r.view.pos);
-          camera.lookAt(r.view.target);
+          camera.lookAt(target);
           camera.updateMatrixWorld();
           lens(fovs.indoor());
           setDoor(e, 0);
@@ -801,10 +811,24 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
     if (back >= 1) end();
   }
 
+  // Your guest Chog at the bar with the pair: the middle of all three (it, and the pair either side of
+  // theirs), so all of them are in view on a phone (world), or null.
+  function trioAim(r, mine) {
+    // (The pair's places at the counter: as the walk ends they may still be taking them.)
+    const tall = window.innerWidth < window.innerHeight;
+    const fp = session()?.focusIn?.(r) ?? (r.id === 'bar' ? r.room.group.localToWorld(new THREE.Vector3(tall ? 1.33 : 1.3, 1.3, -2.3)) : null);
+    if (!fp) return null;
+    const g = mine.getWorldPosition(new THREE.Vector3()).setY(fp.y);
+    const d = g.distanceTo(fp);
+    const half = tall ? 0.78 : 1.3;
+    return fp.clone().lerp(g, THREE.MathUtils.clamp((d - half) / (2 * Math.max(d, 1e-3)), 0, 0.5));
+  }
   // A guest's view: from the room's framed view round to the room's people, then it settles there.
   function spot(t) {
     const k = smooth(clamp01((t - run.panAt) / 1.1));
-    const look = run.r.view.target.clone().lerp(run.spot, k);
+    const mine = resident.get(run.r.id)?.walker?.chog?.root;
+    const aim = (mine?.parent && trioAim(run.r, mine)) || run.spot;
+    const look = run.r.view.target.clone().lerp(aim, k);
     camera.position.copy(run.r.view.pos);
     camera.lookAt(look);
     camera.updateMatrixWorld();

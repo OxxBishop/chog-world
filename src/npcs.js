@@ -15,6 +15,7 @@ import { angleLerp } from './util.js';
  *   plaza    the singer on their stage with a crowd watching, two Chogs strolling round the fountain,
  *            and one by the lobby door
  *   gardener #271 (Petal) out on the tree island among the flowers
+ *   napper   #124 (Snooze) dozing at the foot of the giant tree there
  *   runner   #471 (Dash) lapping the loop on the beacon island
  *   walker   the astronaut, floating in zero g in his own dome on the middle island (src/cosmo.js)
  *
@@ -37,6 +38,8 @@ export const NPC_SLOTS = {
   // By the lobby door, in the Monad look.
   doorman: { id: 1151, glb: M('chog-1151'), plaza: [-5.2, 23.2] },
   gardener: { id: 271, glb: M('chog-271'), hood: 0 },
+  // At the foot of the giant tree, on the side you come up from the bridge (the user's pick, 10-21).
+  napper: { id: 124, glb: M('chog-124'), hood: 0, r: 9.5 },
   runner: { id: 471, glb: M('chog-471'), hood: 2 },
   walker: { id: 68, glb: M('chog-68'), hood: 1, speed: -0.07 },
 };
@@ -364,6 +367,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   let lastEnv = null;
   let lastRenderer = null;
   const wp = new THREE.Vector3();
+  const cp = new THREE.Vector3();
   let t = 0;
 
   // ---------- noticing you ----------
@@ -818,6 +822,32 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     },
   );
 
+  // ---------- Snooze (#124), napping at the foot of the giant tree ----------
+  const nap = NPC_SLOTS.napper;
+  const napHood = HOODS[nap.hood];
+  const nest = new THREE.Group();
+  {
+    // Toward downtown from the tree, so he's the first thing you see coming up from the bridge.
+    const a = napHood.angle + Math.PI + 0.35;
+    const x = napHood.x + Math.cos(a) * nap.r, z = napHood.z + Math.sin(a) * nap.r;
+    nest.position.set(x, surfaceAt(x, z), z);
+    nest.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a)) + Math.PI;
+  }
+  nest.scale.setScalar(OUTDOOR);
+  scene.add(nest);
+  set(
+    (v) => nest.getWorldPosition(v),
+    async () => {
+      const snooze = await npc(nap.glb, nap.id);
+      nest.add(snooze.root);
+      // Eyes shut, breathing slowly; he wakes for you and dozes off again after.
+      const doze = () => (snooze.play('sleepy'), snooze.setPace(0.6));
+      doze();
+      const tick = own(snooze, () => {}, { resume: doze });
+      return { group: nest, chogs: await shown(nest, [snooze]), tick: (tt, dt) => tick(tt, dt) };
+    },
+  );
+
   // ---------- Dash (#471), lapping the beacon island ----------
   const hood2 = HOODS[NPC_SLOTS.runner.hood];
   const lap = new THREE.Group();
@@ -900,6 +930,8 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       // He turns about his middle, not his feet.
       const pivot = new THREE.Group();
       pivot.add(astro.root);
+      // (His middle, for your Chog to bump into: src/travel.js.)
+      astro.root.userData.centre = pivot;
       astro.root.position.y = -CHOG_HEIGHT * OUTDOOR * 0.45;
       stroll.add(pivot);
       astro.play('idle');
@@ -1045,7 +1077,16 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         for (const c of a.chogs) if (c.root.userData.away !== undefined) c.root.visible = !c.root.userData.away && (near || !a.extra?.includes(c.root));
         if (!near) continue;
         a.tick?.(t, dt);
-        for (const c of a.chogs) c.update(dt, camera);
+        for (const c of a.chogs) {
+          c.update(dt, camera);
+          // A Chog right against the lens (the camera settling behind you out of a door, by the steps
+          // where one stands) leaves the picture instead of filling it with one blurry ear: A, 10-21.
+          const close = c.root.visible && c.root.getWorldPosition(cp).distanceTo(camera.position) < 1.5;
+          if (close !== !!c.root.userData.atLens) {
+            c.root.userData.atLens = close;
+            c.setFade?.(close ? 0 : 1);
+          }
+        }
       }
       lastCamera = camera;
       lastMe = me;

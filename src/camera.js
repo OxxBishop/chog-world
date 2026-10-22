@@ -108,6 +108,9 @@ export class Pod {
  * A room the camera can be inside: a box w by d, h tall, turned by rot, on a floor at y. Its door is
  * in the front wall (local +z), doorHalf wide each side, and the view can walk in through it.
  */
+// How high over a room's floor the camera keeps at least (clear of its chairs, beds and tables).
+const ROOM_CAM_LOW = 2.3;
+
 export class RoomBox extends Pod {
   constructor({ x, y, z, w, d, h, rot = 0, doorHalf = 1.2, margin = 0.5, within = [], parent = null }) {
     super({ x, y, z, r: Math.hypot(w, d) / 2, wall: h, cap: 0.01, margin, facing: rot, doorHalf, enterable: true, within, parent });
@@ -467,6 +470,9 @@ export class CameraRig {
       if (s === this.room) s.keepIn(pos, this.target);
       else if (!this.room?.within.includes(s)) s.pushOut(pos);
     }
+    // In a room, over the furniture: swung low it went into the chairs and the bed, half the view a cushion
+    // (the user, 10-21, the lobby and a home).
+    if (this.room instanceof RoomBox) pos.y = THREE.MathUtils.clamp(pos.y, this.room.y + ROOM_CAM_LOW, this.room.y + this.room.h - 0.35);
     return pos;
   }
 

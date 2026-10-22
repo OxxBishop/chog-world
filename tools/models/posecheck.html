@@ -1,0 +1,44 @@
+<!doctype html><meta charset="utf-8"><title>Pose check</title><style>body{margin:0;background:#cbbfe8}canvas{display:block}</style>
+<script type="module">
+// A cast model in the game's own animation (src/chog.js, arm limits and all), from the side and the front,
+// at a few moments of a clip: /tools/models/posecheck.html?m=chog-56&clip=walk&t=0.2,0.45,0.7
+import * as THREE from 'three';
+import { makeChog, setChogRenderer } from '/src/chog.js';
+const q = new URLSearchParams(location.search);
+const W = 260, H = 320, times = (q.get('t') || '0.2,0.45,0.7').split(',').map(Number);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W * times.length, H * 2);
+renderer.setScissorTest(true);
+document.body.append(renderer.domElement);
+setChogRenderer(renderer);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#cbbfe8');
+scene.add(new THREE.HemisphereLight('#ffffff', '#8a7ab0', 2.2));
+const sun = new THREE.DirectionalLight('#ffffff', 2);
+sun.position.set(2, 4, 3);
+scene.add(sun);
+const c = await makeChog({ model: `models/${q.get('dir') || 'npcs'}/${q.get('m')}.glb` });
+scene.add(c.root);
+// (A moment standing first, as in the game.)
+c.play('idle');
+for (let i = 0; i < 40; i++) c.update(1 / 60, null);
+c.play(q.get('clip') || 'walk');
+const box = new THREE.Box3().setFromObject(c.root), size = box.getSize(new THREE.Vector3()), mid = box.getCenter(new THREE.Vector3());
+const cam = new THREE.PerspectiveCamera(30, W / H, 0.01, 100);
+let done = 0;
+for (const [k, t] of times.entries()) {
+  const steps = Math.round(t * 60) - done;
+  for (let i = 0; i < steps; i++) c.update(1 / 60, cam);
+  done += steps;
+  for (const [row, ang] of (q.get('a') || '90,0').split(',').map((a, r) => [r, (+a * Math.PI) / 180])) {
+    const d = size.y * +(q.get('d') || 2.4), aim = mid.clone().setY(mid.y + size.y * +(q.get('y') || 0));
+    cam.position.set(aim.x + Math.sin(ang) * d, aim.y + size.y * 0.1, aim.z + Math.cos(ang) * d);
+    cam.lookAt(aim);
+    renderer.setViewport(k * W, (1 - row) * H, W, H);
+    renderer.setScissor(k * W, (1 - row) * H, W, H);
+    renderer.render(scene, cam);
+  }
+}
+window.__shot = renderer.domElement.toDataURL('image/jpeg', 0.8);
+window.__done = btoa('ok');
+</script>

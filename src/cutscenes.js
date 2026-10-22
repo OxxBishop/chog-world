@@ -271,8 +271,15 @@ export async function playGreyOut({ chog, name, room, world }) {
     chog.root.position.lerpVectors(from, door, k * 0.7);
     chog.setFade(1 - THREE.MathUtils.smoothstep(k, 0.25, 0.8));
   });
-  chog.root.visible = false;
-  await world.enterSpace({ from: room, duration: 5 });
+  // Out of its dome and away down the walk, the camera staying behind (the user, 10-22: being sent off
+  // the island straight from the room was "too abrupt"). Then up and out to the planet.
+  if (world.farewell) {
+    await world.farewell({ room, chog });
+    await world.enterSpace({ duration: 5, clip: 'sale' });
+  } else {
+    chog.root.visible = false;
+    await world.enterSpace({ from: room, duration: 5, clip: 'sale' });
+  }
   await world.blackout('Your Chog has moved on.', 'It goes grey and wanders off when it leaves your wallet. Its next owner can wake it again.');
 }
 
@@ -285,7 +292,7 @@ export async function playLogoff({ chog, name, room, world }) {
   caption('See you soon', `${name} will be right here when you come back.`);
   await wait(2200);
   hideCaption();
-  await world.enterSpace({ from: room, duration: 4 });
+  await world.enterSpace({ from: room, duration: 4, clip: 'signout' });
 }
 
 /**

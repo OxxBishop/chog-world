@@ -17,7 +17,7 @@ const DOT = 3;
 const LAP = 1.7;
 
 // The Chog, facing right: its outline, lilac rim, mane, face, eyes, blush and mouth.
-const SPRITE = `
+export const SPRITE = `
 ..........o.........
 .........oLo........
 ..o......ollo..o....
@@ -35,12 +35,12 @@ oLnmmmmmmffffffffdlo
 ..olnldddpffkkffpdlo
 ...olollllllllllllo.
 ....o.oooooooooooo..`;
-const PAL = {
+export const PAL = {
   o: '#120a2e', l: '#c3adff', L: '#f1eaff', m: '#3d2596', n: '#5b3fcc', d: '#29176c',
   f: '#fde9d6', e: '#1b1240', p: '#f7a1b6', k: '#ee93a8',
 };
 // A dot by how lately the Chog went by it: just now, a moment ago, a while ago, not lately.
-const DOT_COLS = [
+export const DOT_COLS = [
   { fill: '#f6f1ff', edge: '#c9b6ff' },
   { fill: '#c3adff', edge: '#9a7cf2' },
   { fill: '#7a5ae0', edge: '#5b3fcc' },
@@ -49,7 +49,7 @@ const DOT_COLS = [
 // A sparkle's frames as it twinkles: a dot, a small cross, a big one, the small one, the dot.
 const TWINKLE = [0, 1, 2, 2, 1, 0];
 
-export function createLoaderArt(canvas, k = 2, { calm = false } = {}) {
+export function createLoaderArt(canvas, k = 2, { calm = false, pal = PAL, dots: dotCols = DOT_COLS } = {}) {
   canvas.width = canvas.height = ART * k;
   const ctx = canvas.getContext('2d');
   const rows = SPRITE.trim().split('\n');
@@ -60,7 +60,7 @@ export function createLoaderArt(canvas, k = 2, { calm = false } = {}) {
   const cc = chog.getContext('2d');
   rows.forEach((row, y) => [...row].forEach((ch, x) => {
     if (ch === '.') return;
-    cc.fillStyle = PAL[ch];
+    cc.fillStyle = pal[ch];
     cc.fillRect(x * k, y * k, k, k);
   }));
   const px = (x, y, w, h, col) => {
@@ -87,10 +87,10 @@ export function createLoaderArt(canvas, k = 2, { calm = false } = {}) {
       // How far behind the Chog this dot is (0 just passed, up to a lap).
       const behind = (((a - d.a) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
       // (It covers the ones it is on, so the trail starts at its back.)
-      const c = DOT_COLS[behind < 1.2 ? 0 : behind < 1.9 ? 1 : behind < 2.7 ? 2 : 3];
+      const c = dotCols[behind < 1.2 ? 0 : behind < 1.9 ? 1 : behind < 2.7 ? 2 : 3];
       px(d.x, d.y, DOT, DOT, c.edge);
       px(d.x + 1, d.y + 1, DOT - 2, DOT - 2, c.fill);
-      if (c === DOT_COLS[0]) {
+      if (c === dotCols[0]) {
         // The freshest one has a soft lit corner.
         px(d.x, d.y, 1, 1, c.fill);
       }
@@ -132,3 +132,15 @@ export function createLoaderArt(canvas, k = 2, { calm = false } = {}) {
   }
   return { draw };
 }
+
+// The same Chog in mint, for signing in (the user, 10-22: the wallet search and "is waiting for you" use
+// the loading screen's Chog in another colour, not the Chog's art).
+export const MINT = {
+  pal: { ...PAL, l: '#a8f0e0', L: '#eafff8', m: '#17786d', n: '#24a493', d: '#0f564e' },
+  dots: [
+    { fill: '#effffb', edge: '#a8f0e0' },
+    { fill: '#a8f0e0', edge: '#5fd3bf' },
+    { fill: '#2fae9b', edge: '#1d8678' },
+    { fill: '#164f49', edge: '#103e39' },
+  ],
+};

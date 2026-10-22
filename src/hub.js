@@ -7,6 +7,7 @@ import { createGlows } from './glows.js';
 import { buildLobbyRoom, buildBarRoom } from './interior.js';
 import { buildCasinoRoom } from './casino.js';
 import { createLobbyFx } from './fx/lobbyfx.js';
+import { domeTicker } from './fx/domeTicker.js';
 
 /*
  * The Chog Hub: one building on the downtown plaza with three doors, each wing with its own
@@ -367,7 +368,7 @@ export function vestibule(parent, { x, half, top, zOut, zIn, sill, floorIn, room
     parent.add(box(0.3, top - floorIn + 0.3, len, mats.cream, x + side * (half + 0.15), (floorIn + top) / 2, mid));
     // Panelled lower walls: as high as the landing beside it, and a dado rail on top.
     parent.add(box(0.06, sill - floorIn + 1.2, zOut - stepsAt + count * RUN, mats.darkWood, x + side * (half - 0.03), (floorIn + sill + 1.2) / 2, (zOut + stepsAt - count * RUN) / 2));
-    parent.add(box(0.06, 1.2, stepsAt - count * RUN - zWall, mats.darkWood, x + side * (half - 0.03), floorIn + 0.6, (stepsAt - count * RUN + zWall) / 2));
+    parent.add(box(0.06, 1.2, stepsAt - count * RUN - zWall - 0.01, mats.darkWood, x + side * (half - 0.03), floorIn + 0.6, (stepsAt - count * RUN + zWall + 0.01) / 2));
     const lamp = new THREE.Vector3(x + side * (half - 0.35), Math.max(sill, floorIn) + 3.1, (zIn + stepsAt) / 2 + 0.6);
     parent.add(box(0.5, 0.14, 0.14, mats.brass, x + side * (half - 0.2), lamp.y + 0.4, lamp.z));
     parent.add(new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8).translate(lamp.x, lamp.y, lamp.z), mats.lantern));
@@ -404,8 +405,9 @@ export function vestibule(parent, { x, half, top, zOut, zIn, sill, floorIn, room
   const end = new THREE.Mesh(new THREE.ShapeGeometry(shape), mats.cream);
   end.position.set(x, 0, zIn + 0.03);
   parent.add(end);
-  for (const side of [-1, 1]) parent.add(box(0.3, roomDoor.h + 0.3, 0.28, mats.darkWood, x + side * (roomDoor.half + 0.15), floorIn + (roomDoor.h + 0.3) / 2, zWall + 0.14));
-  parent.add(box(roomDoor.half * 2 + 0.6, 0.3, 0.28, mats.darkWood, x, floorIn + roomDoor.h + 0.15, zWall + 0.14));
+  // (A centimetre clear of the walls' ends, which stop at the same depth: A 10-22.)
+  for (const side of [-1, 1]) parent.add(box(0.3, roomDoor.h + 0.3, 0.28, mats.darkWood, x + side * (roomDoor.half + 0.15), floorIn + (roomDoor.h + 0.3) / 2, zWall + 0.15));
+  parent.add(box(roomDoor.half * 2 + 0.6, 0.3, 0.28, mats.darkWood, x, floorIn + roomDoor.h + 0.15, zWall + 0.15));
   return (z) => {
     if (z >= stepsAt) return sill;
     if (z <= stepsAt - count * RUN) return floorIn;
@@ -445,6 +447,8 @@ export function buildHub() {
   repaint(lobbyPod, { grey: 'brown', purple: 'brown', dark: 'brown' }, mats.gold, isDome);
   lobbyPod.traverse((o) => o.isMesh && !o.userData.roof && (o.userData.lobby = true));
   kit.add(lobbyPod);
+  // The Monad ticker round the dome's foot (A, 10-21: the user's pick).
+  const ticker = domeTicker(lobbyPod, group);
   let barWing = null, casinoWing = null, casinoTube = null;
   for (const side of [-1, 1]) {
     const wing = piece(side < 0 ? 'basemodule_A' : 'basemodule_D', WING_S);
@@ -690,7 +694,9 @@ export function buildHub() {
   const casinoBox = new THREE.Box3(new THREE.Vector3(cx - casinoRoom.w / 2, CASINO_ROOM.y + 0.02, CASINO_ROOM.z - casinoRoom.d / 2), new THREE.Vector3(cx + casinoRoom.w / 2, CASINO_ROOM.y + casinoRoom.h, casinoIn));
   for (const o of [casinoWing, casinoTube]) carve(o, casinoBox, group);
   carve(casinoWing, new THREE.Box3(new THREE.Vector3(cx - CASINO_DOOR.half, CASINO_DOOR.bottom, casinoIn + 1), new THREE.Vector3(cx + CASINO_DOOR.half, CASINO_DOOR.top, CASINO_DOOR.z + 0.4)), group);
-  for (const side of [-1, 1]) props.add(box(0.35, CASINO_DOOR.top + 0.35, 1.8, mats.gold, cx + side * (CASINO_DOOR.half + 0.175), (CASINO_DOOR.top + 0.35) / 2, WING_FRONT - 0.45));
+  // (Their inner faces stand 2 cm proud of the hall's walls: on the same plane the gold and the cream
+  // fought for the pixels all down the walk in, A 10-22, the user: "the casino walls still glitching".)
+  for (const side of [-1, 1]) props.add(box(0.35, CASINO_DOOR.top + 0.35, 1.8, mats.gold, cx + side * (CASINO_DOOR.half + 0.155), (CASINO_DOOR.top + 0.35) / 2, WING_FRONT - 0.45));
   props.add(box(CASINO_DOOR.half * 2 + 0.7, 0.35, 1.8, mats.gold, cx, CASINO_DOOR.top + 0.175, WING_FRONT - 0.45));
   props.add(box(CASINO_DOOR.half * 2 + 0.8, CASINO_DOOR.bottom, 0.9, mats.steps, cx, CASINO_DOOR.bottom / 2, CASINO_DOOR.z + 0.55));
   const casinoDoor = doorMats({ darkWood: new THREE.MeshLambertMaterial({ color: '#7a1626' }), wood: new THREE.MeshLambertMaterial({ color: '#d9a944' }), brass: mats.gold });
@@ -760,6 +766,7 @@ export function buildHub() {
   }
 
   for (const s of signs) group.add(s);
+  group.add(ticker.group);
   props.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = true;
@@ -815,6 +822,13 @@ export function buildHub() {
   // Bulbs: warm string lights over the bar, gold marquee bulbs that chase round the casino door.
   const bulbGeo = new THREE.SphereGeometry(0.13, 8, 6);
   const warmBulbs = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd9a0') });
+  // (Not drawn right by the camera: walking into the bar under them, they filled the view as big discs: A, the
+  // user 10-21.)
+  warmBulbs.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vNearD;').replace('#include <project_vertex>', '#include <project_vertex>\nvNearD = -mvPosition.z;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vNearD;').replace('void main() {', 'void main() {\n  if (vNearD < 1.6) discard;');
+  };
+  warmBulbs.customProgramCacheKey = () => 'warm-bulbs-near';
   const stringMesh = new THREE.InstancedMesh(bulbGeo, warmBulbs, bulbs.length);
   bulbs.forEach((p, i) => stringMesh.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)));
   group.add(stringMesh);
@@ -858,6 +872,7 @@ export function buildHub() {
         marqueeMesh.setColorAt(i, tmp);
       });
       marqueeMesh.instanceColor.needsUpdate = true;
+      ticker.update(t, n);
       for (const [k, b] of banners.entries()) b.rotation.y = Math.sin(t * 0.8 + k * 2) * 0.12;
       stringGlow.update(env, renderer);
       marqueeGlow.update(env, renderer);

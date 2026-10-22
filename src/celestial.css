@@ -1,0 +1,175 @@
+/*
+ * Celestial: the in-game interface (the user's pick, 10-21, of four live looks; after Genshin Impact and
+ * Star Rail). Gold rings round dark glass wells, Cinzel for names and numbers, Josefin Sans for labels,
+ * thin gold borders on the panels, a bearing bezel on the map instead of a compass strip. Loaded after
+ * style.css and laid over it; the loading and connect screens keep their own pixel look.
+ */
+@font-face { font-family: 'Cinzel'; font-style: normal; font-weight: 400 900; font-display: swap; src: url(/fonts/cinzel-latin.woff2) format('woff2'); }
+@font-face { font-family: 'Josefin Sans'; font-style: normal; font-weight: 100 700; font-display: swap; src: url(/fonts/josefinsans-latin.woff2) format('woff2'); }
+
+:root {
+  --cel-gold: #ecdcae;
+  --cel-gold-2: #c8ad6e;
+  --cel-well: rgba(22, 16, 44, 0.46);
+  --cel-panel: rgba(20, 14, 40, 0.86);
+  --cel-line: rgba(236, 220, 174, 0.6);
+  --cel-ink: rgba(20, 12, 40, 0.9);
+  --cel-halo: 0 0 3px rgba(20, 12, 40, 0.9), 0 0 10px rgba(20, 12, 40, 0.45);
+  --cel-display: 'Cinzel', 'Times New Roman', serif;
+  --cel-label: 'Josefin Sans', 'Figtree', system-ui, sans-serif;
+}
+
+/* ---------- the shared parts: a label, a well (a round dark glass button in a gold ring), a text button ---------- */
+.cel-lb { font: 600 10px/1 var(--cel-label); letter-spacing: 0.22em; text-transform: uppercase; color: var(--cel-gold); text-shadow: var(--cel-halo); white-space: nowrap; }
+.cel-well {
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; position: relative; flex: none;
+  background: var(--cel-well); box-shadow: inset 0 0 0 1.5px var(--cel-gold), 0 0 0 1px rgba(236, 220, 174, 0.16);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: #fff;
+}
+.cel-well::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1px solid rgba(236, 220, 174, 0.38); border-top-color: transparent; border-bottom-color: transparent; pointer-events: none; }
+.cel-well svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 1px rgba(20, 12, 40, 0.8)); }
+button.cel { background: none; border: 0; padding: 0; color: #fff; display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; -webkit-backdrop-filter: none; backdrop-filter: none; position: relative; -webkit-tap-highlight-color: transparent; }
+button.cel:hover:not(:disabled) .cel-well { box-shadow: inset 0 0 0 1.5px #fff6d8, 0 0 12px rgba(236, 220, 174, 0.45); }
+button.cel:focus-visible { outline: none; }
+button.cel:focus-visible .cel-well { box-shadow: inset 0 0 0 2px #fff, 0 0 0 3px rgba(236, 220, 174, 0.6); }
+.cel-ring { position: absolute; left: 50%; top: 50%; border-radius: 50%; border: 1.5px solid var(--cel-gold); pointer-events: none; }
+
+/* Text buttons anywhere in the world's interface: dark glass, a gold hairline, diamond ends. */
+body .focus-bar button, body .signin-btn, body .chat-form button, body .pc-actions button, body .tv-portal-go button,
+body .cz-go, body .cz-leave, body .cz-signin, body .signin-body button, body .places-toggle, body #places button, body .tv-close, body .cz-sum button {
+  font: 600 12px/1 var(--cel-label); letter-spacing: 0.16em; text-transform: uppercase; color: #fff;
+  background: var(--cel-well); border: 0; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--cel-line);
+  padding: 11px 16px 9px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); text-shadow: none;
+}
+body .focus-bar button:hover, body .signin-btn:hover, body .chat-form button:hover, body .pc-actions button:hover, body .tv-portal-go button:hover,
+body .cz-go:hover, body .cz-leave:hover, body .signin-body button:hover, body #places button:hover, body .tv-close:hover { box-shadow: inset 0 0 0 1px #fff6d8, 0 0 12px rgba(236, 220, 174, 0.35); border-color: transparent; }
+body .focus-bar button.active, body #places button.active { background: linear-gradient(180deg, rgba(236, 220, 174, 0.32), rgba(200, 173, 110, 0.18)); color: #fff; box-shadow: inset 0 0 0 1px var(--cel-gold); }
+
+/* ---------- top left: the name, sign in, and you ---------- */
+body .hud.top-left .mark { font: 600 26px/1 var(--cel-display); letter-spacing: 0.08em; text-transform: uppercase; background: linear-gradient(180deg, #fff, var(--cel-gold)); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(0 0 4px rgba(20, 12, 40, 0.65)); }
+body .signin-btn { position: fixed; padding: 12px 18px 10px; }
+body .signin-btn::before, body .signin-btn::after { content: ""; position: absolute; top: 50%; width: 6px; height: 6px; margin-top: -3px; transform: rotate(45deg); background: var(--cel-gold); }
+body .signin-btn::before { left: -3px; }
+body .signin-btn::after { right: -3px; }
+body .chog-chip { background: none; border: 0; box-shadow: none; padding: 0; gap: 12px; -webkit-backdrop-filter: none; backdrop-filter: none; align-items: center; }
+body .chog-chip > img { width: 46px; height: 46px; border-radius: 50%; border: 0; box-shadow: 0 0 0 2px var(--cel-gold), 0 0 0 6px rgba(236, 220, 174, 0), 0 0 0 7px rgba(236, 220, 174, 0.5); }
+body .chog-chip .cel-who { display: flex; flex-direction: column; gap: 4px; line-height: 1.05; }
+body .chog-chip .cel-who strong { font: 600 17px/1 var(--cel-display); color: #fff; text-shadow: var(--cel-halo); }
+body .chog-chip .cel-who span { font: 600 9.5px/1 var(--cel-label); letter-spacing: 0.24em; text-transform: uppercase; color: var(--cel-gold); text-shadow: var(--cel-halo); }
+body .chog-chip .cel-acts { display: flex; flex-direction: row; gap: 10px; margin-left: 6px; margin-right: 0; }
+body .chog-chip .cel-well { width: 38px; height: 38px; }
+body .chog-chip .cel-well svg { width: 19px; height: 19px; }
+
+/* ---------- the time bar: no panel, the hour in Cinzel, a gold line with a diamond, three wells ---------- */
+body .hud.bottom { background: none; border: 0; -webkit-backdrop-filter: none; backdrop-filter: none; padding: 0; gap: 16px; width: min(640px, calc(100vw - 28px)); align-items: center; }
+body .hud.bottom .clock { min-width: 82px; }
+body #clock-time { font: 600 30px/1 var(--cel-display); color: #fff; text-shadow: var(--cel-halo); letter-spacing: 0.02em; }
+body #clock-phase { font: 600 9.5px/1 var(--cel-label); letter-spacing: 0.3em; color: var(--cel-gold); margin-top: 6px; text-shadow: var(--cel-halo); }
+body #time-slider { -webkit-appearance: none; appearance: none; background: transparent; height: 30px; accent-color: var(--cel-gold); cursor: pointer; }
+body #time-slider::-webkit-slider-runnable-track { height: 1.5px; background: linear-gradient(90deg, transparent, var(--cel-gold) 8%, var(--cel-gold) 92%, transparent); box-shadow: 0 0 3px rgba(20, 12, 40, 0.8); }
+body #time-slider::-moz-range-track { height: 1.5px; background: linear-gradient(90deg, transparent, var(--cel-gold) 8%, var(--cel-gold) 92%, transparent); }
+body #time-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -9.25px; border: 0; border-radius: 0; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); background: radial-gradient(circle, #fff 22%, var(--cel-gold) 24%, var(--cel-gold) 62%, #8a6d2c 66%); }
+body #time-slider::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 0; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); background: radial-gradient(circle, #fff 22%, var(--cel-gold) 24%, var(--cel-gold) 62%, #8a6d2c 66%); }
+body #btn-live .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(236, 220, 174, 0.5); position: relative; }
+body #btn-live.active .dot { background: #fff4cc; box-shadow: 0 0 10px #ffe7a0; }
+body #btn-live, body #btn-photo, body #btn-sound { width: auto; height: auto; background: none; border: 0; padding: 0; color: #fff; }
+body #btn-live.active { background: none; color: #fff; }
+body #btn-sound .cel-well svg .spk { fill: currentColor; }
+body #btn-sound .slash, body #btn-sound.off .wave { display: none; }
+body #btn-sound.off .slash { display: inline; }
+
+/* ---------- getting about: the map's bezel is drawn on it (src/travel.js); no compass strip ---------- */
+body .tv-compass { display: none; }
+body .tv-map { border: 0; box-shadow: 0 0 0 1px rgba(236, 220, 174, 0.35), 0 0 18px rgba(20, 12, 40, 0.35); background: transparent; }
+body .tv-map::after { content: ""; position: absolute; inset: -9px; border-radius: 50%; background: repeating-conic-gradient(from -1deg, var(--cel-gold) 0 2deg, transparent 2deg 15deg); -webkit-mask: radial-gradient(circle, transparent 69%, #000 70%, #000 74%, transparent 75%); mask: radial-gradient(circle, transparent 69%, #000 70%, #000 74%, transparent 75%); opacity: 0.75; pointer-events: none; }
+body .tv-zoom { width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--cel-well); box-shadow: inset 0 0 0 1.5px var(--cel-gold); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+body .tv-zoom svg { width: 19px; height: 19px; stroke: #fff; stroke-width: 1.8; }
+body .tv-stick { background: rgba(22, 16, 44, 0.26); border: 0; box-shadow: inset 0 0 0 1.5px rgba(236, 220, 174, 0.85); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+body .tv-stick::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: repeating-conic-gradient(from -2deg, var(--cel-gold) 0 4deg, transparent 4deg 90deg); -webkit-mask: radial-gradient(circle, transparent 66%, #000 67%); mask: radial-gradient(circle, transparent 66%, #000 67%); opacity: 0.85; pointer-events: none; }
+body .tv-knob { background: radial-gradient(circle, rgba(255, 255, 255, 0.4), rgba(22, 16, 44, 0.5) 70%); border: 0; box-shadow: inset 0 0 0 1.5px var(--cel-gold), 0 0 10px rgba(236, 220, 174, 0.3); }
+body .tv-ride { width: 60px; height: 60px; border-radius: 50%; border: 0; padding: 0; background: var(--cel-well); box-shadow: inset 0 0 0 1.5px var(--cel-gold), 0 0 0 1px rgba(236, 220, 174, 0.16); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  font: 600 0px/1 var(--cel-label); color: transparent; overflow: visible; }
+body .tv-ride::before { content: ""; position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px; background: #fff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'%3E%3Cpath d='M2.5 12.5c0-1.5 1.2-2.6 2.7-2.6h13.6c1.5 0 2.7 1.1 2.7 2.6s-1.2 2.6-2.7 2.6H5.2c-1.5 0-2.7-1.1-2.7-2.6z'/%3E%3Cpath d='M7 15.1v1.6M17 15.1v1.6M5 19.5h3.5M10.5 19.5h3M15.5 19.5h3.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'%3E%3Cpath d='M2.5 12.5c0-1.5 1.2-2.6 2.7-2.6h13.6c1.5 0 2.7 1.1 2.7 2.6s-1.2 2.6-2.7 2.6H5.2c-1.5 0-2.7-1.1-2.7-2.6z'/%3E%3Cpath d='M7 15.1v1.6M17 15.1v1.6M5 19.5h3.5M10.5 19.5h3M15.5 19.5h3.5'/%3E%3C/svg%3E") center / contain no-repeat; }
+body .tv-ride::after { content: attr(data-label); position: absolute; left: 50%; top: calc(100% + 7px); transform: translateX(-50%); font: 600 10px/1 var(--cel-label); letter-spacing: 0.22em; text-transform: uppercase; color: var(--cel-gold); text-shadow: var(--cel-halo); white-space: nowrap; }
+body .tv-hint { background: var(--cel-panel); border: 0; box-shadow: inset 0 0 0 1px var(--cel-line); border-radius: 8px; font: 500 13px/1.45 var(--cel-label); letter-spacing: 0.02em; color: #f3eeff; }
+
+/* ---------- panels: the portal card, the chat, sign in, the postcard, the map, the picker ---------- */
+body .tv-portal, body .chat, body .signin-card, body .pc-card, body .tv-full-card, body .tv-pick-card, body .cz-sum {
+  background: var(--cel-panel); border: 0; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--cel-line), 0 0 0 1px rgba(20, 12, 40, 0.35); color: #fff;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+body .tv-portal strong, body .chat-title, body .signin-card h2, body .signin-card h3, body .tv-full-top strong, body .tv-pick-card h2, body .tv-pick-card h3 { font-family: var(--cel-display); font-weight: 600; letter-spacing: 0.04em; color: var(--cel-gold); }
+body .tv-portal span, body .tv-pick-grid span { font-family: var(--cel-label); letter-spacing: 0.04em; }
+body .tv-rune { box-shadow: inset 0 0 0 1.5px var(--cel-gold); }
+body .tv-portal-go button { text-transform: none; letter-spacing: 0.02em; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; }
+body .tv-portal-go button strong { color: #fff; font-size: 14px; }
+body .chat-head { border-bottom: 1px solid rgba(236, 220, 174, 0.3); }
+body .chat-close, body .signin-close, body .pc-close { background: none; border: 0; box-shadow: none; color: var(--cel-gold); font-size: 22px; }
+body .chat-list .msg { font: 500 14.5px/1.45 var(--cel-label); letter-spacing: 0.01em; border-radius: 10px; }
+body .chat-list .msg.chog { background: rgba(236, 220, 174, 0.1); box-shadow: inset 0 0 0 1px rgba(236, 220, 174, 0.28); color: #fff; }
+body .chat-list .msg.you, body .chat-list .msg.me { background: linear-gradient(180deg, rgba(236, 220, 174, 0.3), rgba(200, 173, 110, 0.2)); color: #fff; }
+body .chat-form input { background: rgba(255, 255, 255, 0.04); border: 0; border-bottom: 1px solid var(--cel-line); border-radius: 0; color: #fff; font: 500 14px var(--cel-label); }
+body .chat-form input:focus { outline: none; border-bottom-color: #fff6d8; box-shadow: 0 1px 0 #fff6d8; }
+body .chat-form input::placeholder { color: rgba(236, 220, 174, 0.55); }
+body .tv-pick-grid button { background: rgba(22, 16, 44, 0.5); border: 0; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(236, 220, 174, 0.35); }
+body .tv-pick-grid button:hover, body .tv-pick-grid button.chosen { box-shadow: inset 0 0 0 1.5px var(--cel-gold), 0 0 14px rgba(236, 220, 174, 0.35); }
+body .tv-pick-grid strong { font-family: var(--cel-display); color: var(--cel-gold); }
+body .tv-pick-grid img { border-radius: 50%; box-shadow: 0 0 0 2px var(--cel-gold); }
+
+/* Speech over heads (your Chog, the bar, the cast): dark glass, a gold hairline, the name in Cinzel. */
+body .chog-bubble { background: var(--cel-panel); color: #fff; border: 0; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--cel-line); font: 500 14.5px/1.4 var(--cel-label); letter-spacing: 0.01em; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+body .chog-bubble::after { background: var(--cel-panel); border: 0; box-shadow: inset -1px -1px 0 var(--cel-line); }
+body .bar-bubble .who { font: 600 12px/1.2 var(--cel-display); letter-spacing: 0.05em; color: var(--cel-gold); text-transform: none; }
+
+/* Captions (waking, the goodbye): Cinzel, gold rules either side. */
+body .story .story-title { font-family: var(--cel-display); font-weight: 600; letter-spacing: 0.06em; color: #fff; text-shadow: var(--cel-halo); }
+body .story .story-sub { font-family: var(--cel-label); letter-spacing: 0.04em; color: var(--cel-gold); text-shadow: var(--cel-halo); }
+
+/* The room bar and the places: no slab behind them. */
+body .focus-bar { background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; gap: 8px; }
+body #focus-name { font: 600 16px/1 var(--cel-display); letter-spacing: 0.06em; color: #fff; text-shadow: var(--cel-halo); padding: 0 6px; }
+body #places { background: none; border: 0; }
+
+/* ---------- the casino's controls in the same language ---------- */
+body .cz-spin { background: radial-gradient(circle at 50% 40%, rgba(255, 244, 204, 0.25), var(--cel-panel) 70%); box-shadow: inset 0 0 0 2px var(--cel-gold), 0 0 0 6px rgba(20, 12, 40, 0.35), 0 0 0 7px rgba(236, 220, 174, 0.45), 0 0 22px rgba(236, 220, 174, 0.35); border: 0; color: #fff; font-family: var(--cel-display); letter-spacing: 0.12em; text-shadow: var(--cel-halo); }
+body .cz-act, body .cz-key { background: var(--cel-well); border: 0; box-shadow: inset 0 0 0 1.5px var(--cel-gold); color: #fff; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+body .cz-bank, body .cz-num { font-family: var(--cel-display); }
+body .cz-say, body .cz-tip, body .cz-felt { font-family: var(--cel-label); letter-spacing: 0.03em; }
+body .cz-badge { box-shadow: inset 0 0 0 1.5px var(--cel-gold); }
+
+@media (max-width: 760px) {
+  body .hud.bottom { gap: 10px; }
+  body #clock-time { font-size: 24px; }
+  body .hud.bottom .clock { min-width: 64px; }
+  body .hud.bottom .cel-lb { font-size: 8.5px; letter-spacing: 0.16em; }
+  body .hud.bottom .cel-well { width: 40px; height: 40px; }
+  body .chog-chip .cel-acts { gap: 8px; }
+  body .chog-chip .cel-acts .cel-lb { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .cel-ring { display: none; } }
+
+/* The casino's two games: dark glass with the gold hairline, each game's colour only as a soft glow. */
+body .cz-ui .cz-go, body .cz-ui .cz-go.roulette {
+  background: radial-gradient(ellipse 90% 140% at 50% 120%, var(--glow, rgba(255, 111, 97, 0.38)), rgba(20, 14, 40, 0.82) 70%);
+  box-shadow: inset 0 0 0 1.5px var(--cel-gold), 0 0 0 4px rgba(20, 12, 40, 0.3), 0 0 18px var(--glow, rgba(255, 111, 97, 0.3));
+  border: 0; border-radius: 8px; color: #fff; text-shadow: var(--cel-halo);
+  font: 600 15px/1 var(--cel-display); letter-spacing: 0.1em; text-transform: uppercase;
+}
+body .cz-ui .cz-go.roulette { --glow: rgba(47, 179, 163, 0.4); }
+body .cz-ui .cz-go svg { color: var(--cel-gold); }
+body .cz-ui .cz-leave { border-radius: 999px; }
+body .cz-ui .cz-spin {
+  background: radial-gradient(circle at 50% 38%, rgba(255, 244, 204, 0.32), rgba(20, 14, 40, 0.9) 68%) !important;
+  box-shadow: inset 0 0 0 2px var(--cel-gold), 0 0 0 6px rgba(20, 12, 40, 0.35), 0 0 0 7px rgba(236, 220, 174, 0.5), 0 0 24px rgba(236, 220, 174, 0.35) !important;
+  border: 0 !important; color: #fff !important; font-family: var(--cel-display) !important; letter-spacing: 0.12em; text-shadow: var(--cel-halo);
+}
+body .cz-ui .cz-rack, body .cz-ui :has(> .cz-act) {
+  background: var(--cel-panel) !important; border: 0 !important; border-radius: 10px !important;
+  box-shadow: inset 0 0 0 1px var(--cel-line) !important; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+body .cz-ui .cz-act { background: var(--cel-well) !important; box-shadow: inset 0 0 0 1.5px var(--cel-gold) !important; border: 0 !important; color: #fff !important; }
+/* The portal card's places: a plain face so the long names fit on one line. */
+body .tv-portal-go button strong { font: 600 14px/1.15 var(--cel-label); letter-spacing: 0.01em; color: #fff; text-transform: none; white-space: nowrap; }
+body .tv-portal-go button span { font: 500 11px/1.2 var(--cel-label); color: var(--cel-gold); text-transform: none; letter-spacing: 0.04em; }

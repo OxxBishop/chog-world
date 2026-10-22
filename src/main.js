@@ -23,6 +23,8 @@ import { rng as makeRng } from './util.js';
 import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createDemo } from './shots.js';
 import { createSpace } from './space.js';
+import { createAudio } from './audio.js';
+import './motion.js';
 import { createEntry } from './entry.js';
 import { createIntro } from './intro.js';
 import { createArrival } from './arrival.js';
@@ -324,6 +326,15 @@ let intro = null;
 let arrival = null;
 let casino = null;
 let npcs = null;
+
+// The island's sound (src/audio.js): the themes, and the singer's song placed at her stage.
+const audio = createAudio({ button: document.getElementById('btn-sound') });
+const stageAt = new THREE.Vector3();
+let stageNode = null;
+function stagePos() {
+  if (!stageNode && npcs) stageNode = scene.getObjectByName('Stage');
+  return stageNode ? stageNode.getWorldPosition(stageAt) : null;
+}
 // The island's wildlife (B35, src/birds.js).
 let birds = null;
 const birdFocus = new THREE.Vector3(), birdMe = new THREE.Vector3();
@@ -331,6 +342,9 @@ let debug = null;
 // Walking your Chog round the islands (src/travel.js), and the last frame's step for its tweens.
 let travel = null;
 let frameDt = 1 / 60;
+// A cutscene holding the camera (the sale's farewell): called each frame after the rig and the flights,
+// fn(camera, dt); it lets go by returning false.
+let cutCam = null;
 
 // Time of day: live local clock, or a scrubbed hour from the slider.
 const time = { live: true, hour: 12 };
@@ -473,6 +487,7 @@ async function init() {
   if (params.has('hour')) {
     time.live = false;
     time.hour = parseFloat(params.get('hour'));
+    $('time-slider').value = time.hour;
     $('btn-live').classList.remove('active');
   }
   if (VIEWS[params.get('view')]) {
@@ -535,9 +550,9 @@ async function init() {
       }),
     // The world seen from space (src/space.js): carried out to it from a room or wherever the view
     // is, and back (at once, or flying back over duration seconds).
-    enterSpace: ({ from, duration } = {}) => {
+    enterSpace: ({ from, duration, clip } = {}) => {
       leaveRoomUI();
-      return space.enter({ from, duration });
+      return space.enter({ from, duration, clip });
     },
     leaveSpace: (opts) => space.leave(opts),
     // The first screen (src/intro.js) and the flight to your Chog's home (src/arrival.js), for A11:
@@ -564,6 +579,69 @@ async function init() {
       },
     },
     prewarm: warmUp,
+    // The sale's farewell (B, 10-22; the user: being sent off the island was "too abrupt"). Out of its
+    // home, the grey Chog walks out through its dome's door and away down the walk, slow and alone; the
+    // camera stays behind it, then rises as it goes. Resolves after `stay` seconds, the camera still
+    // moving (it keeps on under the white of the flight out, then lets go).
+    farewell: ({ room, chog, stay = 7.5 }) =>
+      new Promise((resolve) => {
+        const i = Number(room.id.slice(4));
+        const d = DOMES[i];
+        if (!d || !chog) return resolve();
+        const out = new THREE.Vector3(Math.sin(d.facing), 0, Math.cos(d.facing));
+        const door = new THREE.Vector3(d.doorX, 0, d.doorZ);
+        const ground = (p) => travel?.groundAt?.(p.x, p.z, 999)?.y ?? baseY(HOODS[d.hood]);
+        // Its way: from a few steps inside its dome, out of the door and on down the walk.
+        const from = door.clone().addScaledVector(out, -2.5);
+        const to = door.clone().addScaledVector(out, 7.5);
+        from.y = ground(from);
+        to.y = ground(to);
+        // The camera: inside the dome behind it, a little above; it rises as the Chog goes.
+        const cam0 = door.clone().addScaledVector(out, -9.5);
+        cam0.y = from.y + 1.9;
+        const cam1 = cam0.clone().addScaledVector(out, 1.5).add(new THREE.Vector3(0, 4.6, 0));
+        const look = new THREE.Vector3(), at = new THREE.Vector3(), pos = new THREE.Vector3();
+        const walkS = 9;
+        let t = 0;
+        let done = false, stopped = false;
+        fadeThrough(() => {
+          leaveRoomUI();
+          VIEWS.farewell = { pos: cam0.clone(), target: door.clone().setY(from.y + 1.2) };
+          rig.jump('farewell');
+          scene.add(chog.root);
+          chog.root.position.copy(from);
+          chog.root.rotation.y = Math.atan2(out.x, out.z);
+          chog.root.visible = true;
+          chog.setFade(1);
+          chog.play('walk');
+          // A slow walk, its feet keeping to the ground (its pace from how fast its walk clip goes).
+          const v = from.distanceTo(to) / walkS;
+          chog.setPace?.(v / (chog.speedOf?.('walk') || v));
+          cutCam = (camera, dt) => {
+            t += dt;
+            const k = Math.min(1, t / walkS);
+            at.lerpVectors(from, to, k);
+            at.y = ground(at);
+            chog.root.position.copy(at);
+            if (k >= 1 && !stopped) {
+              stopped = true;
+              chog.play('idle');
+            }
+            // Still for a moment, then up.
+            const u = THREE.MathUtils.smootherstep(t, 1.6, walkS + 2);
+            pos.lerpVectors(cam0, cam1, u);
+            camera.position.copy(pos);
+            look.copy(at).setY(at.y + 1.1 - 1.6 * u).addScaledVector(out, 3.5 * u);
+            camera.lookAt(look);
+            if (!done && t >= stay) {
+              done = true;
+              resolve();
+            }
+            // Under the white and into the film by now.
+            return t < stay + 3.2;
+          };
+        });
+      }),
     blackout: (title, sub) =>
       new Promise((resolve) => {
         $('fade').classList.add('on', 'slow');
@@ -584,7 +662,18 @@ async function init() {
   });
   // The casino's game (B8): its panel shows while you're inside.
   // The postcard camera (B19): the view, framed and saved as a PNG.
-  $('btn-photo')?.addEventListener('click', () => postcard({ frame, canvas: renderer.domElement, name: session?.active?.info?.name ?? 'Chog World' }));
+  // (A, 10-21: where you are, and your Chog's art for the stamp; then a sheet to share it.)
+  $('btn-photo')?.addEventListener('click', () => {
+    const own = session?.active?.info, guest = travel?.active ? travel.guest : null;
+    const id = own?.id ?? guest?.id ?? null;
+    postcard({
+      frame,
+      canvas: renderer.domElement,
+      name: own?.name ?? guest?.name ?? 'Chog World',
+      place: inRoom?.room?.name ?? (travel?.active ? travel.placeName() : 'Chog World'),
+      art: id ? `${import.meta.env.BASE_URL}art/${id}.webp` : null,
+    });
+  });
   casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active, sky });
   // The session warms its Chogs' shaders as it starts: the loader waits for those too.
   await Promise.race([Promise.all([session.warmed, space.ready, ...warming]), new Promise((r) => setTimeout(r, 15000))]);
@@ -611,7 +700,7 @@ async function init() {
       });
     }
   }
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, audio, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: one of the demo video's shots (src/shots.js), with the interface hidden. What a shot
@@ -633,6 +722,15 @@ function shotWorld() {
     },
     get entry() {
       return entry;
+    },
+    // What the trailer's shots pose and stage (B, 10-22): the island, its creatures, the boards.
+    scene,
+    island,
+    get birds() {
+      return birds;
+    },
+    get travel() {
+      return travel;
     },
     enterRoom: (id) => enterRoom(room(id)),
     inRoom: (id) => rig.room === room(id)?.pod,
@@ -733,6 +831,9 @@ function buildPickables() {
 }
 rig.onTap = (x, y) => {
   if (!island) return;
+  // At a casino game every tap is the game's (a bet on the felt), never a tap on your Chog (the user, 10-21:
+  // each click on the roulette board opened the chat).
+  if (casino?.state?.mode) return;
   if (session?.tapChog(x, y)) return;
   // Inside a room a tap belongs to the room (the casino's machines), never to the places outside.
   if (rig.room instanceof RoomBox) return;
@@ -819,7 +920,8 @@ function tunePerf(realMs, dt) {
   perf.frames++;
   perf.fpsT += dt;
   if (perf.fpsT > 0.5) {
-    $('fps').textContent = `${Math.round(perf.frames / perf.fpsT)} fps`;
+    const fps = $('fps');
+    if (fps) fps.textContent = `${Math.round(perf.frames / perf.fpsT)} fps`;
     perf.frames = 0;
     perf.fpsT = 0;
   }
@@ -888,6 +990,8 @@ function frame() {
   space?.update();
   entry?.update(dt, travel?.active ? travel.chog?.root : null);
   arrival?.update(dt);
+  // (It lets go to the warp, if the flight out has no film to play: the warp has the lens then.)
+  if (cutCam && (space?.fov() != null || cutCam(camera, dt) === false)) cutCam = null;
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
   // Warp speed (B25) has the lens to itself.
   const warpFov = space?.fov();
@@ -910,10 +1014,13 @@ function frame() {
   }
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
+  // (Quiet over the connect screen and through the flights down: it starts when you land, the user 10-22.)
+  audio.update(dt, { camera, night: env.night, indoors: rig.room instanceof RoomBox || !!inRoom, stage: stagePos(), quiet: document.body.classList.contains('intro-open') || !!arrival?.active || !!space?.active || !!entry?.active && !rig.room });
   travel?.setEnv?.(env);
   entry?.apply(env, renderer);
   session?.update(dt);
-  casino?.show(!entry?.active && rig.room === casino.room.pod);
+  // (Only while its room is the one drawn: its chips once showed in the lobby, the user 10-21.)
+  casino?.show(!entry?.active && rig.room === casino.room.pod && casino.room.room.group.visible);
   casino?.update(dt, env);
   npcs?.update(dt, camera, env, renderer, travel?.active ? travel.chog?.root : null, travel?.boards);
   // Near your Chog out walking, else near what the camera looks at; hidden in rooms and in space.

@@ -714,6 +714,8 @@ const KIT = { Room, slotMachine, makeStrip, makeBoard, makeBurst, shadeMat: () =
 
 // ---------- the games ----------
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
+// The casino's sounds (src/audio.js plays them): chip, chips, spin, drop, win, nowin.
+const sfx = (name) => dispatchEvent(new CustomEvent('chog-sfx', { detail: name }));
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const COLOUR_NAME = { red: 'Red', black: 'Black', green: 'Green' };
@@ -1140,6 +1142,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     const lift = k > 1 ? p.slots.lift : 0;
     const won = pay(k * stake * (1 + extra) * (1 + lift));
     state.chips += won;
+    if (k > 1) sfx('win');
     // What each edge added to this spin: the spin itself if it was a power-up's, then what paid more.
     const base = payout(line, null, wild).k; // the plain pay table
     if (kind === 'free') credit('free', base * stake);
@@ -1195,6 +1198,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     const back = Math.min(amount, CASHBACK_MAX);
     state.chips += back;
     credit('cashback', back);
+    sfx('chips');
     message = `${fmt(back)} back.`;
     offer = false;
     picking = null;
@@ -1219,12 +1223,13 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     sweepAt = 0;
     if (!table || wheel || !settledFelt || bets.size) return;
     for (const key of table.stacked()) sparkleAt(table.worldAt(key), 6, 0.4, false);
+    if (table.stacked().length) sfx('chips');
     table.setStacks([]);
     render();
   }
   function drawFelt(result = null) {
     if (!result) table.setStacks([...bets].map(([key, amount]) => ({ key, amount })));
-    table.highlight({ bets: new Set(bets.keys()), lucky: who.perks.roulette.lucky, ...(result ?? {}) });
+    table.highlight({ bets: new Set(bets.keys()), lucky: who?.perks?.roulette?.lucky, ...(result ?? {}) });
   }
   function placeBet(key) {
     if (!table || wheel || show) return;
@@ -1235,6 +1240,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     else {
       bets.set(key, (bets.get(key) ?? 0) + chip);
       placed.push({ key, amount: chip });
+      sfx('chip');
       message = '';
       hinted.roulette = true;
       table.dropped();
@@ -1256,6 +1262,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     const left = (bets.get(k) ?? 0) - amount;
     if (left > 0) bets.set(k, left);
     else bets.delete(k);
+    sfx('chip');
     message = '';
     drawFelt();
     if (table.aimed) aimAt(table.aimed);
@@ -1274,11 +1281,13 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
       total += amount;
     }
     message = bets.size < lastBets.size ? 'Not enough chips for all of them.' : '';
+    if (bets.size) sfx('chips');
     drawFelt();
     render();
   }
   function clearBets() {
     if (wheel) return;
+    if (bets.size) sfx('chips');
     clearFelt();
     bets.clear();
     placed = [];
@@ -1315,6 +1324,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     const n = forced ?? randomInt(37);
     wheel = { step: spinBall(table, n), n, bets: [...bets].map(([key, amount]) => ({ key, amount })), kind };
     state.pending = { game: 'roulette', n, bets: wheel.bets };
+    sfx('spin');
     coast = null;
     table.mark(null);
     table.aim(null);
@@ -1335,6 +1345,8 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     state.chips += res.back + bonus;
     const colour = colourOf(n);
     const wins = new Set(res.results.filter((x) => x.back > x.amount).map((x) => x.key));
+    sfx('drop');
+    setTimeout(() => sfx(wins.size ? 'win' : 'nowin'), 380);
     // The felt: what came back stacked where it was won (or saved), the rest swept off.
     bets.clear();
     settledFelt = true;

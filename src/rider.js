@@ -121,7 +121,8 @@ function hoverChopper(f) {
   mesh(new THREE.TorusGeometry(S * 0.16, S * 0.035, 8, 24), chrome(), 0, headT.y + S * 0.02, headT.z + S * 0.3, g);
   lights.push(light.material);
   // A low seat, a chrome sissy bar behind it, two pipes along the side, the pegs.
-  const seat = mesh(new THREE.CapsuleGeometry(S * 0.17, S * 0.55, 8, 20), seatM, 0, S - S * 0.1, f.hip.z - S * 0.14, g);
+  // (Its top just under his seat: f.seatTop.)
+  const seat = mesh(new THREE.CapsuleGeometry(S * 0.17, S * 0.55, 8, 20), seatM, 0, Math.min(S - S * 0.1, f.seatTop - S * 0.17), f.hip.z - S * 0.2, g);
   seat.rotation.x = Math.PI / 2;
   seat.scale.set(1.5, 1, 0.75);
   const sissy = new THREE.CatmullRomCurve3([new THREE.Vector3(-S * 0.2, S * 0.85, zr + S * 0.1), new THREE.Vector3(-S * 0.18, S * 1.45, zr - S * 0.05), new THREE.Vector3(0, S * 1.62, zr - S * 0.1), new THREE.Vector3(S * 0.18, S * 1.45, zr - S * 0.05), new THREE.Vector3(S * 0.2, S * 0.85, zr + S * 0.1)]);
@@ -235,9 +236,14 @@ export function createRider({ chog, groundAt }) {
   let skin = null;
   chog.root.traverse((o) => o.isSkinnedMesh && (!skin || o.geometry.attributes.position.count > skin.geometry.attributes.position.count) && (skin = o));
   let belly = 0.25;
+  // And how far his seat reaches under his hips (standing): the saddle goes under that, not into him (10-21:
+  // "the rider's torso still seems melded into the bike").
+  let bottom = 0.12;
   if (skin) {
     const bones = skin.skeleton.bones;
     const core = new Set(['Hips', 'Spine', 'Chest'].map((n) => bones.findIndex((b) => b.name === n)));
+    const hipsI = bones.findIndex((b) => b.name === 'Hips');
+    const hy = W(B.hips).y;
     const pos = skin.geometry.attributes.position, si = skin.geometry.attributes.skinIndex, sw = skin.geometry.attributes.skinWeight;
     const v = new THREE.Vector3(), hz = W(B.hips).z;
     for (let i = 0; i < pos.count; i++) {
@@ -246,6 +252,9 @@ export function createRider({ chog, groundAt }) {
       if (w < 0.5) continue;
       v.fromBufferAttribute(pos, i).applyMatrix4(skin.matrixWorld);
       belly = Math.max(belly, v.z - hz);
+      let wh = 0;
+      for (let j = 0; j < 4; j++) if (si.getComponent(i, j) === hipsI) wh += sw.getComponent(i, j);
+      if (wh > 0.6 && Math.abs(v.x) < 0.2 && v.z < hz) bottom = Math.max(bottom, hy - v.y);
     }
   }
   const A = B.arms[0];
@@ -258,7 +267,7 @@ export function createRider({ chog, groundAt }) {
   const sole = knee.clone().add(new THREE.Vector3(0, -shin - ankle, shin * 0.12));
   const PEG = 0.72;
   const hipAt = PEG - sole.y;
-  const f = { hip: new THREE.Vector3(0, hipAt, 0), peg: new THREE.Vector3(0, PEG, sole.z), seatY: hipAt - thigh * 0.28, belly, pegX: hipX * 1.6 };
+  const f = { hip: new THREE.Vector3(0, hipAt, 0), peg: new THREE.Vector3(0, PEG, sole.z), seatY: hipAt - thigh * 0.28, belly, pegX: hipX * 1.6, seatTop: hipAt - bottom + 0.03 };
   const sh = new THREE.Vector3(Math.abs(shoulder.x), hipAt + (shoulder.y - hipY), shoulder.z);
   const down = arm * 0.42;
   const fwdReach = Math.sqrt(Math.max(0.01, (arm * 0.9) ** 2 - down * down - (arm * 0.12) ** 2));

@@ -283,6 +283,29 @@ function bubbleHelmet(skin, head) {
   return dome;
 }
 
+/*
+ * Where an arm's mesh really is, in its upper arm bone's frame: the middle of its forearm and hand vertices.
+ * On some models (Peel's) the arm hangs off its bones, behind them; noBack aims what you see.
+ */
+function armMesh(skin, side) {
+  const bones = skin.skeleton.bones;
+  const ui = bones.findIndex((b) => b.name === 'UpperArm' + side);
+  const fi = bones.findIndex((b) => b.name === 'ForeArm' + side), hi = bones.findIndex((b) => b.name === 'Hand' + side);
+  if (ui < 0 || fi < 0) return null;
+  const pos = skin.geometry.attributes.position, si = skin.geometry.attributes.skinIndex, sw = skin.geometry.attributes.skinWeight;
+  const c = new THREE.Vector3(), v = new THREE.Vector3();
+  let n = 0;
+  for (let i = 0; i < pos.count; i++) {
+    let best = -1, bw = 0;
+    for (let j = 0; j < 4; j++) if (sw.getComponent(i, j) > bw) (bw = sw.getComponent(i, j)), (best = si.getComponent(i, j));
+    if (best !== fi && best !== hi) continue;
+    c.add(v.fromBufferAttribute(pos, i));
+    n++;
+  }
+  if (n < 10) return null;
+  return c.divideScalar(n).applyMatrix4(skin.bindMatrix).applyMatrix4(skin.skeleton.boneInverses[ui]);
+}
+
 function soleVertices(gltf) {
   let mesh = null;
   gltf.scene.traverse((o) => o.isSkinnedMesh && (!mesh || o.geometry.attributes.position.count > mesh.geometry.attributes.position.count) && (mesh = o));
@@ -536,6 +559,24 @@ const LOOK_MAX = THREE.MathUtils.degToRad(32);
 // Upper arms lift no higher than this over level: above it Tripo's shoulders fold into the body (the user,
 // 10-17: "their side goes into their body upon wave"). A hand still goes up, by the elbow.
 const ARM_LIFT_MAX = THREE.MathUtils.degToRad(+(new URLSearchParams(globalThis.location?.search ?? '').get('armlift') ?? 30));
+// And walking or running, no higher than this (negative: under level).
+const ARM_SWING_MAX = THREE.MathUtils.degToRad(+(new URLSearchParams(globalThis.location?.search ?? '').get('armswing') ?? -48));
+const ARM_SWING_FORE = THREE.MathUtils.degToRad(8);
+// Walking or running, how far out from the body each arm hangs, seen from the front (degrees from straight
+// down): the arms swing forward and back at that, as a cartoon's do, not out to the side. Quackers' clear his
+// duck float.
+const ARM_OUT = 28;
+const ARM_OUT_BY = { 'chog-66': 48 };
+// How far forward or back an arm swings at most then (degrees from hanging).
+const ARM_FWD_MAX = THREE.MathUtils.degToRad(42);
+// Standing, how far behind its side an arm may hang at most (degrees; negative: at least that far forward).
+// Peel's belly bulges out in front: his arms hung at its back from the side (the user, 10-21).
+const ARM_BACK = -4;
+const ARM_BACK_BY = { 'chog-132': 16 };
+// Models whose arms are fused into their clothes: an arm swung away from rest tears the sleeve into a flat
+// flap (Patrol's jacket: the user, 10-22, "patrol's arms are deformed as hell"). Their arms keep this
+// share of the way back to rest, every state but singing and cheering.
+const ARM_HOLD_BY = { 'chog-56': 0.85 };
 // Chog arms are short tubes with no elbow to speak of (the user, 10-17): a forearm bends no further than
 // this from the line of its upper arm.
 const ELBOW_MAX = THREE.MathUtils.degToRad(28);
@@ -905,7 +946,10 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   let arm = null;
   // Both upper arms, kept from lifting too high (ARM_LIFT_MAX) or, for some, dropping too low (ARM_DROP_MAX).
   let lifts = [];
+  let armHold = 0, idleT = 0;
   let armDrop = null;
+  let armOut = 0;
+  let armBack = 0;
   // The legs kept clear of the body while walking or running (legLimit), and how much right now.
   let legRigNow = null;
   let legW = 0;
@@ -996,13 +1040,17 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       }
       const up = model.getObjectByName('UpperArmR'), fore = model.getObjectByName('ForeArmR'), hand = model.getObjectByName('HandR');
       if (up && fore && hand) arm = { up, fore, hand, held: hand.getObjectByName('Mic'), at: new THREE.Vector3(), target: null, left: 0, w: 0, mouth: null, mw: 0, ww: 0, wt: 0 };
-      lifts = ['L', 'R'].map((s) => ({ up: model.getObjectByName(`UpperArm${s}`), fore: model.getObjectByName(`ForeArm${s}`) })).filter((l) => l.up && l.fore);
+      lifts = ['L', 'R'].map((s) => ({ out: s === 'L' ? 1 : -1, up: model.getObjectByName(`UpperArm${s}`), fore: model.getObjectByName(`ForeArm${s}`) })).filter((l) => l.up && l.fore);
+      armHold = ARM_HOLD_BY[base.match(/([\w-]+)\.glb$/)?.[1]] ?? 0;
+      armBack = THREE.MathUtils.degToRad(-(ARM_BACK_BY[base.match(/([\w-]+)\.glb$/)?.[1]] ?? ARM_BACK));
+      armOut = THREE.MathUtils.degToRad(ARM_OUT_BY[base.match(/([\w-]+)\.glb$/)?.[1]] ?? ARM_OUT);
       const drop = ARM_DROP_MAX[base.match(/([\w-]+)\.glb$/)?.[1]];
       armDrop = drop ? THREE.MathUtils.degToRad(drop) : null;
       legRigNow = legRig(model);
       gltf.userData.soles ??= soleVertices(gltf);
       soles = gltf.userData.soles;
       model.traverse((o) => o.isSkinnedMesh && (!skin || o.geometry.attributes.position.count > skin.geometry.attributes.position.count) && (skin = o));
+      if (skin) for (const L of lifts) L.mesh = armMesh(skin, L.out > 0 ? 'L' : 'R');
       if (/chog-68\.glb$/.test(base) && skin && head) {
         const dome = bubbleHelmet(skin, head);
         if (dome) head.add(dome);
@@ -1247,6 +1295,10 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         for (const h of handFix) h.base.copy(h.bone.quaternion), h.bone.quaternion.multiply(h.fix), (h.applied = true);
         strideUpdate(dt);
         armClamp();
+        // (Held to how they hang standing, caught from the idle once it has settled; the bind pose holds them
+        // straight out.)
+        if (armHold && state === 'idle' && !lifts[0]?.upRest && (idleT += dt) > 0.4) for (const L of lifts) (L.upRest = L.up.quaternion.clone()), (L.foreRest = L.fore.quaternion.clone());
+        if (armHold && state !== 'idle' && state !== 'sing' && state !== 'cheer') for (const L of lifts) if (L.upRest) L.up.quaternion.slerp(L.upRest, armHold), L.fore.quaternion.slerp(L.foreRest, armHold);
         micUpdate(dt);
         reachUpdate(dt);
         groundUpdate(dt, camera);
@@ -1385,9 +1437,19 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       L.up.getWorldPosition(_sh);
       L.fore.getWorldPosition(_el);
       _cur.subVectors(_el, _sh).normalize();
-      const over = _cur.y > Math.sin(ARM_LIFT_MAX), under = armDrop !== null && _cur.y < -Math.sin(armDrop);
+      // Walking or running, an arm swings forward and back by its side, never up and out (the jog's arms
+      // flew out level with the shoulders: the user, 10-21, "why's it still crooked").
+      const moving = state === 'walk' || state === 'run';
+      if (moving) {
+        sideSwing(L, L.up, _cur, armOut);
+        L.up.getWorldPosition(_sh);
+        L.fore.getWorldPosition(_el);
+        _cur.subVectors(_el, _sh).normalize();
+      }
+      const lift = moving ? ARM_SWING_MAX : ARM_LIFT_MAX;
+      const over = _cur.y > Math.sin(lift), under = armDrop !== null && _cur.y < -Math.sin(armDrop);
       if (over || under) {
-        const a = over ? ARM_LIFT_MAX : -armDrop;
+        const a = over ? lift : -armDrop;
         _to.copy(_cur).setY(0);
         if (_to.lengthSq() < 1e-4) _to.subVectors(_sh, root.getWorldPosition(_side)).setY(0);
         _to.normalize().multiplyScalar(Math.cos(a));
@@ -1402,8 +1464,53 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       L.hand.getWorldPosition(_wr);
       _aim.subVectors(_wr, _el).normalize();
       const bend = _aim.angleTo(_cur);
-      if (bend > ELBOW_MAX) swing(L.fore, _aim, _to.copy(_cur).lerp(_aim, ELBOW_MAX / bend).normalize(), 1);
+      if (bend > ELBOW_MAX) {
+        swing(L.fore, _aim, _to.copy(_cur).lerp(_aim, ELBOW_MAX / bend).normalize(), 1);
+        L.hand.getWorldPosition(_wr);
+        _aim.subVectors(_wr, _el).normalize();
+      }
+      // (The forearm too: it flicked up and out.)
+      if (moving) sideSwing(L, L.fore, _aim, armOut + 0.08);
+      // Standing or talking, an arm never hangs back behind the body (Peel's did, from the side: the user,
+      // 10-21, "peely's arms are facing behind").
+      else if (state !== 'sing' && state !== 'cheer') {
+        // (By where its mesh is, if known.)
+        const vis = L.mesh ? _wr.copy(L.mesh).applyMatrix4(L.up.matrixWorld).sub(_sh).normalize() : _cur;
+        if (noBack(L, L.up, vis.clone())) {
+          L.up.getWorldPosition(_sh);
+          L.fore.getWorldPosition(_el);
+          _cur.subVectors(_el, _sh).normalize();
+        }
+        L.hand.getWorldPosition(_wr);
+        _aim.subVectors(_wr, _el).normalize();
+        noBack(L, L.fore, _aim);
+      }
     }
+  }
+  // Swing bone (pointing along dir, world) forward to no further back than ARM_BACK_MAX from hanging in the
+  // body's side plane, its angle out to the side and its height kept. Whether it moved it.
+  function noBack(L, bone, dir) {
+    root.getWorldQuaternion(_rq);
+    _bf.set(0, 0, 1).applyQuaternion(_rq);
+    const f = dir.dot(_bf);
+    _to.copy(dir).addScaledVector(_bf, -f);
+    const r = _to.length();
+    if (r < 1e-4 || Math.atan2(f, r) >= -armBack) return false;
+    _to.multiplyScalar(Math.cos(armBack) / r).addScaledVector(_bf, -Math.sin(armBack)).normalize();
+    swing(bone, dir.clone(), _to, 1);
+    return true;
+  }
+  // Turn bone (pointing along dir, world) so that, seen from the front of the body, it hangs `out` radians
+  // from straight down on its own side, its forward or back swing kept (within ARM_FWD_MAX).
+  function sideSwing(L, bone, dir, out) {
+    root.getWorldQuaternion(_rq);
+    _bf.set(0, 0, 1).applyQuaternion(_rq);
+    _side.set(L.out, 0, 0).applyQuaternion(_rq);
+    const f = dir.dot(_bf), sd = dir.dot(_side), up = dir.dot(_lim.set(0, 1, 0).applyQuaternion(_rq));
+    const r = Math.max(1e-4, Math.hypot(sd, up));
+    const fwd = THREE.MathUtils.clamp(Math.atan2(f, r), -ARM_FWD_MAX, ARM_FWD_MAX);
+    _to.copy(_side).multiplyScalar(Math.sin(out)).addScaledVector(_lim, -Math.cos(out)).multiplyScalar(Math.cos(fwd)).addScaledVector(_bf, Math.sin(fwd)).normalize();
+    swing(bone, dir.clone(), _to, 1);
   }
   // Singing with a mic (the singer, 10-17): the right hand brings it to the mouth, its head just in front of
   // the lips and its handle down and out, the arm bent below (two bones, the elbow down and out to the side).

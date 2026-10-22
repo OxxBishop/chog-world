@@ -30,7 +30,8 @@ const PLACE = 'the bar in the Chog Hub';
 // A tall phone screen sees less of the room across, so there the pair stands closer together.
 const LAYOUTS = {
   wide: { scale: 1, a: new THREE.Vector3(0, 0, -2.3), b: new THREE.Vector3(2.6, 0, -2.3) },
-  tall: { scale: 1, a: new THREE.Vector3(0.2, 0, -2.3), b: new THREE.Vector3(2.3, 0, -2.3) },
+  // (Closer still since 10-21, so a guest's Chog fits in beside them: src/entry.js ROUTES.)
+  tall: { scale: 1, a: new THREE.Vector3(0.55, 0, -2.3), b: new THREE.Vector3(2.1, 0, -2.3) },
 };
 
 // If the brain can't be reached (not set up yet, or busy), the regulars still have a few things to say.

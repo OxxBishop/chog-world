@@ -17,6 +17,8 @@ void main() {
   float px = uSize * uScale / -mvPosition.z;
   // Distant halos keep a few pixels but grow fainter, so they never read as sparks.
   vFade = clamp(px / uMinPx, 0.25, 1.0);
+  // (Gone right by the camera: a walk-in under the bar's string lights passed through them, A 10-21.)
+  vFade *= smoothstep(1.4, 3.5, -mvPosition.z);
   gl_PointSize = max(px, uMinPx);
   gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>

@@ -1,5 +1,10 @@
+import * as THREE from 'three';
 import { demoClock as clock } from './democlock.js';
 import { createFlight } from './flight.js';
+import { makeChog } from './chog.js';
+import { chogInfo } from './chogdata.js';
+import { surfaceAt } from './travel.js';
+import { BOARD } from './hoverboard.js';
 
 /*
  * The demo video's shots (B13). ?demo=<shot> plays one with the interface hidden; video/shots.md
@@ -33,6 +38,22 @@ export const SHOTS = {
   // B5's opening: in from the south over the sea of clouds at golden hour, low over the first
   // neighbourhood's domes, across its bridge and up the walk to the fountain and the gold dome, then
   // a rising pull back to the whole archipelago. The view keeps facing north the whole way.
+  // The singer on her stage at dusk, the camera drifting round the front row (A, 10-22, the demo).
+  singer: {
+    hour: 19.2,
+    keys: [
+      { t: 0, pos: [37, 33.2, 42], look: [27, 32.2, 30] },
+      { t: 10, pos: [20, 32.6, 41], look: [27, 32.2, 30] },
+    ],
+  },
+  // Looking up from the plaza at the sky and what swims in it.
+  sky: {
+    hour: 17.8,
+    keys: [
+      { t: 0, pos: [-20, 33.5, 60], look: [-70, 95, -90] },
+      { t: 12, pos: [-8, 33.5, 64], look: [50, 105, -110] },
+    ],
+  },
   overview: {
     hour: 17.5,
     keys: [
@@ -141,6 +162,163 @@ export const SHOTS = {
     events: [[0.8, (w) => w.space.enter({ duration: 7 })]],
   },
 };
+
+// ---------- The trailer (B, 10-22): the user's calm, Legend of Zelda style edit ----------
+// One subject a shot, held, the camera still or drifting a few metres; golden hour into night.
+
+// A straight, steady drift from a to b over len seconds (keys spaced along the line, so only its ends ease).
+const drift = (len, a, b, lookA, lookB = lookA) => {
+  const keys = [];
+  for (let i = 0; i <= 4; i++) {
+    const k = i / 4;
+    const mix = (p, q) => p.map((v, j) => v + (q[j] - v) * k);
+    keys.push({ t: len * k, pos: mix(a, b), look: mix(lookA, lookB) });
+  }
+  return keys;
+};
+// The lens for a shot (vertical field of view, degrees).
+const lens = (w, fov) => {
+  if (w.camera.fov !== fov) {
+    w.camera.fov = fov;
+    w.camera.updateProjectionMatrix();
+  }
+};
+// A Chog of the cast by token id, wherever it is in the world.
+const castChog = (w, id) => {
+  let found = null;
+  w.scene.traverse((o) => {
+    if (!found && o.userData?.chogId === id && o.visible !== false) found = o;
+  });
+  return found;
+};
+const _p = new THREE.Vector3(), _q = new THREE.Vector3();
+
+Object.assign(SHOTS, {
+  // The first neighbourhood from above at golden hour: its glass domes round the giant tree.
+  't-domes': {
+    hour: 17.2,
+    keys: drift(7, [-21.5, 30.2, 175.5], [-15, 28.8, 180.5], [-11.2, 8, 235], [-10.6, 8, 235]),
+    update: (w) => lens(w, 45),
+  },
+  // A dome's garden through its glass: flowers, a pink tree, the house beyond.
+  't-garden': {
+    hour: 17.25,
+    keys: drift(6, [46.6, 8.1, 238.6], [44.7, 7.8, 240.4], [36, 3.5, 228], [35.5, 3.6, 228.5]),
+    update: (w) => lens(w, 42),
+  },
+  // Snooze napping at the foot of the giant tree, the camera easing in.
+  't-snooze': {
+    hour: 17.3,
+    keys: drift(7, [-3.2, 8.45, 208.6], [-4.4, 8.3, 211.7], [-8.4, 9.1, 222], [-8.2, 8.9, 221.6]),
+    update: (w) => lens(w, 40),
+  },
+  // A Chog gliding past on a hoverboard along the neighbourhood's walk, the camera turning to follow.
+  't-board': {
+    hour: 17.45,
+    length: 7,
+    async setup(w) {
+      const info = await chogInfo(1151);
+      const rider = await makeChog({ ...info, traits: { ...info.traits, Aura: null }, model: 'models/npcs/chog-1151.glb' });
+      w.scene.add(rider.root);
+      rider.play('idle');
+      const boards = w.travel.hoverboards;
+      // The last board (far off, on the beacon island): it won't be missed.
+      const b = boards.boards.length - 1;
+      boards.take(b);
+      this._ride = { rider, b, last: 0 };
+    },
+    update(w, t) {
+      const r = this._ride;
+      if (!r) return;
+      lens(w, 44);
+      // Along the walk round the giant tree: past the camera and away round its curve.
+      const cx = -11.2, cz = 227.7, R = 28, PHI = 1.16, sweep = 0.78;
+      const th = PHI - sweep / 2 + (sweep * t) / 7;
+      const x = cx + Math.cos(th) * R, z = cz + Math.sin(th) * R;
+      const g = surfaceAt(x, z);
+      // Facing along the walk, the way it goes.
+      const yaw = Math.atan2(-Math.sin(th), Math.cos(th));
+      const lift = BOARD.hover + BOARD.thick + Math.sin(t * 2.2) * 0.04;
+      _p.set(x, g, z);
+      const dt = Math.max(0, t - r.last);
+      w.travel.hoverboards.carry(r.b, _p, yaw, -0.05, lift, 0);
+      w.travel.hoverboards.update(dt, { night: 0.15 });
+      r.rider.root.position.set(x, g + lift, z);
+      r.rider.root.rotation.y = yaw;
+      r.rider.update(dt, w.camera);
+      r.last = t;
+      // The camera low on the grass beside the walk, looking along its curve between a dome and the
+      // lawn's mound; it turns a little with the rider.
+      const camA = 0.92, Rc = 31;
+      const camX = cx + Math.cos(camA) * Rc, camZ = cz + Math.sin(camA) * Rc;
+      r.camY ??= surfaceAt(camX, camZ) + 1.6;
+      w.camera.position.set(camX, r.camY, camZ);
+      _q.set(cx + Math.cos(1.5) * 27, 4, cz + Math.sin(1.5) * 27);
+      _p.set(x, g + 1.5, z);
+      w.camera.lookAt(_q.lerp(_p, 0.5));
+    },
+  },
+  // Cosmo afloat in his dome among the space rocks, the camera inside by the glass, keeping him in view.
+  't-cosmo': {
+    hour: 18.4,
+    length: 7,
+    update(w, t) {
+      lens(w, 42);
+      const cosmo = castChog(w, 68);
+      const c = w.island.cosmo.centre;
+      if (cosmo) {
+        cosmo.getWorldPosition(_p);
+        _p.y += 0.6;
+      } else _p.set(c.x, c.y + 4, c.z);
+      // Where he is, eased (he swims slowly; the camera never jerks after him).
+      this._at = this._at ? this._at.lerp(_p, 0.05) : _p.clone();
+      // Seven metres off him, a little below, on a side that turns slowly; kept inside the glass.
+      const a = 2.3 + t * 0.035;
+      _q.set(this._at.x + Math.cos(a) * 7.5, this._at.y - 1.2, this._at.z + Math.sin(a) * 7.5);
+      const dx = _q.x - c.x, dz = _q.z - c.z, d = Math.hypot(dx, dz);
+      if (d > 14.5) _q.set(c.x + (dx / d) * 14.5, _q.y, c.z + (dz / d) * 14.5);
+      _q.y = Math.min(c.y + 11, Math.max(c.y + 1.4, _q.y));
+      this._cam = this._cam ? this._cam.lerp(_q, 0.05) : _q.clone();
+      w.camera.position.copy(this._cam);
+      w.camera.lookAt(this._at);
+    },
+  },
+  // Dusk off the first neighbourhood's edge, facing the sunset: the sky whale far out over the clouds, a
+  // flight of mantas gliding out past the camera toward it.
+  't-sky': {
+    hour: 18.6,
+    length: 8,
+    setup() {
+      const a = (205 * Math.PI) / 180;
+      const C = new THREE.Vector3(-11.2 + Math.cos(a) * 75, 15, 227.7 + Math.sin(a) * 75);
+      const D = new THREE.Vector3(-0.89, 0, -0.41).normalize();
+      const S = new THREE.Vector3(-D.z, 0, D.x);
+      const P = (f, s, up) => C.clone().addScaledVector(D, f).addScaledVector(S, s).add(new THREE.Vector3(0, up, 0));
+      this._sky = { C, P, staged: false };
+    },
+    update(w) {
+      const k = this._sky;
+      if (!k) return;
+      lens(w, 46);
+      if (!k.staged && w.birds?.ready) {
+        k.staged = true;
+        k.whale = w.birds.stage('whale', k.P(150, -34, 14), k.P(144, 2, 20), k.P(150, 38, 17), 10)[0];
+        w.birds.stage('flight', k.P(-12, -40, 22), k.P(60, -6, 26), k.P(150, 28, 30), 12, 3);
+      }
+      w.camera.position.copy(k.C);
+      // The horizon low in the frame; the view leans a little after the whale.
+      _p.copy(k.whale?.pos ?? k.P(145, 0, 18));
+      _q.copy(k.P(150, 0, 30)).lerp(_p.setY(_p.y + 10), 0.35);
+      w.camera.lookAt(_q);
+    },
+  },
+  // The singer on her stage at night, the camera drifting along the crowd's edge.
+  't-singer': {
+    hour: 19.6,
+    keys: drift(7, [21.2, 31.6, 35], [22.5, 31.65, 36.2], [27, 32, 30], [27.1, 32, 30.1]),
+    update: (w) => lens(w, 40),
+  },
+});
 
 // B5's name for it.
 SHOTS.opening = SHOTS.overview;

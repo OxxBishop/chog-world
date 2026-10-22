@@ -15,177 +15,38 @@
  * welcome has been up long enough to read (held()); close() just tears it away (a guest, say).
  * current says which state is up.
  *
- * The search's running Chog is the official art, pixelated here as it loads. The loading screen's is
- * drawn to the user's own design (src/pixelloader.js).
+ * The search and the welcome show the loading screen's pixel Chog (src/pixelloader.js, the user's own
+ * design) in mint.
  */
 
-import { ART, createLoaderArt } from './pixelloader.js';
+import { ART, createLoaderArt, MINT } from './pixelloader.js';
 
 const BASE = import.meta.env?.BASE_URL ?? '/';
-// Faces for the search: a few Chogs whose art ships with the site.
-const SEARCH_FACES = [43, 1, 130, 87, 892, 1517, 22, 35];
-
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-// The art, pixelated to a round token `size` pixels across, with a dark rim.
-function pixelFace(img, size = 24) {
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  // The face sits a little below the middle of the portrait.
-  const s = Math.min(img.naturalWidth || img.width, img.naturalHeight || img.height);
-  ctx.drawImage(img, s * 0.1, s * 0.16, s * 0.8, s * 0.8, 0, 0, size, size);
-  const d = ctx.getImageData(0, 0, size, size);
-  const r = size / 2;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const dist = Math.hypot(x + 0.5 - r, y + 0.5 - r);
-      const i = (y * size + x) * 4;
-      if (dist > r) d.data[i + 3] = 0;
-      else if (dist > r - 1.15) {
-        d.data[i] = 26;
-        d.data[i + 1] = 12;
-        d.data[i + 2] = 48;
-        d.data[i + 3] = 255;
-      }
-    }
-  }
-  ctx.putImageData(d, 0, 0);
-  return c;
-}
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-}
-
-/*
- * The pixel Chog running round a little track: hops, squashes as it lands, kicks up dust, and casts a
- * shadow. While searching it flickers to another Chog's face every lap; with `face` set it is yours.
- */
-function createRunner(canvas, { ids = SEARCH_FACES, cycle = true } = {}) {
-  const W = 64;
-  canvas.width = canvas.height = W;
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  const faces = [];
-  let faceIndex = 0;
-  let mine = null;
-  let glitch = 0;
-  let lap = 0;
-  let mode = 'run';
+function createRunner(canvas) {
+  // The loading screen's pixel Chog, in mint, hopping round its ring (in place of the Chog's own art:
+  // the user, 10-22). Same pixel grid as the loader, a little bigger.
+  const dpr = window.devicePixelRatio || 1;
+  const k = Math.max(1, Math.round((112 * dpr) / ART));
+  Object.assign(canvas.style, { width: `${(ART * k) / dpr}px`, height: `${(ART * k) / dpr}px`, margin: '0' });
+  const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  const art = createLoaderArt(canvas, k, { calm, ...MINT });
   let raf = 0;
-  let t0 = performance.now();
-  const dust = [];
-  for (const id of ids) loadImage(`${BASE}art/${id}.webp`).then((img) => faces.push(pixelFace(img))).catch(() => {});
-
-  function draw(now) {
+  const draw = (now) => {
     raf = requestAnimationFrame(draw);
-    const t = (now - t0) / 1000;
-    ctx.clearRect(0, 0, W, W);
-    const cx = W / 2, cy = W / 2 + 10, R = 19;
-    // The track: a ring of dots in perspective.
-    ctx.fillStyle = 'rgba(183, 156, 255, 0.35)';
-    for (let k = 0; k < 24; k++) {
-      const a = (k / 24) * Math.PI * 2;
-      ctx.fillRect(Math.round(cx + Math.cos(a) * (R + 1)), Math.round(cy + Math.sin(a) * (R + 1) * 0.42), 1, 1);
-    }
-    const face = mine ?? faces[faceIndex % Math.max(1, faces.length)];
-    let a, x, y, scale = 1, flip = false;
-    if (mode === 'run') {
-      a = t * 3.2;
-      const l = Math.floor(a / (Math.PI * 2));
-      if (l !== lap) {
-        lap = l;
-        if (cycle && !mine && faces.length > 1) {
-          faceIndex++;
-          glitch = 4;
-        }
-      }
-      x = cx + Math.cos(a) * R;
-      y = cy + Math.sin(a) * R * 0.42;
-      flip = -Math.sin(a) < 0;
-      scale = 0.88 + 0.12 * (Math.sin(a) * 0.5 + 0.5);
-    } else {
-      // Found: it stops in the middle and bounces for joy.
-      x = cx;
-      y = cy;
-      scale = 1.2;
-    }
-    const hopRate = mode === 'run' ? 14 : 8;
-    const ph = (t * hopRate) % (Math.PI * 2);
-    const hop = Math.abs(Math.sin(ph / 2)) * (mode === 'run' ? 5 : 8);
-    const landing = Math.sin(ph / 2) ** 2 < 0.06;
-    if (landing && mode === 'run' && Math.random() < 0.6) dust.push({ x: x + (flip ? 5 : -5), y: y + 1, life: 1 });
-    // Shadow, smaller as it rises.
-    ctx.fillStyle = 'rgba(8, 3, 20, 0.55)';
-    const sw = Math.round((7 - hop * 0.5) * scale);
-    ctx.fillRect(Math.round(x - sw), Math.round(y + 1), sw * 2, 2);
-    for (let i = dust.length - 1; i >= 0; i--) {
-      const p = dust[i];
-      p.life -= 0.06;
-      p.y -= 0.15;
-      if (p.life <= 0) {
-        dust.splice(i, 1);
-        continue;
-      }
-      ctx.fillStyle = `rgba(214, 200, 255, ${p.life * 0.8})`;
-      ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
-    }
-    if (!face) return;
-    const sq = landing ? 1.1 : 1, st = landing ? 0.9 : 1;
-    const fw = Math.round(face.width * scale * sq), fh = Math.round(face.height * scale * st);
-    const fx = Math.round(x - fw / 2), fy = Math.round(y - fh - hop);
-    ctx.save();
-    if (flip) {
-      ctx.translate(fx + fw, fy);
-      ctx.scale(-1, 1);
-      ctx.drawImage(face, 0, 0, fw, fh);
-    } else ctx.drawImage(face, fx, fy, fw, fh);
-    ctx.restore();
-    // A swap of faces comes with a flash of colour split.
-    if (glitch > 0) {
-      glitch--;
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.6;
-      ctx.drawImage(face, fx - 2, fy, fw, fh);
-      ctx.drawImage(face, fx + 2, fy, fw, fh);
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = 'source-over';
-    }
-  }
-
+    art.draw(now / 1000);
+  };
   return {
     start() {
-      if (!raf) {
-        t0 = performance.now();
-        raf = requestAnimationFrame(draw);
-      }
+      if (!raf) raf = requestAnimationFrame(draw);
     },
     stop() {
       cancelAnimationFrame(raf);
       raf = 0;
     },
-    async yours(image) {
-      mode = 'found';
-      try {
-        mine = pixelFace(await loadImage(image));
-        glitch = 6;
-      } catch {
-        // No art: it keeps whichever face it had.
-      }
-    },
-    reset() {
-      mode = 'run';
-      mine = null;
-    },
+    yours() {},
+    reset() {},
   };
 }
 
