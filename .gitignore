@@ -12,3 +12,13 @@ dist/
 *.key
 .chog_testnet_key
 __pycache__/
+
+# Not for the public repo: agent notes, tooling and working files
+.claude/
+CLAUDE.md
+TASKS.md
+HANDOFF.md
+tools/ui/
+video/raw/
+video/flow-prompts.md
+video/shots.md
