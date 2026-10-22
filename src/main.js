@@ -723,6 +723,15 @@ function shotWorld() {
     get entry() {
       return entry;
     },
+    // What the trailer's shots pose and stage (B, 10-22): the island, its creatures, the boards.
+    scene,
+    island,
+    get birds() {
+      return birds;
+    },
+    get travel() {
+      return travel;
+    },
     enterRoom: (id) => enterRoom(room(id)),
     inRoom: (id) => rig.room === room(id)?.pod,
     // Models still loading or shaders still warming, which a shot waits for before it starts.

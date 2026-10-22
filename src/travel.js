@@ -1862,6 +1862,10 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     get boards() {
       return boards.boards;
     },
+    // And the boards themselves, for a demo shot to ride one (B, the trailer).
+    get hoverboards() {
+      return boards;
+    },
     get active() {
       return state.on;
     },
