@@ -292,7 +292,7 @@ export async function playLogoff({ chog, name, room, world }) {
   caption('See you soon', `${name} will be right here when you come back.`);
   await wait(2200);
   hideCaption();
-  await world.enterSpace({ from: room, duration: 4 });
+  await world.enterSpace({ from: room, duration: 4, clip: 'signout' });
 }
 
 /**

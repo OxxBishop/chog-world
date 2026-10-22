@@ -3,7 +3,8 @@
  * played full screen over the world:
  *   arrival   the planet, a dive through the clouds, white  (signing in; the dome wake-up follows)
  *   sale      a dome at dusk going dark, up through the clouds, out to the planet  (a sale)
- * Both made with Seedance (ElevenLabs) from the game's frames (video/frames). On a phone held upright the
+ * Both made with Seedance (ElevenLabs) from the game's frames (video/frames). On a screen held upright
+ * the tall cut plays (<name>-tall.mp4: the middle of the film, 9:16, a tenth of the download), and the
  * picture is cropped to fill the screen. The files load quietly once the world is up; a clip that isn't
  * ready (or fails) is skipped and the game's own warp plays instead, so nothing ever waits on a video.
  *
@@ -13,6 +14,9 @@
  */
 const BASE = import.meta.env?.BASE_URL ?? '/';
 const NAMES = ['arrival', 'sale'];
+// Signing out flies out by the sale's film for now (its dome going dark at dusk and up to the planet
+// suits a goodnight too); a film of its own can take over here.
+const ALIAS = { signout: 'sale' };
 // Stretches to leave out, as [from, to] seconds: the sale's island came out as a lone cut-off chunk
 // (the user, 10-22), so it blinks white from the dome straight into the clouds.
 const SKIP = { sale: [1.55, 3.45] };
@@ -20,10 +24,12 @@ const SKIP = { sale: [1.55, 3.45] };
 export function createClips() {
   const vids = {};
   const ok = {};
+  // An upright screen (a phone) gets the tall cuts.
+  const tall = matchMedia('(orientation: portrait)').matches;
   const load = () => {
     for (const name of NAMES) {
       const v = document.createElement('video');
-      v.src = `${BASE}video/${name}.mp4`;
+      v.src = `${BASE}video/${name}${tall ? '-tall' : ''}.mp4`;
       v.preload = 'auto';
       v.playsInline = true;
       v.setAttribute('playsinline', '');
@@ -54,8 +60,9 @@ export function createClips() {
   });
 
   return {
-    ready: (name) => !!ok[name] && !matchMedia('(prefers-reduced-motion: reduce)').matches,
+    ready: (name) => !!ok[ALIAS[name] ?? name] && !matchMedia('(prefers-reduced-motion: reduce)').matches,
     async play(name, { intro = null } = {}) {
+      name = ALIAS[name] ?? name;
       const v = vids[name];
       if (!v) return;
       let white = null;
