@@ -342,6 +342,9 @@ let debug = null;
 // Walking your Chog round the islands (src/travel.js), and the last frame's step for its tweens.
 let travel = null;
 let frameDt = 1 / 60;
+// A cutscene holding the camera (the sale's farewell): called each frame after the rig and the flights,
+// fn(camera, dt); it lets go by returning false.
+let cutCam = null;
 
 // Time of day: live local clock, or a scrubbed hour from the slider.
 const time = { live: true, hour: 12 };
@@ -576,6 +579,69 @@ async function init() {
       },
     },
     prewarm: warmUp,
+    // The sale's farewell (B, 10-22; the user: being sent off the island was "too abrupt"). Out of its
+    // home, the grey Chog walks out through its dome's door and away down the walk, slow and alone; the
+    // camera stays behind it, then rises as it goes. Resolves after `stay` seconds, the camera still
+    // moving (it keeps on under the white of the flight out, then lets go).
+    farewell: ({ room, chog, stay = 7.5 }) =>
+      new Promise((resolve) => {
+        const i = Number(room.id.slice(4));
+        const d = DOMES[i];
+        if (!d || !chog) return resolve();
+        const out = new THREE.Vector3(Math.sin(d.facing), 0, Math.cos(d.facing));
+        const door = new THREE.Vector3(d.doorX, 0, d.doorZ);
+        const ground = (p) => travel?.groundAt?.(p.x, p.z, 999)?.y ?? baseY(HOODS[d.hood]);
+        // Its way: from a few steps inside its dome, out of the door and on down the walk.
+        const from = door.clone().addScaledVector(out, -2.5);
+        const to = door.clone().addScaledVector(out, 7.5);
+        from.y = ground(from);
+        to.y = ground(to);
+        // The camera: inside the dome behind it, a little above; it rises as the Chog goes.
+        const cam0 = door.clone().addScaledVector(out, -9.5);
+        cam0.y = from.y + 1.9;
+        const cam1 = cam0.clone().addScaledVector(out, 1.5).add(new THREE.Vector3(0, 4.6, 0));
+        const look = new THREE.Vector3(), at = new THREE.Vector3(), pos = new THREE.Vector3();
+        const walkS = 9;
+        let t = 0;
+        let done = false, stopped = false;
+        fadeThrough(() => {
+          leaveRoomUI();
+          VIEWS.farewell = { pos: cam0.clone(), target: door.clone().setY(from.y + 1.2) };
+          rig.jump('farewell');
+          scene.add(chog.root);
+          chog.root.position.copy(from);
+          chog.root.rotation.y = Math.atan2(out.x, out.z);
+          chog.root.visible = true;
+          chog.setFade(1);
+          chog.play('walk');
+          // A slow walk, its feet keeping to the ground (its pace from how fast its walk clip goes).
+          const v = from.distanceTo(to) / walkS;
+          chog.setPace?.(v / (chog.speedOf?.('walk') || v));
+          cutCam = (camera, dt) => {
+            t += dt;
+            const k = Math.min(1, t / walkS);
+            at.lerpVectors(from, to, k);
+            at.y = ground(at);
+            chog.root.position.copy(at);
+            if (k >= 1 && !stopped) {
+              stopped = true;
+              chog.play('idle');
+            }
+            // Still for a moment, then up.
+            const u = THREE.MathUtils.smootherstep(t, 1.6, walkS + 2);
+            pos.lerpVectors(cam0, cam1, u);
+            camera.position.copy(pos);
+            look.copy(at).setY(at.y + 1.1 - 1.6 * u).addScaledVector(out, 3.5 * u);
+            camera.lookAt(look);
+            if (!done && t >= stay) {
+              done = true;
+              resolve();
+            }
+            // Under the white and into the film by now.
+            return t < stay + 3.2;
+          };
+        });
+      }),
     blackout: (title, sub) =>
       new Promise((resolve) => {
         $('fade').classList.add('on', 'slow');
@@ -915,6 +981,8 @@ function frame() {
   space?.update();
   entry?.update(dt, travel?.active ? travel.chog?.root : null);
   arrival?.update(dt);
+  // (It lets go to the warp, if the flight out has no film to play: the warp has the lens then.)
+  if (cutCam && (space?.fov() != null || cutCam(camera, dt) === false)) cutCam = null;
   // A wider lens indoors, wider still on a tall phone screen, so a room fits in view.
   // Warp speed (B25) has the lens to itself.
   const warpFov = space?.fov();
