@@ -33,6 +33,22 @@ export const SHOTS = {
   // B5's opening: in from the south over the sea of clouds at golden hour, low over the first
   // neighbourhood's domes, across its bridge and up the walk to the fountain and the gold dome, then
   // a rising pull back to the whole archipelago. The view keeps facing north the whole way.
+  // The singer on her stage at dusk, the camera drifting round the front row (A, 10-22, the demo).
+  singer: {
+    hour: 19.2,
+    keys: [
+      { t: 0, pos: [37, 33.2, 42], look: [27, 32.2, 30] },
+      { t: 10, pos: [20, 32.6, 41], look: [27, 32.2, 30] },
+    ],
+  },
+  // Looking up from the plaza at the sky and what swims in it.
+  sky: {
+    hour: 17.8,
+    keys: [
+      { t: 0, pos: [-20, 33.5, 60], look: [-70, 95, -90] },
+      { t: 12, pos: [-8, 33.5, 64], look: [50, 105, -110] },
+    ],
+  },
   overview: {
     hour: 17.5,
     keys: [

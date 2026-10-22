@@ -61,8 +61,9 @@ export function createClips() {
       let white = null;
       if (intro === 'white') {
         white = cover('#f6f0ff');
-        white.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 600, fill: 'forwards', easing: 'ease-in' });
-        await new Promise((r) => setTimeout(r, 620));
+        white.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1600, fill: 'forwards', easing: 'ease-in-out' });
+        // (Slow: a sale's goodbye, not a cut. The user, 10-22: "too abrupt".)
+        await new Promise((r) => setTimeout(r, 1700));
       }
       v.currentTime = 0;
       v.muted = false;
@@ -81,7 +82,7 @@ export function createClips() {
         }
       }
       // Out of the white into the film.
-      if (white) white.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500, fill: 'forwards', easing: 'ease-out' }).onfinish = () => white.remove();
+      if (white) white.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1200, fill: 'forwards', easing: 'ease-out' }).onfinish = () => white.remove();
       const skip = SKIP[name];
       if (skip) {
         const blink = cover('#f2eef8');
