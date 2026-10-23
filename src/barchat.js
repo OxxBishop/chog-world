@@ -18,8 +18,9 @@ import { placeBubble } from './chat.js';
  * the bar opens, never with the first load.
  */
 
-const REGULARS = [124, 52, 56];
-const GUEST_PAIRS = [[124, 52], [56, 124], [52, 56]];
+// (Peel took Patrol's stool, 10-23: Patrol rides his chopper now, and Peel's place is the counter.)
+const REGULARS = [124, 52, 132];
+const GUEST_PAIRS = [[132, 124], [52, 132], [124, 52]];
 const regularModel = (id) => `models/npcs/chog-${id}.glb`;
 // Behind the counter, facing the room, on a step so its face shows over the counter (room space, metres).
 const BARTENDER = { glb: 'models/npcs/bartender.glb', at: new THREE.Vector3(1.3, 0.55, -5.95) };

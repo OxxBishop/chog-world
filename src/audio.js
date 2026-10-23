@@ -21,7 +21,11 @@ import * as THREE from 'three';
  */
 const BASE = import.meta.env?.BASE_URL ?? '/';
 const XFADE = 6; // seconds of overlap at each loop
-const LEVEL = { theme: 0.32, singer: 0.9 };
+const LEVEL = { theme: 0.32, singer: 0.9, lounge: 0.38, loading: 0.34 };
+// Music for places, when its file is in public/audio (ElevenLabs takes; known at build time, so nothing is
+// asked for that isn't there): casino.mp3 in the Starlite Lounge, loading.mp3 under the loading and connect
+// screens (from your first tap or key: no browser plays sound before one).
+const HAS = new Set(Object.keys(import.meta.glob('../public/audio/{casino,loading}.mp3')).map((f) => f.split('/').pop().replace('.mp3', '')));
 
 const read = (k) => {
   try {
@@ -90,6 +94,21 @@ function loopTrack(ctx, url, out) {
       setTimeout(() => old.el.pause(), XFADE * 1000 + 200);
       cur = 1 - cur;
     },
+    // From the top, crossfading over from wherever it is (the singer's encore, src/purse.js).
+    restart() {
+      if (!on) return;
+      const v = voices[cur], next = voices[1 - cur];
+      const now = ctx.currentTime;
+      next.g.gain.cancelScheduledValues(now);
+      next.g.gain.setValueAtTime(0, now);
+      next.g.gain.linearRampToValueAtTime(1, now + 1.2);
+      v.g.gain.cancelScheduledValues(now);
+      v.g.gain.setValueAtTime(v.g.gain.value, now);
+      v.g.gain.linearRampToValueAtTime(0, now + 1.2);
+      start(next, 0);
+      setTimeout(() => v.el.pause(), 1400);
+      cur = 1 - cur;
+    },
     // For a test: where each voice is.
     get state() {
       return voices.map((v) => (v.el.paused ? 'paused' : `playing ${v.el.currentTime.toFixed(1)}s`) + (v.el.error ? ` error ${v.el.error.code}` : ''));
@@ -106,7 +125,9 @@ function loopTrack(ctx, url, out) {
 }
 
 // ---------- effects: synthesized takes (a file in audio/sfx/ wins over these) ----------
-const SFX = ['chip', 'chips', 'spin', 'drop', 'win', 'nowin'];
+// The recorded takes there, known when the site is built (so no request goes out for one that isn't).
+const RECORDED = new Set(Object.keys(import.meta.glob('../public/audio/sfx/*.mp3')).map((f) => f.split('/').pop().replace('.mp3', '')));
+const SFX = ['chip', 'chips', 'spin', 'drop', 'win', 'nowin', 'beep', 'go', 'gate', 'finish', 'star', 'stars', 'coin'];
 // White noise, made once a context.
 const noiseOf = (() => {
   const made = new WeakMap();
@@ -232,6 +253,34 @@ const SYNTH = {
     bell(ctx, out, t, 440, 0.08, 0.5);
     bell(ctx, out, t + 0.16, 329.6, 0.07, 0.7);
   },
+  // The race (src/race.js): 3, 2, 1 and away; a gate passed; over the line.
+  beep(ctx, out, t) {
+    bell(ctx, out, t, 659.3, 0.11, 0.35);
+  },
+  go(ctx, out, t) {
+    bell(ctx, out, t, 1318.5, 0.13, 0.7);
+    bell(ctx, out, t, 987.8, 0.07, 0.6);
+  },
+  gate(ctx, out, t) {
+    bell(ctx, out, t, 1046.5, 0.06, 0.35);
+    bell(ctx, out, t + 0.07, 1568, 0.05, 0.45);
+  },
+  finish(ctx, out, t) {
+    [523.3, 659.3, 784, 1046.5].forEach((f, i) => bell(ctx, out, t + i * 0.09, f, 0.09, 1.1));
+    bell(ctx, out, t + 0.36, 2093, 0.035, 1.4);
+  },
+  // The star hunt (src/stars.js): one found, and the last of the twelve.
+  star(ctx, out, t) {
+    [1318.5, 1760, 2637].forEach((f, i) => bell(ctx, out, t + i * 0.06, f, 0.06 - i * 0.012, 0.9));
+  },
+  stars(ctx, out, t) {
+    [659.3, 830.6, 987.8, 1318.5, 1661.2, 1975.5].forEach((f, i) => bell(ctx, out, t + i * 0.12, f, 0.08, 1.6));
+  },
+  // Testnet $CHOG coming in (src/purse.js).
+  coin(ctx, out, t) {
+    bell(ctx, out, t, 1975.5, 0.05, 0.25);
+    bell(ctx, out, t + 0.08, 2637, 0.045, 0.4);
+  },
 };
 
 export function createAudio({ button = null } = {}) {
@@ -283,12 +332,21 @@ export function createAudio({ button = null } = {}) {
     sg.gain.value = LEVEL.singer;
     sg.connect(panner);
     singer = loopTrack(ctx, `${BASE}audio/singer.mp3`, sg);
+    for (const name of ['casino', 'loading']) {
+      if (!HAS.has(name)) continue;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      g.connect(master);
+      places[name] = { g, track: loopTrack(ctx, `${BASE}audio/${name}.mp3`, g), k: 0 };
+      places[name].track.prime();
+    }
     for (const t of [day, night, singer]) t.prime();
     // Effects: straight to the master (heard indoors or out, never muffled).
     sfxBus = ctx.createGain();
     sfxBus.gain.value = 0.9;
     sfxBus.connect(master);
     for (const name of SFX) {
+      if (!RECORDED.has(name)) continue;
       fetch(`${BASE}audio/sfx/${name}.mp3`)
         .then((r) => (r.ok && (r.headers.get('content-type') ?? '').includes('audio') ? r.arrayBuffer() : null))
         .then((b) => b && ctx.decodeAudioData(b))
@@ -296,6 +354,7 @@ export function createAudio({ button = null } = {}) {
         .catch(() => {});
     }
   };
+  const places = {};
   let sfxBus = null;
   const takes = {};
   const sfx = (name) => {
@@ -334,15 +393,19 @@ export function createAudio({ button = null } = {}) {
       return muted;
     },
     get state() {
-      return { ctx: ctx?.state ?? 'locked', nightK, day: day?.state, night: night?.state, singer: singer?.state };
+      return { ctx: ctx?.state ?? 'locked', nightK, day: day?.state, night: night?.state, singer: singer?.state, places: Object.fromEntries(Object.entries(places).map(([n, p]) => [n, [p.track.state, +p.k.toFixed(2)]])) };
     },
     // An effect by name (see SFX); the same as dispatching a 'chog-sfx' event.
     sfx,
+    // The singer's song from the top (a request, src/purse.js).
+    encore() {
+      singer?.restart();
+    },
     // Something with its own sound (a cutscene) wants the music down: 0 silent to 1 full.
     duck(k) {
       ducked = k;
     },
-    update(dt, { camera, night: n = 0, indoors = false, stage = null, quiet = false }) {
+    update(dt, { camera, night: n = 0, indoors = false, stage = null, quiet = false, casino = false, loading = false }) {
       if (!ctx || ctx.state !== 'running') return;
       const now = ctx.currentTime;
       // Day into night over the dusk, not at a switch.
@@ -386,7 +449,18 @@ export function createAudio({ button = null } = {}) {
         } else panner.setPosition(stage.x, stage.y + 1.5, stage.z);
         near = 1 - THREE.MathUtils.smoothstep(d, 10, 45);
       } else singer.on = false;
-      music.gain.setTargetAtTime(LEVEL.theme * (1 - near * 0.75) * ducked * heard, now, 0.3);
+      // A place's own music (the lounge's, the loading screen's) takes over from the theme.
+      let over = 0;
+      for (const [name, pl] of Object.entries(places)) {
+        const want = name === 'casino' ? casino && !quiet : loading;
+        pl.k += ((want ? 1 : 0) - pl.k) * Math.min(1, dt * 1.2);
+        pl.track.on = pl.k > 0.01;
+        pl.track.gain.gain.value = 1;
+        pl.g.gain.setTargetAtTime(LEVEL[name === 'casino' ? 'lounge' : 'loading'] * pl.k * ducked, now, 0.2);
+        pl.track.tick();
+        if (name === 'casino') over = pl.k;
+      }
+      music.gain.setTargetAtTime(LEVEL.theme * (1 - near * 0.75) * ducked * heard * (1 - over), now, 0.3);
       // Indoors, the outside is muffled and quieter.
       inK += ((indoors ? 1 : 0) - inK) * Math.min(1, dt * 3);
       muffle.frequency.setTargetAtTime(20000 * Math.pow(900 / 20000, inK), now, 0.1);

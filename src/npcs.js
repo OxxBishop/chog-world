@@ -7,6 +7,7 @@ import { COSMO_DOME } from './cosmo.js';
 import { createRider } from './rider.js';
 import { islandAt } from './terrain.js';
 import { angleLerp } from './util.js';
+import { throne, flowerArch, campfire } from './castspots.js';
 
 /*
  * The Chogs who live round the world, in a few sets, each loaded only once the camera comes near it
@@ -29,12 +30,16 @@ export const NPC_SLOTS = {
   singer: { glb: M('singer'), plaza: [27, 30], faces: [10, 55] },
   // Watching from an arc in front of the stage (the middle left clear, so the singer can be seen):
   // plain Chogs in a few shades, a banana and a dragon.
-  crowd: { plain: M('plain'), named: [{ id: 132, glb: M('chog-132') }, { id: 37, glb: M('chog-37') }] },
-  // Strolling round the fountain, the opposite ways.
-  strollers: [
-    { id: 66, glb: M('chog-66'), speed: 1.7, dir: 1, phase: 0, r: 13.2 },
-    { id: 409, glb: M('chog-409'), speed: 1.3, dir: -1, phase: 2.6, r: 15.4 },
+  // (Puff in the front row; Peel went to the bar's counter, 10-23.)
+  crowd: { plain: M('plain'), named: [{ id: 37, glb: M('chog-37') }] },
+  // Each in a place of their own on the plaza (the user, 10-23): King Pom holding court on his throne by
+  // the fountain, Quackers posing in a flower arch across from the stage. at: plaza x, z.
+  courtiers: [
+    { id: 409, glb: M('chog-409'), at: [-11, 50], prop: 'throne', moves: ['wave', 'talk'], every: [8, 14] },
+    { id: 66, glb: M('chog-66'), at: [-24, 36], prop: 'arch', moves: ['cheer', 'wave'], every: [4, 8] },
   ],
+  // Toasty at his campfire on the beacon island, telling stories; Dash laps the beacon bridge.
+  storyteller: { id: 52, glb: M('chog-52'), at: [207.8, -112.5] },
   // By the lobby door, in the Monad look.
   doorman: { id: 1151, glb: M('chog-1151'), plaza: [-5.2, 23.2] },
   gardener: { id: 271, glb: M('chog-271'), hood: 0 },
@@ -433,9 +438,40 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     if (voice) speaking++;
   }
   const lineLen = (line, lo = 4.2, hi = 7.5) => THREE.MathUtils.clamp(2.2 + line.length * 0.075, lo, hi);
+  // What they say about your Chog's traits (the user's pick, 10-23: "the cast reacts to your traits"): a
+  // trait you share with them first, else something about your look. Most likely the first time each one
+  // meets you, now and then after.
+  function traitLine(n) {
+    const mine = lastMe?.userData.api?.traits;
+    if (!mine || Math.random() > (n.metYou ? 0.3 : 0.75)) return null;
+    n.metYou = true;
+    const theirs = n.c.traits ?? {};
+    for (const k of ['Head', 'Body', 'Eyes', 'Accessory']) {
+      const v = mine[k];
+      if (v && v !== 'Base' && v === theirs[k]) return pick1([`We match! Same ${v.toLowerCase()}.`, `Twins! I love the ${v.toLowerCase()}.`, `Same ${v.toLowerCase()} as me. Great taste.`]);
+    }
+    const has = (k, re) => re.test(String(mine[k] ?? ''));
+    const out = [];
+    if (mine.Base === '1:1') out.push('A one of one! There is nobody else like you.');
+    if (mine.Tier === 'Legendary') out.push('A Legendary, here? Everyone, look!');
+    else if (mine.Tier === 'Epic') out.push('Epic look. Truly.');
+    else if (mine.Tier === 'Rare') out.push('A rare one! Lucky me.');
+    if (has('Head', /crown/i)) out.push(who(n) === 'King Pom' ? 'A crown? There can only be one of us.' : 'Love the crown!');
+    else if (has('Head', /cap|hat|beanie/i)) out.push(`Nice ${String(mine.Head).toLowerCase()}.`);
+    if (has('Eyes', /glass|shade|visor|goggle/i)) out.push('Nice shades.');
+    if (has('Body', /hoodie/i)) out.push('That hoodie looks so cosy.');
+    else if (has('Body', /jacket|suit|coat/i)) out.push(`Sharp ${String(mine.Body).toLowerCase()}.`);
+    else if (has('Body', /jersey/i)) out.push('Love the jersey. Game day?');
+    if (mine.Aura && mine.Aura !== 'None') out.push(`Your ${String(mine.Aura).toLowerCase().replace(/\s*aura$/, '')} aura is glowing today.`);
+    if (mine.Form === 'Skull') out.push('Spooky. In a good way.');
+    if (mine.Accessory && mine.Accessory !== 'None') out.push(`That ${String(mine.Accessory).toLowerCase()} suits you.`);
+    return out.length ? pick1(out) : null;
+  }
+  const pick1 = (a) => a[Math.floor(Math.random() * a.length)];
+  const who = (n) => n.who.name;
   function react(n) {
     const { c, who } = n;
-    const line = pick(n, who.lines);
+    const line = traitLine(n) ?? pick(n, who.lines);
     const len = lineLen(line);
     // Your Chog answers once the line is done, and this one keeps facing you while it does.
     const api = lastMe?.userData.api;
@@ -450,7 +486,9 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   function meN(api) {
     if (mine.c !== api) {
       mine.c = api;
-      mine.who.name = api.name ?? 'You';
+      // (Walking as one of the cast, its own name, not its token number.)
+      const id = Number(String(api.name ?? '').match(/^Chog #(\d+)$/)?.[1]);
+      mine.who.name = CAST[id]?.name ?? api.name ?? 'You';
       if (mine.bubble) mine.bubble.firstChild.textContent = mine.who.name;
     }
     return mine;
@@ -561,7 +599,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     y = Math.max(y, el.offsetHeight + 10);
     // (The compass, the map, the title, Sign in and your Chog's panel; looked up again now and then, as
     // they come and go.)
-    if (!hud || t - hudAt > 2) (hud = [...document.querySelectorAll('.tv-compass, .tv-map, .hud.top-left, #btn-signin, #chog-chip')]), (hudAt = t);
+    if (!hud || t - hudAt > 2) (hud = [...document.querySelectorAll('.tv-compass, .tv-map, .hud.top-left, #btn-signin, #chog-chip, #chog-chip .cel-acts, .pl-row, .tv-zoom, .pl-qpill')]), (hudAt = t);
     const half = el.offsetWidth / 2, h = el.offsetHeight;
     let cx = Math.min(Math.max(x, half + 8), window.innerWidth - half - 8);
     for (const box of hud) {
@@ -715,19 +753,17 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       }));
       // The crowd, in an arc in front of the stage, watching and cheering.
       const plain = quality === 'low' ? 3 : 5;
-      const who = [
-        ...Array.from({ length: plain }, (_, i) => ({ glb: NPC_SLOTS.crowd.plain, tint: new THREE.Color(SHADES[i % SHADES.length]) })),
-        ...NPC_SLOTS.crowd.named,
-      ];
+      const plainOnes = Array.from({ length: plain }, (_, i) => ({ glb: NPC_SLOTS.crowd.plain, tint: new THREE.Color(SHADES[i % SHADES.length]) }));
       // The user's pick (10-16): three of the plain Chogs swapped for the bar's regulars, so the crowd is
       // Chogs of its own. ?crowd=plain or skins for comparison.
       const crowdLook = new URLSearchParams(location.search).get('crowd') ?? 'cast';
       if (crowdLook === 'skins' || crowdLook === 'cast') {
         const skins = ['#f7cdd6', '#8fb6ef', '#93d48c', '#f2d56b', '#e0705f'];
-        for (let i = 0; i < plain; i++) who[i].tint = new THREE.Color('#ffffff').lerp(new THREE.Color(skins[i % skins.length]), 0.7);
-        // Patrol rides his hover chopper round the islands now (below), so two of the cast join in.
-        if (crowdLook === 'cast') [124, 52].slice(0, plain - 2).forEach((id, i) => (who[i] = { glb: M(`chog-${id}`), id }));
+        for (let i = 0; i < plain; i++) plainOnes[i].tint = new THREE.Color('#ffffff').lerp(new THREE.Color(skins[i % skins.length]), 0.7);
       }
+      // (Snooze and Toasty stood here too until they each had a place of their own, 10-23. Puff, the
+      // cast's own fan, is in the middle of the front row.)
+      const who = [...NPC_SLOTS.crowd.named, ...plainOnes];
       const crowd = await Promise.all(who.map((w) => npc(w.glb, w.id ?? null, w.tint ?? null)));
       const spots = [0.5, -0.5, 0.95, -0.95, 1.4, -1.4, 1.8].slice(0, crowd.length);
       crowd.forEach((c, i) => {
@@ -742,50 +778,24 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
         chogs.push(c);
         ticks.push(own(c, idler(c, ['cheer'], [6, 14])));
       });
-      // Strolling round the fountain, now and then stopping to wave.
-      for (const w of NPC_SLOTS.strollers) {
+      // King Pom on his throne, Quackers in his flower arch (the user, 10-23), each facing the fountain.
+      const props = [];
+      for (const w of NPC_SLOTS.courtiers) {
+        const spot = new THREE.Group();
+        spot.position.set(w.at[0], 0, w.at[1]);
+        spot.rotation.y = Math.atan2(FOUNTAIN.x - w.at[0], FOUNTAIN.z - w.at[1]);
+        spot.scale.setScalar(OUTDOOR);
+        const prop = w.prop === 'throne' ? throne() : flowerArch();
+        prop.traverse((o) => o.isMesh && (o.receiveShadow = true));
+        spot.add(prop);
+        plaza.add(spot);
+        props.push(spot);
         const c = await npc(w.glb, w.id);
-        c.root.scale.setScalar(OUTDOOR);
-        plaza.add(c.root);
+        // On the dais (its top is 0.4 up), or under the arch.
+        c.root.position.set(0, w.prop === 'throne' ? 0.4 : 0, w.prop === 'throne' ? 0.15 : 0.2);
+        spot.add(c.root);
         chogs.push(c);
-        // Walk at the pace its legs move (plaza space: the plaza group is at world scale).
-        const pace = (c.speedOf('walk') || w.speed) * OUTDOOR;
-        const legs = c.paceFor('walk');
-        let angle = w.phase;
-        let pause = 0;
-        let next = 14 + Math.random() * 10;
-        let held = false;
-        c.play('walk');
-        c.setPace(legs);
-        ticks.push(own(c, (dt) => {
-          if (pause > 0) {
-            pause -= dt;
-            if (pause <= 0) c.play('walk'), c.setPace(legs);
-            return;
-          }
-          next -= dt;
-          if (next <= 0) {
-            // A moment's stop to look round.
-            pause = 2.6;
-            next = 16 + Math.random() * 12;
-            c.play('idle');
-            return;
-          }
-          // Someone in the way (you): it waits rather than walk through.
-          const ahead = angle + (dt * pace * w.dir) / w.r + (2.4 * w.dir) / w.r;
-          wp.set(FOUNTAIN.x + Math.sin(ahead) * w.r, 0, FOUNTAIN.z + Math.cos(ahead) * w.r);
-          plaza.localToWorld(wp);
-          const blocked = lastMe && lastMe.getWorldPosition(_b).setY(wp.y).distanceTo(wp) < 2.6;
-          if (blocked !== held) {
-            held = blocked;
-            if (held) c.play('idle');
-            else c.play('walk'), c.setPace(legs);
-          }
-          if (held) return;
-          angle += (dt * pace * w.dir) / w.r;
-          c.root.position.set(FOUNTAIN.x + Math.sin(angle) * w.r, 0, FOUNTAIN.z + Math.cos(angle) * w.r);
-          c.root.rotation.y = angle + (w.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-        }, { steer: true, resume: () => (pause > 0 || held ? c.play('idle') : (c.play('walk'), c.setPace(legs))) }));
+        ticks.push(own(c, idler(c, w.moves, w.every)));
       }
       // By the lobby door, greeting whoever comes up the walk.
       const d = NPC_SLOTS.doorman;
@@ -798,7 +808,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       doorman.play('idle');
       ticks.push(own(doorman, () => {}));
       await prewarm?.(plaza);
-      return { group: square, chogs, tick: (tt, dt) => ticks.forEach((f) => f(dt)), extra: [...chogs.slice(-NPC_SLOTS.strollers.length - 1).map((c) => c.root)] };
+      return { group: square, chogs, tick: (tt, dt) => ticks.forEach((f) => f(dt)), extra: [...props, doorman.root], solid: props };
     },
   );
 
@@ -848,114 +858,97 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     },
   );
 
-  // ---------- Dash (#471), lapping the beacon island ----------
-  const hood2 = HOODS[NPC_SLOTS.runner.hood];
-  const lap = new THREE.Group();
-  scene.add(lap);
-  const lapAt = (a, hood) => new THREE.Vector3(hood.x + Math.cos(a) * hood.loopR, 0, hood.z + Math.sin(a) * hood.loopR);
-  let runAngle = 0;
+  // ---------- Toasty (#52), at his campfire on the beacon island (the user, 10-23) ----------
+  const st = NPC_SLOTS.storyteller;
+  const fireSpot = new THREE.Group();
+  fireSpot.position.set(st.at[0], surfaceAt(st.at[0], st.at[1]), st.at[1]);
+  fireSpot.scale.setScalar(OUTDOOR);
+  scene.add(fireSpot);
+  // (The fire is there from the start: it glows across the island after dark.)
+  const fire = campfire();
+  fireSpot.add(fire.group);
   set(
-    (v) => v.copy(lapAt(runAngle, hood2)),
+    (v) => fireSpot.getWorldPosition(v),
     async () => {
-      const r = NPC_SLOTS.runner;
-      const dash = await npc(r.glb, r.id);
-      dash.root.scale.setScalar(OUTDOOR);
-      lap.add(dash.root);
-      // Its run at the speed its legs carry it (else its feet slide), easing up to speed and back down,
-      // in bursts: run a while, slow to a stop, catch its breath, now and then turn and run back the other way.
-      const top = (dash.speedOf('run') || 3) * OUTDOOR;
-      const R = hood2.loopR;
-      let speed = 0;
-      let dir = 1;
-      let yaw = Math.atan2(-Math.sin(runAngle), Math.cos(runAngle));
-      let mode = 'run';
-      let left = 7 + Math.random() * 5;
-      let lean = 0;
-      dash.play('run');
-      const step = (tt, dt) => {
-        left -= dt;
-        if (mode === 'run' && left <= 0) (mode = 'stop'), (left = 0.5);
-        else if (mode === 'stop' && speed < 0.15) {
-          mode = 'rest';
-          left = 2.2 + Math.random() * 2.5;
-          dash.play('idle');
-        } else if (mode === 'rest' && left <= 0) {
-          if (Math.random() < 0.35) dir = -dir;
-          mode = 'run';
-          left = 6 + Math.random() * 7;
-          dash.play('run');
-        }
-        const want = mode === 'run' ? top : 0;
-        speed += (want - speed) * (1 - Math.exp(-dt * (mode === 'stop' ? 5 : 2.2)));
-        runAngle += (dt * speed * dir) / R;
-        dash.setPace(mode === 'rest' ? 1 : THREE.MathUtils.clamp(speed / top, 0.35, 1.15));
-        const p = lapAt(runAngle, hood2);
-        dash.root.position.set(p.x, surfaceAt(p.x, p.z), p.z);
-        // Facing the way it's going; a turn back takes about half a second.
-        const heading = Math.atan2(-Math.sin(runAngle), Math.cos(runAngle)) + (dir < 0 ? Math.PI : 0);
-        yaw = angleLerp(yaw, heading, 1 - Math.exp(-dt * 7));
-        dash.root.rotation.y = yaw;
-        // Lean into the curve a little at speed.
-        lean += ((speed * speed) / R * 0.02 * dir - lean) * (1 - Math.exp(-dt * 4));
-        dash.root.rotation.z = lean;
-      };
-      step(0, 0);
-      // It notices you and greets the others like the cast; its run waits while it does.
-      const tick = own(dash, step, { steer: true, resume: () => dash.play(mode === 'rest' ? 'idle' : 'run') });
+      const toasty = await npc(st.glb, st.id);
+      // Across the fire from its two log seats, facing them: a story for whoever sits down.
+      toasty.root.position.set(Math.cos(-1.55) * 2.1, 0, Math.sin(-1.55) * 2.1);
+      toasty.root.rotation.y = Math.atan2(-toasty.root.position.x, -toasty.root.position.z);
+      fireSpot.add(toasty.root);
+      const tell = idler(toasty, ['talk', 'talk', 'wave'], [3, 6]);
+      const tick = own(toasty, tell);
       return {
-        group: lap,
-        chogs: await shown(lap, [dash]),
-        where: (v) => v.copy(lapAt(runAngle, hood2)),
-        tick: (tt, dt) => tick(tt, dt),
-      };
-    },
-  );
-
-  // ---------- the astronaut, floating in zero g in his own dome on the middle island ----------
-  // (B, the user 10-19: src/cosmo.js builds the dome.) He drifts round the front half of it, slowly
-  // turning head over heels, clear of his pod at the back.
-  const w = NPC_SLOTS.walker;
-  const cd = DOMES[COSMO_DOME];
-  const stroll = new THREE.Group();
-  stroll.position.set(cd.x, cd.y, cd.z);
-  stroll.rotation.y = cd.facing;
-  scene.add(stroll);
-  const floatAt = (tt, out) => out.set(Math.sin(tt * 0.11) * 5.2, 5.4 + Math.sin(tt * 0.37) * 0.9, 8.2 + Math.sin(tt * 0.07 + 1) * 4.2);
-  set(
-    (v) => stroll.localToWorld(v.set(0, 5.4, 8.2)),
-    async () => {
-      const astro = await npc(w.glb, w.id);
-      astro.root.scale.setScalar(OUTDOOR);
-      astro.float?.(true);
-      // He turns about his middle, not his feet.
-      const pivot = new THREE.Group();
-      pivot.add(astro.root);
-      // (His middle, for your Chog to bump into: src/travel.js.)
-      astro.root.userData.centre = pivot;
-      astro.root.position.y = -CHOG_HEIGHT * OUTDOOR * 0.45;
-      stroll.add(pivot);
-      astro.play('idle');
-      let ft = Math.random() * 40;
-      const drift = own(astro, (tt, dt) => {
-        ft += dt;
-        floatAt(ft, pivot.position);
-        pivot.rotation.set(Math.sin(ft * 0.13) * 0.7 + Math.sin(ft * 0.05) * 0.5, Math.PI + Math.sin(ft * 0.09) * 1.3, Math.sin(ft * 0.17) * 0.45);
-      });
-      const at = new THREE.Vector3();
-      let faded = 1;
-      return {
-        group: stroll,
-        chogs: await shown(stroll, [astro]),
-        where: (v) => pivot.getWorldPosition(v),
+        group: fireSpot,
+        chogs: await shown(fireSpot, [toasty]),
+        solid: [fire.group],
         tick: (tt, dt) => {
-          drift(tt, dt);
-          // Floating with him, the camera can drift right up to him: he fades out of its way.
-          const k = lastCamera ? THREE.MathUtils.smoothstep(lastCamera.position.distanceTo(pivot.getWorldPosition(at)), 2.0, 3.4) : 1;
-          if (Math.abs(k - faded) > 0.01) astro.setFade?.((faded = k));
+          fire.update(dt, lastEnv?.night ?? 0);
+          tick(dt);
         },
       };
     },
   );
+
+  // ---------- Dash (#471), laps of the beacon bridge (the user, 10-23: a place of his own) ----------
+  const br2 = (bridges ?? [])[NPC_SLOTS.runner.hood];
+  const lap = new THREE.Group();
+  scene.add(lap);
+  // Along its deck, end to end (a step short of each end).
+  const U0 = 0.07, U1 = 0.93;
+  let runU = 0.5;
+  const lapAt = (u, v = new THREE.Vector3()) => v.set(br2.ax + (br2.bx - br2.ax) * u, br2.deckY(u) + 0.15, br2.az + (br2.bz - br2.az) * u);
+  if (br2)
+    set(
+      (v) => lapAt(runU, v),
+      async () => {
+        const r = NPC_SLOTS.runner;
+        const dash = await npc(r.glb, r.id);
+        dash.root.scale.setScalar(OUTDOOR);
+        lap.add(dash.root);
+        // Its run at the speed its legs carry it (else its feet slide): up to speed, down to a stop near the
+        // end, a breather, then he turns and runs back.
+        const top = (dash.speedOf('run') || 3) * OUTDOOR;
+        const len = br2.len;
+        const along = Math.atan2(br2.bx - br2.ax, br2.bz - br2.az);
+        let speed = 0;
+        let dir = 1;
+        let yaw = along;
+        let mode = 'run';
+        let left = 0;
+        dash.play('run');
+        const p = new THREE.Vector3();
+        const step = (tt, dt) => {
+          const room = (dir > 0 ? U1 - runU : runU - U0) * len;
+          if (mode === 'run' && room < (speed * speed) / 10 + 0.6) mode = 'stop';
+          else if (mode === 'stop' && speed < 0.15) {
+            mode = 'rest';
+            left = 1.8 + Math.random() * 2.2;
+            dash.play(Math.random() < 0.4 ? 'cheer' : 'idle');
+          } else if (mode === 'rest' && (left -= dt) <= 0) {
+            dir = -dir;
+            mode = 'run';
+            dash.play('run');
+          }
+          const want = mode === 'run' ? top : 0;
+          speed += (want - speed) * (1 - Math.exp(-dt * (mode === 'stop' ? 5 : 2.2)));
+          runU = THREE.MathUtils.clamp(runU + (dt * speed * dir) / len, U0, U1);
+          dash.setPace(mode === 'rest' ? 1 : THREE.MathUtils.clamp(speed / top, 0.35, 1.15));
+          dash.root.position.copy(lapAt(runU, p));
+          // Facing the way it's going; turning back takes about half a second.
+          yaw = angleLerp(yaw, along + (dir < 0 ? Math.PI : 0), 1 - Math.exp(-dt * 7));
+          dash.root.rotation.y = yaw;
+        };
+        step(0, 0);
+        // It notices you and greets the others like the cast; its run waits while it does.
+        const tick = own(dash, step, { steer: true, resume: () => dash.play(mode === 'rest' ? 'idle' : 'run') });
+        return {
+          group: lap,
+          chogs: await shown(lap, [dash]),
+          where: (v) => lapAt(runU, v),
+          tick: (tt, dt) => tick(tt, dt),
+        };
+      },
+    );
 
   // ---------- Patrol on his hover chopper, riding round the islands (B, src/rider.js; the user 10-19) ----------
   // The ride's ground: a bridge's deck where it crosses one, else the walking surface.
@@ -988,6 +981,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     }
     return around;
   };
+  let riderSet = null;
   set(
     (v) => (rider ? v.copy(rider.group.position) : v.copy(rideStart)),
     async () => {
@@ -1010,6 +1004,8 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       };
     },
   );
+
+  riderSet = sets.at(-1);
 
   // Build a set the first time it is near: fetched, compiled, then shown.
   function load(st) {
@@ -1042,6 +1038,14 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     /** Every Chog about town that's showing (their roots), for walking round them. */
     roots() {
       return actors.flatMap((a) => (a.group.visible ? [...a.chogs.map((c) => c.root), ...(a.solid ?? [])] : []));
+    },
+    // Patrol on his chopper (src/rider.js), for a race (src/race.js): resolves with him, loading him first
+    // if he hasn't been near yet; null if he can't come (a guest is walking as him).
+    async patrol() {
+      if (away.has(56)) return null;
+      if (riderSet.state === 'waiting') load(riderSet);
+      for (let i = 0; i < 600 && riderSet.state !== 'ready' && riderSet.state !== 'failed'; i++) await new Promise((r) => setTimeout(r, 50));
+      return riderSet.state === 'ready' ? rider : null;
     },
     // A set still loading: the demo's shots wait for them all (B13).
     get loading() {

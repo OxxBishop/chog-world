@@ -65,3 +65,35 @@ The user: after the grey-out and fade, being sent off the island is "too abrupt 
 ## 7. Also build A's open suggestions (show the user options first for anything creative)
 - **Activities:** a star hunt across the islands, and a race against Dash or Patrol.
 - **Casino:** stays on testnet chips; never real $CHOG.
+
+## 8. Every cast Chog gets its own place on the island (the user: only Snooze has one so far)
+Show the user the spots first, then build them. Each Chog needs a home spot, a little loop there, and a hello when you pass.
+- **Monty:** doorman at the Hub's lobby doors.
+- **King Pom:** a throne-like bench by the fountain, holding court.
+- **Peel:** at the bar's counter, cracking puns.
+- **Puff:** front row at the singer's stage, crying at songs.
+- **Quackers:** posing at a mirror or flower arch on the plaza.
+- **Toasty:** a campfire in a neighbourhood, telling stories.
+- **Dash:** laps along a glass bridge.
+- **Petal:** in a flower garden.
+- **Cosmo** (his dome), **Patrol** (his chopper) and **Snooze** (the giant tree) already have theirs.
+
+## 9. Make NFT traits matter in the world (beyond the casino). The user picks before anything is built.
+- **Wearables:** head, outfit and accessory traits worn on the plain body (src/traitmap.js already has a slot for every trait value).
+- **Your dome from your traits:** the biome, the garden and the furniture follow your traits.
+- **Trait-gated places:** e.g. a Crown Club for crown wearers, a stargazing deck for Aura holders.
+- **The cast reacts to your traits:** "love the crown!"; Chogs who share a trait wave or group up at the bar.
+- **A Chogdex:** a collection book of traits you've met in the world, and a Hall of Chogs in the plaza for rare traits.
+- **Movement and personality from traits:** gait (src/gait.js), idles, and chat personality per trait.
+
+## 10. Give $CHOG a role in the world (testnet only, never mainnet; the user picks first)
+- **Earn:** the star hunt, the race, a daily hello from your Chog, quests from the cast.
+- **Spend on things you can see:**
+  - dome decor and garden plants;
+  - hoverboard skins;
+  - postcard frames and stamps;
+  - a drink for a Chog at the bar (it opens new chat);
+  - a tip for the singer (she plays a request);
+  - a wish at the fountain (a small surprise).
+- **Status:** your balance on your chip, and a top-Chogs board on the dome ticker.
+- **Rarity:** rarer traits earn more, but gently: a multiplier of 1x to 1.5x by trait rarity (or 2x for 1/1s), with a daily cap, so common holders still get plenty. Rarity's bigger payoff is status: a gold name, a glow, a spot in the Hall of Chogs.

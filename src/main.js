@@ -24,6 +24,13 @@ import { createLoader, prewarm } from './loader.js';
 import { SHOTS, createDemo } from './shots.js';
 import { createSpace } from './space.js';
 import { createAudio } from './audio.js';
+import { createRace } from './race.js';
+import { createStars } from './stars.js';
+import { createPurse } from './purse.js';
+import { createQuests } from './quests.js';
+import { createGuide } from './guide.js';
+import { islandPerksFor } from './islandperks.js';
+import './play.css';
 import './motion.js';
 import { createEntry } from './entry.js';
 import { createIntro } from './intro.js';
@@ -337,6 +344,11 @@ function stagePos() {
 }
 // The island's wildlife (B35, src/birds.js).
 let birds = null;
+let race = null;
+let stars = null;
+let purse = null;
+let quests = null;
+let guide = null;
 const birdFocus = new THREE.Vector3(), birdMe = new THREE.Vector3();
 let debug = null;
 // Walking your Chog round the islands (src/travel.js), and the last frame's step for its tweens.
@@ -521,12 +533,27 @@ async function init() {
         leaveRoomUI();
       },
       dt: () => frameDt,
+      // Out walking for the first time: the guide says hello (src/guide.js).
+      welcome: (o) => guide?.welcome(o),
     },
   });
   } catch (err) {
     // Never lose the world over it: without it, the old views still work.
     console.error('Travel:', err);
   }
+  // Racing Patrol round the first neighbourhood's loop (B, src/race.js; the user's pick, 10-23).
+  // Testnet $CHOG (B, src/purse.js; the user's pick, 10-23): earned by the star hunt (src/stars.js) and the race,
+  // spent at the fountain and the stage. Never on-chain.
+  // What your Chog's traits give it round the islands (src/islandperks.js): signed in, its own; a guest, the
+  // collection Chog it visits as.
+  const islandPerks = () => islandPerksFor(session?.active?.info?.traits ?? travel?.guest?.traits ?? {});
+  if (travel) purse = createPurse({ scene, camera, travel, session: () => session, audio });
+  if (travel) stars = createStars({ scene, camera, travel, onFound: () => purse?.earn('star', 10), onAll: () => purse?.earn('stars', 50), sense: () => islandPerks().sense });
+  // Small asks from the cast, for testnet $CHOG (B, src/quests.js; the user's pick, 10-23).
+  if (travel) quests = createQuests({ scene, camera, travel, purse });
+  // The guide: the pixel Chog that explains it all, with Quests and Traits (B, src/guide.js; the user, 10-23).
+  if (travel) guide = createGuide({ travel, session: () => session, purse, stars, quests });
+  if (travel) race = createRace({ scene, camera, travel, npcs: () => npcs, dip: (fn) => new Promise((resolve) => fadeThrough(() => (fn(), resolve()))), onWin: () => purse?.earn('race', 25), perks: islandPerks });
   // Signing in, and the Chogs who live round the world.
   session = initSession({
     get travel() {
@@ -663,16 +690,23 @@ async function init() {
   // The casino's game (B8): its panel shows while you're inside.
   // The postcard camera (B19): the view, framed and saved as a PNG.
   // (A, 10-21: where you are, and your Chog's art for the stamp; then a sheet to share it.)
-  $('btn-photo')?.addEventListener('click', () => {
+  // (10-23, the user: your Chog turns to the camera and waves first.)
+  let shooting = false;
+  $('btn-photo')?.addEventListener('click', async () => {
+    if (shooting) return;
+    shooting = true;
     const own = session?.active?.info, guest = travel?.active ? travel.guest : null;
     const id = own?.id ?? guest?.id ?? null;
-    postcard({
+    const back = travel?.active && !inRoom ? await travel.pose().catch(() => null) : null;
+    await postcard({
       frame,
       canvas: renderer.domElement,
       name: own?.name ?? guest?.name ?? 'Chog World',
       place: inRoom?.room?.name ?? (travel?.active ? travel.placeName() : 'Chog World'),
       art: id ? `${import.meta.env.BASE_URL}art/${id}.webp` : null,
-    });
+    }).catch(() => {});
+    back?.();
+    shooting = false;
   });
   casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active, sky });
   // The session warms its Chogs' shaders as it starts: the loader waits for those too.
@@ -700,7 +734,7 @@ async function init() {
       });
     }
   }
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, audio, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, audio, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, get race() { return race; }, get stars() { return stars; }, get purse() { return purse; }, get quests() { return quests; }, get guide() { return guide; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: one of the demo video's shots (src/shots.js), with the interface hidden. What a shot
@@ -731,6 +765,13 @@ function shotWorld() {
     },
     get travel() {
       return travel;
+    },
+    // And the cast and the race (B, 10-23: the trailer's race against Patrol).
+    get npcs() {
+      return npcs;
+    },
+    get race() {
+      return race;
     },
     enterRoom: (id) => enterRoom(room(id)),
     inRoom: (id) => rig.room === room(id)?.pod,
@@ -1015,7 +1056,7 @@ function frame() {
   wind.uTime.value = t;
   island.update(env, t, camera, dt);
   // (Quiet over the connect screen and through the flights down: it starts when you land, the user 10-22.)
-  audio.update(dt, { camera, night: env.night, indoors: rig.room instanceof RoomBox || !!inRoom, stage: stagePos(), quiet: document.body.classList.contains('intro-open') || !!arrival?.active || !!space?.active || !!entry?.active && !rig.room });
+  audio.update(dt, { camera, night: env.night, indoors: rig.room instanceof RoomBox || !!inRoom, stage: stagePos(), quiet: document.body.classList.contains('intro-open') || !!arrival?.active || !!space?.active || !!entry?.active && !rig.room, casino: !!casino && rig.room === casino.room.pod, loading: document.body.classList.contains('intro-open') });
   travel?.setEnv?.(env);
   entry?.apply(env, renderer);
   session?.update(dt);
@@ -1023,6 +1064,10 @@ function frame() {
   casino?.show(!entry?.active && rig.room === casino.room.pod && casino.room.room.group.visible);
   casino?.update(dt, env);
   npcs?.update(dt, camera, env, renderer, travel?.active ? travel.chog?.root : null, travel?.boards);
+  race?.update(dt);
+  stars?.update(dt, env);
+  purse?.update(dt, { busy: !!race?.active });
+  quests?.update(dt, { busy: !!race?.active });
   // Near your Chog out walking, else near what the camera looks at; hidden in rooms and in space.
   if (birds) {
     const me = travel?.active && travel.chog ? travel.chog.root.getWorldPosition(birdMe) : null;

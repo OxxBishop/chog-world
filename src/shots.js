@@ -313,6 +313,105 @@ Object.assign(SHOTS, {
     },
   },
   // The singer on her stage at night, the camera drifting along the crowd's edge.
+  // ---------- v5 (the user, 10-23: the overview, the Hub, the lobby, the casino and the traits, and the new
+  // things: a star, the race, King Pom's throne, Toasty's fire) ----------
+  // The archipelago from high up at golden hour, drifting.
+  't-overview': { hour: 17.4, keys: drift(6, [160, 235, 480], [134, 228, 468], [44, 0, 18], [40, 0, 16]), update: (w) => lens(w, 45) },
+  // King Pom holding court on his throne by the fountain.
+  't-throne': { hour: 17.3, keys: drift(6, [-1.6, 33.9, 46.0], [-2.6, 33.7, 44.6], [-11, 33.1, 50], [-11.2, 33.1, 50.2]), update: (w) => lens(w, 42) },
+  // A star by the Beacon after dark, turning in its column of light.
+  't-star': { hour: 21.2, keys: drift(6, [216.8, 4.4, -88.6], [215.6, 4.3, -90.4], [211.2, 3.2, -93.9]), update: (w) => lens(w, 40) },
+  // Toasty's campfire at night.
+  't-campfire': { hour: 21.6, keys: drift(6, [216.5, 6.2, -102.5], [214.4, 5.8, -104.8], [207.8, 2.4, -112.5]), update: (w) => lens(w, 44) },
+  // Chog Hub at night: the lobby's arch, the bar, the casino, the ticker round the dome.
+  't-hub': { hour: 20.5, keys: drift(6, [20, 44.2, 70], [16.6, 43.6, 66.6], [9, 40.9, 31.7], [8.4, 40.6, 31.2]), update: (w) => lens(w, 46) },
+  // Inside: the lobby, and the Starlite Lounge.
+  't-lobby': {
+    hour: 20.5,
+    setup(w) {
+      w.rig.jump('lobby');
+    },
+    keys: drift(6, [6.8, 37.0, 8.8], [5.6, 36.8, 7.4], [-1.6, 33.4, -4], [-2.4, 33.4, -4.4]),
+    update: (w) => lens(w, 54),
+  },
+  't-casino': {
+    hour: 20.5,
+    setup(w) {
+      w.rig.jump('casino');
+      // The room alone, without its game picker (the next shot plays a game).
+      document.body.classList.add('demo-clean');
+    },
+    keys: drift(6, [31.4, 33.7, 5.0], [32.8, 33.6, 4.2], [40, 32.6, -3], [40.8, 32.6, -3.4]),
+    update: (w) => lens(w, 54),
+  },
+  // The demo Chog at the slots: its edges along the top (an edge's card opens), and a spin that lands three
+  // chips, paid at its Deep pockets rate.
+  't-edges': {
+    hour: 20.5,
+    length: 9,
+    async setup(w) {
+      let arrived = false;
+      w.session.demo().then(() => (arrived = true));
+      await w.until(() => arrived, 120000);
+      w.rig.jump('casino');
+      await w.wait(600);
+      w.casino.play('slots');
+      await w.wait(2500);
+    },
+    events: [
+      [1.4, () => document.querySelector('.cz-badge[data-i="2"]')?.click()],
+      [4.6, () => document.querySelector('.cz-badge[data-i="2"]')?.click()],
+      [5.0, (w) => w.casino._spin([3, 3, 3])],
+    ],
+  },
+  // The race: your Chog on a hoverboard and Patrol on his chopper, neck and neck through the gates, the
+  // camera riding alongside.
+  't-race': {
+    hour: 17.0,
+    length: 8,
+    async setup(w) {
+      const info = await chogInfo(1151);
+      const rider = await makeChog({ ...info, traits: { ...info.traits, Aura: null }, model: 'models/npcs/chog-1151.glb' });
+      w.scene.add(rider.root);
+      rider.play('idle');
+      const boards = w.travel.hoverboards;
+      const b = boards.boards.length - 2;
+      boards.take(b);
+      const patrol = await w.npcs.patrol();
+      w.race.showcase(true, 2);
+      // Both a little before the second gate, his nose just ahead.
+      const HX = -11.2, HZ = 227.7, A = Math.atan2(HZ, HX) + Math.PI + 0.62;
+      patrol.race(w.race.track, ((A - (Math.atan2(HZ, HX) + Math.PI)) / (Math.PI * 2)) * w.race.track.getLength() + 1.2, 9.6);
+      this._race = { rider, b, patrol, HX, HZ, a: A, last: 0, cam: null };
+    },
+    update(w, t) {
+      const r = this._race;
+      if (!r) return;
+      lens(w, 46);
+      const dt = Math.max(0, t - r.last);
+      r.last = t;
+      const Rin = 24.9, v = 9.6;
+      r.a += (dt * v) / Rin;
+      r.patrol.speed = (v * 27.8) / Rin * (1 + Math.sin(t * 0.7) * 0.02);
+      const x = r.HX + Math.cos(r.a) * Rin, z = r.HZ + Math.sin(r.a) * Rin;
+      const g = surfaceAt(x, z);
+      const yaw = Math.atan2(-Math.sin(r.a), Math.cos(r.a));
+      const lift = BOARD.hover + BOARD.thick + Math.sin(t * 2.6) * 0.04;
+      _p.set(x, g, z);
+      w.travel.hoverboards.carry(r.b, _p, yaw, -0.06, lift, 0.12);
+      w.travel.hoverboards.update(dt, { night: 0.1 });
+      r.rider.root.position.set(x, g + lift, z);
+      r.rider.root.rotation.y = yaw;
+      r.rider.update(dt, w.camera);
+      // Riding alongside, on the outside of the loop and a little behind, looking across the pair.
+      const out = new THREE.Vector3(Math.cos(r.a), 0, Math.sin(r.a));
+      const fwd = new THREE.Vector3(-Math.sin(r.a), 0, Math.cos(r.a));
+      const want = _q.set(x, g + 3.4, z).addScaledVector(out, 9.5).addScaledVector(fwd, -5.5);
+      r.cam = r.cam ? r.cam.lerp(want, Math.min(1, dt * 4)) : want.clone();
+      w.camera.position.copy(r.cam);
+      w.camera.lookAt(_p.set(x, g + 1.6, z).addScaledVector(out, 1.4).addScaledVector(fwd, 1.5));
+    },
+  },
   't-singer': {
     hour: 19.6,
     keys: drift(7, [21.2, 31.6, 35], [22.5, 31.65, 36.2], [27, 32, 30], [27.1, 32, 30.1]),

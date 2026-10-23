@@ -274,6 +274,7 @@ export function createRider({ chog, groundAt }) {
   f.grip = new THREE.Vector3(sh.x + arm * 0.12, sh.y - down, sh.z + fwdReach);
 
   const ride = hoverChopper(f);
+
   const group = new THREE.Group();
   group.name = 'rider';
   const lean = new THREE.Group();
@@ -284,6 +285,8 @@ export function createRider({ chog, groundAt }) {
   chog.root.position.set(0, hipAt - hipY, 0);
 
   const saved = [];
+  let salute = 0;
+  const _sal = new THREE.Vector3();
   const posed = [...B.legs.flatMap((l) => [l.thigh, l.shin]), ...B.arms.flatMap((a) => [a.up, a.fore])];
   const grip = new THREE.Vector3(), pole = new THREE.Vector3();
   const pose = () => {
@@ -299,16 +302,23 @@ export function createRider({ chog, groundAt }) {
       reach(l.thigh, l.shin, l.foot, grip, pole);
     });
     for (const a of B.arms) {
-      grip.set(a.s * f.grip.x, f.grip.y, f.grip.z).applyMatrix4(lean.matrixWorld);
-      pole.set(a.s, -0.6, -0.3).transformDirection(lean.matrixWorld);
+      grip.set(a.s * f.grip.x, f.grip.y, f.grip.z);
+      // A salute (after a race): his right hand up to the brim of his visor, the elbow out to the side.
+      const k = a.s < 0 ? salute * salute * (3 - 2 * salute) : 0;
+      if (k > 0) grip.lerp(_sal.set(a.s * sh.x * 0.45, sh.y + arm * 0.62, sh.z + arm * 0.34), k);
+      grip.applyMatrix4(lean.matrixWorld);
+      pole.set(a.s, -0.6 + k * 0.5, -0.3 - k * 0.4).transformDirection(lean.matrixWorld);
       reach(a.up, a.fore, a.hand, grip, pole);
     }
   };
   const unpose = () => posed.forEach((b, i) => saved[i] && b.quaternion.copy(saved[i]));
 
-  const route = tour();
-  const length = route.getLength();
+  const tourRoute = tour();
+  let route = tourRoute;
+  let length = route.getLength();
   let s = 0;
+  // A race (src/race.js): his own line round a track, at the pace it sets; null on his tour.
+  let pace = null;
   let y = null;
   let roll = 0;
   let t = 0;
@@ -342,7 +352,9 @@ export function createRider({ chog, groundAt }) {
       for (const h of hits) for (const g of [h.l - h.r, h.l + h.r]) if (clear(g) && (best === null || Math.abs(g - side) < Math.abs(best - side))) best = g;
       // The nearest thing ahead still across his path where he is now.
       let block = null;
-      for (const h of hits) if (h.f > 0 && Math.abs(h.l - side) < h.r && (!block || h.f < block.f)) block = h;
+      // (Within a hand of the gap he's swinging into counts as clear: his swing only creeps up on it, and
+      // waiting for it to arrive left him stopped beside a parked board for good.)
+      for (const h of hits) if (h.f > 0 && Math.abs(h.l - side) < h.r - 0.15 && (!block || h.f < block.f)) block = h;
       if (best === null) {
         goal = side;
         if (block) ease = THREE.MathUtils.clamp((block.f - block.r - 0.5) / 5, 0, 1);
@@ -358,13 +370,13 @@ export function createRider({ chog, groundAt }) {
     const h0 = Math.atan2(p.x - behind.x, p.z - behind.z), h1 = Math.atan2(ahead.x - p.x, ahead.z - p.z);
     let turn = h1 - h0;
     turn = Math.atan2(Math.sin(turn), Math.cos(turn));
-    roll += (THREE.MathUtils.clamp(-turn * SPEED * 0.5 + sideV * 0.12, -0.38, 0.38) - roll) * Math.min(1, dt * 3 || 1);
+    roll += (THREE.MathUtils.clamp(-turn * (pace ?? SPEED) * 0.5 + sideV * 0.12, -0.38, 0.38) - roll) * Math.min(1, dt * 3 || 1);
     p.x += -dz * side;
     p.z += dx * side;
     const want = groundAt(p.x, p.z, y ?? 60);
     y = y === null || dt === 0 ? want : y + (want - y) * Math.min(1, dt * 10);
     // (Turned a little into a swerve.)
-    const yaw = Math.atan2(ahead.x - behind.x, ahead.z - behind.z) - Math.atan2(sideV, Math.max(SPEED * slow, 3));
+    const yaw = Math.atan2(ahead.x - behind.x, ahead.z - behind.z) - Math.atan2(sideV, Math.max((pace ?? SPEED) * slow, 3));
     group.position.set(p.x, y, p.z);
     group.rotation.y = yaw;
     lean.rotation.z = roll;
@@ -383,10 +395,67 @@ export function createRider({ chog, groundAt }) {
       s = d;
       place(0);
     },
+    // Racing (src/race.js): onto a closed track (a curve), d along it, at speed m/s (set as it goes).
+    race(track, d = 0, speed = SPEED) {
+      route = track;
+      length = track.getLength();
+      s = d;
+      pace = speed;
+      side = sideV = 0;
+      y = null;
+      place(0);
+    },
+    set speed(v) {
+      pace = v;
+    },
+    get speed() {
+      return pace ?? SPEED;
+    },
+    // How far along the track he is (m), and the track's length.
+    get along() {
+      return s;
+    },
+    get length() {
+      return length;
+    },
+    // Out of the picture while the camera is right on him (src/race.js), the way the cast step out of the
+    // lens (src/npcs.js): a Chog model pops rather than fades (fading would rebuild its shaders).
+    set fade(k) {
+      group.visible = k > 0.5;
+    },
+    // 0 to 1: his right hand to his visor.
+    set salute(k) {
+      salute = THREE.MathUtils.clamp(k, 0, 1);
+    },
+    // Back on his tour from the nearest point on it, and his own pace.
+    unrace() {
+      if (route === tourRoute) return;
+      const here = group.position;
+      const L = tourRoute.getLength();
+      const n = Math.ceil(L / 2);
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < n; i++) {
+        tourRoute.getPointAt(i / n, p);
+        const d = (p.x - here.x) ** 2 + (p.z - here.z) ** 2;
+        if (d < bd) (bd = d), (best = i);
+      }
+      route = tourRoute;
+      length = L;
+      s = (best / n) * L;
+      pace = null;
+      salute = 0;
+      // Off his line by however far the race had him, easing back onto it (no jump).
+      const u = s / L;
+      tourRoute.getPointAt(u, p);
+      tourRoute.getPointAt((u + 1 / L) % 1, ahead);
+      const fx = ahead.x - p.x, fz = ahead.z - p.z, fl = Math.hypot(fx, fz) || 1;
+      side = ((here.x - p.x) * -fz + (here.z - p.z) * fx) / fl;
+      sideV = 0;
+    },
     // avoid: [{ x, z, r }] to keep clear of (src/npcs.js: your Chog, the hoverboards, the cast), or null.
     update(dt, env, camera, avoid = null) {
       t += dt;
-      s = (s + SPEED * slow * dt) % length;
+      s = (s + (pace ?? SPEED) * slow * dt) % length;
       place(dt, avoid);
       const night = env?.night ?? 0;
       for (const m of ride.lights) m.emissiveIntensity = 1.2 + night * 2.5;

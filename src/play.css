@@ -1,0 +1,194 @@
+/*
+ * The island's games and their interface, in the Celestial look (src/celestial.css): the race against
+ * Patrol (src/race.js), the star hunt (src/stars.js) and testnet $CHOG (src/purse.js). Dark glass, a gold
+ * hairline, Cinzel for names and numbers, Josefin Sans for the rest.
+ */
+
+/* A demo shot of a room on its own (src/shots.js). */
+body.demo.demo-clean .cz-ui { display: none !important; }
+
+/* A card at the bottom middle: an offer, a result. */
+.pl-card {
+  position: fixed; left: 50%; bottom: 112px; transform: translateX(-50%); z-index: 8;
+  width: min(360px, calc(100vw - 32px)); box-sizing: border-box; padding: 14px 18px 14px; text-align: center;
+  background: var(--cel-panel); border-radius: 12px; box-shadow: inset 0 0 0 1px var(--cel-line), 0 10px 30px rgba(10, 6, 24, 0.35);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: #fff;
+  animation: pl-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+.pl-card[hidden] { display: none; }
+.pl-card .pl-title { display: block; font: 600 17px/1.2 var(--cel-display); letter-spacing: 0.08em; color: var(--cel-gold); text-shadow: var(--cel-halo); }
+.pl-card .pl-title::before, .pl-card .pl-title::after { content: ''; display: inline-block; width: 22px; height: 1px; margin: 0 10px 5px; vertical-align: middle; background: linear-gradient(90deg, rgba(236, 220, 174, 0), var(--cel-line)); }
+.pl-card .pl-title::after { background: linear-gradient(90deg, var(--cel-line), rgba(236, 220, 174, 0)); }
+.pl-card .pl-text { margin: 7px 0 0; font: 500 14px/1.4 var(--cel-label); color: rgba(255, 255, 255, 0.86); }
+.pl-acts { display: flex; gap: 10px; justify-content: center; margin-top: 12px; }
+.pl-acts[hidden] { display: none; }
+.pl-btn {
+  font: 600 12px/1 var(--cel-label); letter-spacing: 0.16em; text-transform: uppercase; color: #fff; cursor: pointer;
+  padding: 11px 20px; border: 0; border-radius: 8px; background: rgba(236, 220, 174, 0.1); box-shadow: inset 0 0 0 1px var(--cel-line);
+  -webkit-tap-highlight-color: transparent; min-height: 40px;
+}
+.pl-btn:hover { background: rgba(236, 220, 174, 0.2); box-shadow: inset 0 0 0 1px #fff6d8, 0 0 12px rgba(236, 220, 174, 0.35); }
+.pl-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@keyframes pl-in { from { opacity: 0; transform: translate(-50%, 10px) scale(0.97); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+
+/* Over the line: a quick warm flash. */
+.pl-flash { position: fixed; inset: 0; z-index: 7; pointer-events: none; opacity: 0; background: radial-gradient(circle at 50% 45%, rgba(255, 250, 235, 0.95), rgba(255, 226, 160, 0.55) 45%, rgba(255, 210, 130, 0) 80%); }
+.pl-flash.on { animation: pl-flash 0.7s ease-out both; }
+@keyframes pl-flash { 0% { opacity: 0; } 12% { opacity: 0.85; } 100% { opacity: 0; } }
+
+/* The countdown: big gold numerals in the middle. */
+.pl-count {
+  position: fixed; left: 0; right: 0; top: 30%; z-index: 8; text-align: center; pointer-events: none;
+  font: 600 150px/1 var(--cel-display); letter-spacing: 0.04em; color: #ffe9b0;
+  background: linear-gradient(180deg, #fff8e6 0%, #f3d58f 55%, #c99a45 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 2px rgba(20, 12, 40, 0.7)) drop-shadow(0 0 18px rgba(20, 12, 40, 0.45));
+}
+.pl-count[hidden] { display: none; }
+.pl-count.pop { animation: pl-pop 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.pl-count.go { letter-spacing: 0.12em; }
+@keyframes pl-pop { 0% { opacity: 0; transform: scale(1.5); } 18% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: scale(0.92); } }
+
+/* The race at the top: the next gate, the time, your place. */
+.pl-hud {
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 14px); transform: translateX(-50%); z-index: 8; pointer-events: none;
+  display: flex; gap: 16px; align-items: center; padding: 8px 16px; border-radius: 999px; white-space: nowrap;
+  background: var(--cel-panel); box-shadow: inset 0 0 0 1px var(--cel-line); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  font: 500 13px/1 var(--cel-label); color: rgba(255, 255, 255, 0.85); letter-spacing: 0.04em;
+}
+.pl-hud[hidden] { display: none; }
+.pl-hud b { font-weight: 600; color: var(--cel-gold); letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; }
+.pl-hud .pl-time { font: 600 16px/1 var(--cel-display); color: #fff; min-width: 4.2em; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* A short note at the top (a star found, $CHOG in). */
+.pl-toast {
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 58px); transform: translateX(-50%); z-index: 8; pointer-events: none;
+  padding: 9px 16px; border-radius: 10px; white-space: nowrap; background: var(--cel-panel); box-shadow: inset 0 0 0 1px var(--cel-line);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); font: 500 13.5px/1.2 var(--cel-label); color: #fff;
+  opacity: 0; transition: opacity 0.35s ease;
+}
+.pl-toast.on { opacity: 1; }
+.pl-toast.low { top: auto; bottom: 118px; }
+.pl-toast b { font: 600 13px/1 var(--cel-display); color: var(--cel-gold); letter-spacing: 0.06em; }
+
+/* The counts' row at the top right (src/hudrow.js): beside the map on a laptop, above it on a phone. */
+.pl-row { position: fixed; z-index: 7; top: calc(env(safe-area-inset-top, 0px) + 20px); right: calc(env(safe-area-inset-right, 0px) + 186px); display: flex; gap: 8px; align-items: center; pointer-events: none; }
+/* The star count. */
+.pl-stars {
+  order: 2; display: flex; align-items: center; gap: 7px; padding: 7px 12px 7px 10px; border-radius: 999px;
+  background: var(--cel-well); box-shadow: inset 0 0 0 1px var(--cel-line); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  font: 600 14px/1 var(--cel-display); color: #fff; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; text-shadow: var(--cel-halo);
+}
+.pl-stars svg { width: 15px; height: 15px; fill: var(--cel-gold); filter: drop-shadow(0 0 4px rgba(255, 214, 120, 0.7)); }
+.pl-stars.all svg { fill: #ffe08a; filter: drop-shadow(0 0 6px rgba(255, 214, 120, 1)); }
+.pl-stars.bump { animation: pl-bump 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+@keyframes pl-bump { 30% { transform: scale(1.25); } }
+body:not(.stars-on) .pl-stars, body.demo .pl-stars, body.in-casino .pl-stars { display: none; }
+
+/* Testnet $CHOG: the balance under the stars, and what comes in floating up beside it. */
+.pl-purse {
+  order: 1; display: none; align-items: center; gap: 6px; padding: 7px 12px 7px 10px; border-radius: 999px;
+  background: var(--cel-well); box-shadow: inset 0 0 0 1px var(--cel-line); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  font: 600 14px/1 var(--cel-display); color: #fff; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; text-shadow: var(--cel-halo);
+}
+.pl-purse.on { display: flex; }
+.pl-purse svg { width: 15px; height: 15px; fill: rgba(236, 220, 174, 0.18); stroke: var(--cel-gold); stroke-width: 1.8; stroke-linecap: round; }
+.pl-purse small { font: 600 9px/1 var(--cel-label); letter-spacing: 0.16em; color: var(--cel-gold); }
+.pl-purse.bump { animation: pl-bump 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+body.demo .pl-purse, body.in-casino .pl-purse { display: none; }
+.pl-plus { position: fixed; right: calc(env(safe-area-inset-right, 0px) + 300px); top: calc(env(safe-area-inset-top, 0px) + 26px); z-index: 7; pointer-events: none; opacity: 0;
+  font: 600 16px/1 var(--cel-display); color: #ffe08a; text-shadow: var(--cel-halo), 0 0 10px rgba(255, 210, 120, 0.6); }
+.pl-plus.up { animation: pl-plus 1.5s ease-out both; }
+@keyframes pl-plus { 0% { opacity: 0; transform: translateY(8px); } 15% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-22px); } }
+.pl-toast.pl-coin { top: calc(env(safe-area-inset-top, 0px) + 100px); }
+/* (Your Chog's panel has the places' buttons itself: the old places menu stays out of the way, 10-23.) */
+body:has(#chog-chip:not([hidden])) .places-toggle, body:has(#chog-chip:not([hidden])) #places { display: none !important; }
+
+/* A cast quest: what you're gathering, first in the counts' row. */
+.pl-qpill {
+  order: 0; pointer-events: none;
+  display: none; padding: 9px 12px 8px; border-radius: 999px; background: var(--cel-well); box-shadow: inset 0 0 0 1px var(--cel-line);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); font: 600 11px/1 var(--cel-label); letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--cel-gold); text-shadow: var(--cel-halo); white-space: nowrap;
+}
+.pl-qpill.on { display: block; }
+body.demo .pl-qpill, body.in-casino .pl-qpill { display: none; }
+.pl-toast.pl-qtoast { top: calc(env(safe-area-inset-top, 0px) + 142px); }
+
+@media (max-width: 760px) {
+  .pl-row { top: calc(env(safe-area-inset-top, 0px) + 14px); right: calc(env(safe-area-inset-right, 0px) + 16px); }
+  .pl-plus { right: calc(env(safe-area-inset-right, 0px) + 200px); top: calc(env(safe-area-inset-top, 0px) + 46px); }
+  .pl-card { bottom: 244px; }
+  .pl-count { font-size: 118px; top: 24%; }
+  .pl-hud { gap: 11px; padding: 7px 13px; font-size: 12px; }
+  .pl-hud .pl-time { font-size: 15px; }
+  .pl-toast.pl-coin { top: calc(env(safe-area-inset-top, 0px) + 312px); bottom: auto; }
+  .pl-toast.pl-qtoast { top: calc(env(safe-area-inset-top, 0px) + 356px); bottom: auto; }
+  .pl-toast, .pl-toast.low { top: calc(env(safe-area-inset-top, 0px) + 266px); bottom: auto; white-space: normal; width: max-content; max-width: calc(100vw - 48px); text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-card, .pl-count.pop, .pl-stars.bump, .pl-flash.on, .pl-purse.bump, .pl-plus.up { animation: none; }
+}
+
+/* ---------- the guide (src/guide.js): the pixel Chog and two buttons on the left, and its panel ---------- */
+.pl-dock { position: fixed; z-index: 6; left: calc(env(safe-area-inset-left, 0px) + 16px); top: calc(env(safe-area-inset-top, 0px) + 150px); display: flex; flex-direction: column; gap: 14px; }
+body:has(#chog-chip:not([hidden])) .pl-dock { top: calc(env(safe-area-inset-top, 0px) + 140px); }
+body:not(.walking) .pl-dock, body.demo .pl-dock, body.in-casino .pl-dock, body.intro-open .pl-dock { display: none; }
+.pl-dock .cel-well { width: 46px; height: 46px; }
+.pl-guide-well { overflow: visible; }
+.pl-guide-well canvas:not(.pl-hand) { width: 30px; height: auto; image-rendering: pixelated; animation: pl-hop 2.4s ease-in-out infinite; }
+.pl-hand { position: absolute; right: -5px; top: 2px; width: 12px; height: auto; image-rendering: pixelated; transform-origin: 30% 90%; animation: pl-wave 2.4s ease-in-out infinite; }
+@keyframes pl-hop { 0%, 60%, 100% { transform: translateY(0); } 70% { transform: translateY(-3px); } 80% { transform: translateY(0); } }
+@keyframes pl-wave { 0%, 40%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-24deg); } 60% { transform: rotate(18deg); } 70% { transform: rotate(-18deg); } 80% { transform: rotate(0deg); } }
+
+.pl-guide { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px; background: rgba(12, 8, 26, 0.35); opacity: 0; transition: opacity 0.22s ease; }
+.pl-guide[hidden] { display: none; }
+.pl-guide.on { opacity: 1; }
+.pl-guide-card { width: min(520px, 100%); max-height: min(78vh, 720px); display: flex; flex-direction: column; background: var(--cel-panel); border-radius: 14px; box-shadow: inset 0 0 0 1px var(--cel-line), 0 18px 50px rgba(10, 6, 24, 0.5); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); color: #fff; transform: translateY(10px) scale(0.98); transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.1); overflow: hidden; }
+.pl-guide.on .pl-guide-card { transform: none; }
+.pl-guide-head { display: flex; align-items: center; gap: 14px; padding: 16px 18px 10px; }
+.pl-guide-head canvas { width: 48px; height: auto; image-rendering: pixelated; animation: pl-hop 2.4s ease-in-out infinite; }
+.pl-guide-head b { display: block; font: 600 20px/1.1 var(--cel-display); letter-spacing: 0.06em; color: var(--cel-gold); text-shadow: var(--cel-halo); }
+.pl-guide-sub { display: block; margin-top: 4px; font: 600 10px/1 var(--cel-label); letter-spacing: 0.22em; text-transform: uppercase; color: rgba(255, 255, 255, 0.7); }
+.pl-x { margin-left: auto; width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(236, 220, 174, 0.1); box-shadow: inset 0 0 0 1px var(--cel-line); color: #fff; font: 400 22px/1 var(--cel-label); cursor: pointer; }
+.pl-tabs { display: flex; gap: 6px; padding: 0 18px 12px; border-bottom: 1px solid rgba(236, 220, 174, 0.2); }
+.pl-tabs button { flex: 1; padding: 9px 6px; border: 0; border-radius: 8px; background: transparent; box-shadow: inset 0 0 0 1px rgba(236, 220, 174, 0.25); color: rgba(255, 255, 255, 0.8); font: 600 11px/1 var(--cel-label); letter-spacing: 0.16em; text-transform: uppercase; cursor: pointer; }
+.pl-tabs button.on { background: linear-gradient(180deg, rgba(236, 220, 174, 0.3), rgba(200, 173, 110, 0.16)); box-shadow: inset 0 0 0 1px var(--cel-gold); color: #fff; }
+.pl-guide-body { overflow-y: auto; padding: 14px 20px 20px; font: 500 14.5px/1.5 var(--cel-label); color: rgba(255, 255, 255, 0.88); -webkit-overflow-scrolling: touch; }
+.pl-guide-body p { margin: 0 0 10px; }
+.pl-guide-body .pl-lead { font: 600 16px/1.35 var(--cel-display); color: #fff; letter-spacing: 0.02em; }
+.pl-guide-body h4 { margin: 16px 0 6px; font: 600 11px/1 var(--cel-label); letter-spacing: 0.22em; text-transform: uppercase; color: var(--cel-gold); }
+.pl-guide-body ul { margin: 0; padding-left: 18px; }
+.pl-guide-body li { margin: 4px 0; }
+.pl-guide-body b { color: #fff; font-weight: 600; }
+.pl-guide-body .pl-fine { margin-top: 12px; font-size: 12.5px; color: rgba(255, 255, 255, 0.6); }
+.pl-bal { margin-bottom: 12px; padding: 12px 14px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--cel-line); background: rgba(236, 220, 174, 0.06); font: 600 13px/1.2 var(--cel-label); letter-spacing: 0.08em; text-transform: uppercase; color: var(--cel-gold); }
+.pl-bal span { font: 600 26px/1 var(--cel-display); color: #fff; margin-right: 6px; letter-spacing: 0.02em; }
+.pl-bal small { display: block; margin-top: 6px; font: 500 12.5px/1.3 var(--cel-label); letter-spacing: 0; text-transform: none; color: rgba(255, 255, 255, 0.65); }
+.pl-qlist { list-style: none; padding: 0 !important; }
+.pl-qlist li, .pl-edges li { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 10px 0; border-bottom: 1px solid rgba(236, 220, 174, 0.14); margin: 0 !important; }
+.pl-qlist li span, .pl-edges li span { grid-column: 1 / -1; font-size: 13px; color: rgba(255, 255, 255, 0.7); }
+.pl-qlist em { font: 600 10.5px/1.6 var(--cel-label); font-style: normal; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.6); }
+.pl-qlist em.on { color: var(--cel-gold); }
+.pl-qlist em.ok { color: #9be7a6; }
+.pl-edges { list-style: none; padding: 0 !important; }
+.pl-edges small { font: 600 10px/1.6 var(--cel-label); letter-spacing: 0.14em; text-transform: uppercase; color: var(--cel-gold); justify-self: end; }
+.pl-traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.pl-traits span { padding: 7px 10px; border-radius: 8px; box-shadow: inset 0 0 0 1px rgba(236, 220, 174, 0.35); font: 600 13px/1.2 var(--cel-label); color: #fff; }
+.pl-traits small { display: block; font: 600 9px/1.4 var(--cel-label); letter-spacing: 0.18em; text-transform: uppercase; color: var(--cel-gold); }
+@media (max-width: 760px) {
+  .pl-dock { top: calc(env(safe-area-inset-top, 0px) + 120px); gap: 10px; }
+  body:has(#chog-chip:not([hidden])) .pl-dock { top: calc(env(safe-area-inset-top, 0px) + 176px); }
+  .pl-dock .cel-well { width: 42px; height: 42px; }
+  .pl-guide { place-items: end center; padding: 0; }
+  .pl-guide-card { width: 100%; max-height: 82vh; border-radius: 16px 16px 0 0; }
+}
+@media (prefers-reduced-motion: reduce) { .pl-guide-well canvas, .pl-hand, .pl-guide-head canvas { animation: none; } }
+
+/* Floating up and down in Cosmo's zero g (src/travel.js). */
+.tv-float { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 112px); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: auto; }
+.tv-float[hidden] { display: none; }
+.tv-float .cel-well { width: 50px; height: 50px; }
+.tv-float .cel-well svg { width: 24px; height: 24px; }
+.tv-float button { touch-action: none; }
+.tv-float button:active .cel-well { box-shadow: inset 0 0 0 2px #fff6d8, 0 0 14px rgba(236, 220, 174, 0.55); }
+@media (max-width: 760px) { .tv-float { bottom: calc(env(safe-area-inset-bottom, 0px) + 150px); } }

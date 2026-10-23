@@ -350,6 +350,8 @@ export function initSession(world) {
 
   /** Try a demo Chog: #43 gets the same welcome, flight home and hello. */
   async function demoArrival() {
+    // Something on screen the moment it's tapped (the user, 10-23: it felt slow to take).
+    tell('searching', { title: 'Waking the demo Chog', text: 'Chog #43 is on its way.' });
     session = { address: null, demo: true };
     await loadChogs();
     await arrive(DEMO_CHOG);

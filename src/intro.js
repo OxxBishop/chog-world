@@ -193,7 +193,7 @@ export function createIntro(el) {
       } else if (name === 'searching') {
         setTitle('WELCOME TO', 'CHOG WORLD');
         runner.reset();
-        show(`<div class="prompt">SEARCHING YOUR WALLET<span class="cursor"></span></div>${data.text ? `<p class="note">${esc(data.text)}</p>` : ''}`, { run: true });
+        show(`<div class="prompt">${esc((data.title ?? 'Searching your wallet').toUpperCase())}<span class="cursor"></span></div>${data.text ? `<p class="note">${esc(data.text)}</p>` : ''}`, { run: true });
       } else if (name === 'pick') {
         setTitle('WELCOME TO', 'CHOG WORLD');
         const chogs = data.chogs ?? [];
