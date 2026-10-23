@@ -720,7 +720,13 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       const k = THREE.MathUtils.smootherstep(f.t, 0, f.dur);
       // Its look leads its position a little, so it turns toward your Chog as it comes down.
       const kl = THREE.MathUtils.smootherstep(f.t, 0, f.dur * 0.75);
-      camera.position.lerpVectors(f.from, state.camPos, k);
+      // Over the top, not through: it crosses at height and comes down over your Chog at the end (a straight
+      // line from the island view went through the Hub: the user, 10-23).
+      if (f.arc) {
+        f.mid ??= new THREE.Vector3().lerpVectors(f.from, state.camPos, 0.85).setY(Math.max(f.from.y, state.camPos.y + 30));
+        const u = 1 - k;
+        camera.position.copy(f.from).multiplyScalar(u * u).addScaledVector(f.mid, 2 * u * k).addScaledVector(state.camPos, k * k);
+      } else camera.position.lerpVectors(f.from, state.camPos, k);
       _flyLook.lerpVectors(f.look, state.camLook, kl);
       camera.lookAt(_flyLook);
       if (f.t >= f.dur) state.fly = null;
@@ -1933,7 +1939,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const ids = data ? Object.keys(data.chogs).map(Number).filter((id) => !cast.has(id) && data.chogs[id]?.t?.Form !== 'Skull') : [43];
     const id = ids[Math.floor(Math.random() * ids.length)] ?? 43;
     const info = await chogInfo(id).catch(() => ({ id, name: `Chog #${id}`, traits: {} }));
-    const chog = await makeChog({ ...info, ...modelFor(id, info.traits) });
+    const chog = await makeChog({ ...info, ...modelFor(id, info.traits), nameplate: true });
     await world.prewarm?.(chog.root);
     const from = camera.position.clone();
     const look = camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(60).add(camera.position);
@@ -1946,7 +1952,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     place(pad.centre, pad.facing);
     state.onPortal = 0;
     chog.root.visible = false;
-    state.fly = { t: 0, dur: 3.2, from, look };
+    state.fly = { t: 0, dur: 3.2, from, look, arc: true };
     if (!teleportFx?.arrives) chog.setBeam?.(1.1, 1);
     // Beams down onto the plaza's portal as the view arrives.
     await new Promise((r) => setTimeout(r, 1900));

@@ -82,9 +82,28 @@ export const OWN_MODELS = new Set([1151, 409, 68, 124, 132, 37, 56, 66, 52, 271,
 const PLAIN = 'models/npcs/plain.glb';
 export function modelFor(id, traits = {}) {
   if (OWN_MODELS.has(Number(id))) return { model: `models/npcs/chog-${id}.glb`, tint: null };
-  const skin = SKIN[traits.Skin];
-  return { model: PLAIN, tint: skin ? new THREE.Color('#ffffff').lerp(new THREE.Color(skin), 0.45) : null };
+  // The plain body coloured as its art is (src/chog.js chogShader): the Skin trait's hair and skin.
+  return { model: PLAIN, tint: null, skin: SKIN_LOOK[traits.Skin] ?? null };
 }
+
+// What the Skin trait does in the art (the user, 10-23: "it's gotta match the art"): mostly the colour
+// of the spiky hair, and for some the face and hands too. Pink and Origin keep the classic purple hair.
+// hair 'rainbow' runs the colours round the spikes.
+export const SKIN_LOOK = {
+  Pink: { skin: '#f7c6d2' },
+  Red: { hair: '#d8402f' },
+  Black: { hair: '#2a2430', skin: '#6b4632' },
+  Yellow: { hair: '#ffd23f' },
+  Blue: { hair: '#4a86e0', skin: '#a9cdf5' },
+  White: { hair: '#f2eff7' },
+  Green: { hair: '#5cb85c', skin: '#c4e8b6' },
+  Jade: { hair: '#38a382', skin: '#b0e0cb' },
+  Purple: { skin: '#dac6f4' },
+  Beige: { hair: '#d6b98a' },
+  Metal: { hair: '#aeb6c4', skin: '#d8dde6' },
+  Grey: { hair: '#8d8997', skin: '#d4d1da' },
+  'Multi Colored': { hair: 'rainbow' },
+};
 
 // Skin colours, for the "Skin" material and the stand-in.
 export const SKIN = {

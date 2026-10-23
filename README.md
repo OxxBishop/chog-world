@@ -6,7 +6,7 @@ A cosy 3D world in the browser where your Chog NFT comes to life. Sign in with y
 
 ## What's in it
 
-- **Your Chog, alive.** Your Chog walks the world as a rigged 3D Chog with its own face, idle, walk, run and little moods: the 11 Chogs of the cast have models of their own, and every other Chog wears the base Chog, coloured by its Skin trait. It wakes up when you sign in, follows you into rooms, and says goodbye when you sign out.
+- **Your Chog, alive.** Your Chog walks the world as a rigged 3D Chog with its own face, idle, walk, run and little moods: the 11 Chogs of the cast have models of their own, and every other Chog wears the base Chog in its Skin trait's colours, hair and face as its art has them, with its own art floating over its head. It wakes up when you sign in, follows you into rooms, and says goodbye when you sign out.
 - **It talks back.** Chat with your Chog from anywhere. It has a personality from its traits and keeps a memory of what you tell it.
 - **A world to wander.** Floating islands over a sea of clouds: the plaza with a fountain and a singer on stage, Chog Hub, three neighbourhoods of domes, glass bridges, portals between islands, hoverboards, birds, manta rays and a whale in the sky. Real time of day, with an aurora at night.
 - **A cast of Chogs, each with a place of their own.** Snooze naps under the giant tree, Patrol rides his hover chopper, King Pom holds court on his throne by the fountain, Quackers poses in a flower arch, Toasty tells stories by his campfire, Dash runs laps of the glass bridge, Peel holds up the bar. They greet you as you pass.

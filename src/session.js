@@ -258,7 +258,7 @@ export function initSession(world) {
     const s = session;
     // Your Chog in the world is its rigged model at full detail (its own, or the plain body in its skin's
     // shade); the art stays in the panel and the chip.
-    const chog = await makeChog({ ...info, ...modelFor(info.id, info.traits) });
+    const chog = await makeChog({ ...info, ...modelFor(info.id, info.traits), nameplate: true });
     // Its art first if it comes quickly; otherwise it shows its name and the art follows.
     await Promise.race([chog.ready, new Promise((r) => setTimeout(r, 8000))]);
     const room = world.homes[homeFor(info.id, world.homes.length)];
