@@ -1097,6 +1097,8 @@ function frame() {
   const settled = (LIGHT || rig.room === casino?.room.pod) && rig.room instanceof RoomBox && !entry?.active && !arrival?.active;
   indoorK = THREE.MathUtils.clamp(indoorK + (settled ? dt : -dt) / 0.8, 0, 1);
   clouds?.setIndoor(indoorK);
+  // Tighter cloud build-up while your Chog runs about (src/volclouds.js setMoving).
+  clouds?.setMoving(travel?.active && !inRoom && !travel.state.busy ? THREE.MathUtils.smoothstep(travel.state.vel.length(), 1.5, 5) : 0);
   clouds?.update(env, sky, t);
 
   const hh = Math.floor(hour) % 24, mm = Math.floor((hour % 1) * 60);
