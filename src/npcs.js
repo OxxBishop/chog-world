@@ -988,6 +988,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     }
     return around;
   };
+  let riderSet = null;
   set(
     (v) => (rider ? v.copy(rider.group.position) : v.copy(rideStart)),
     async () => {
@@ -1010,6 +1011,8 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       };
     },
   );
+
+  riderSet = sets.at(-1);
 
   // Build a set the first time it is near: fetched, compiled, then shown.
   function load(st) {
@@ -1042,6 +1045,14 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     /** Every Chog about town that's showing (their roots), for walking round them. */
     roots() {
       return actors.flatMap((a) => (a.group.visible ? [...a.chogs.map((c) => c.root), ...(a.solid ?? [])] : []));
+    },
+    // Patrol on his chopper (src/rider.js), for a race (src/race.js): resolves with him, loading him first
+    // if he hasn't been near yet; null if he can't come (a guest is walking as him).
+    async patrol() {
+      if (away.has(56)) return null;
+      if (riderSet.state === 'waiting') load(riderSet);
+      for (let i = 0; i < 600 && riderSet.state !== 'ready' && riderSet.state !== 'failed'; i++) await new Promise((r) => setTimeout(r, 50));
+      return riderSet.state === 'ready' ? rider : null;
     },
     // A set still loading: the demo's shots wait for them all (B13).
     get loading() {

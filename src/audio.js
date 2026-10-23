@@ -106,7 +106,9 @@ function loopTrack(ctx, url, out) {
 }
 
 // ---------- effects: synthesized takes (a file in audio/sfx/ wins over these) ----------
-const SFX = ['chip', 'chips', 'spin', 'drop', 'win', 'nowin'];
+// The recorded takes there, known when the site is built (so no request goes out for one that isn't).
+const RECORDED = new Set(Object.keys(import.meta.glob('../public/audio/sfx/*.mp3')).map((f) => f.split('/').pop().replace('.mp3', '')));
+const SFX = ['chip', 'chips', 'spin', 'drop', 'win', 'nowin', 'beep', 'go', 'gate', 'finish', 'star', 'stars', 'coin'];
 // White noise, made once a context.
 const noiseOf = (() => {
   const made = new WeakMap();
@@ -232,6 +234,34 @@ const SYNTH = {
     bell(ctx, out, t, 440, 0.08, 0.5);
     bell(ctx, out, t + 0.16, 329.6, 0.07, 0.7);
   },
+  // The race (src/race.js): 3, 2, 1 and away; a gate passed; over the line.
+  beep(ctx, out, t) {
+    bell(ctx, out, t, 659.3, 0.11, 0.35);
+  },
+  go(ctx, out, t) {
+    bell(ctx, out, t, 1318.5, 0.13, 0.7);
+    bell(ctx, out, t, 987.8, 0.07, 0.6);
+  },
+  gate(ctx, out, t) {
+    bell(ctx, out, t, 1046.5, 0.06, 0.35);
+    bell(ctx, out, t + 0.07, 1568, 0.05, 0.45);
+  },
+  finish(ctx, out, t) {
+    [523.3, 659.3, 784, 1046.5].forEach((f, i) => bell(ctx, out, t + i * 0.09, f, 0.09, 1.1));
+    bell(ctx, out, t + 0.36, 2093, 0.035, 1.4);
+  },
+  // The star hunt (src/stars.js): one found, and the last of the twelve.
+  star(ctx, out, t) {
+    [1318.5, 1760, 2637].forEach((f, i) => bell(ctx, out, t + i * 0.06, f, 0.06 - i * 0.012, 0.9));
+  },
+  stars(ctx, out, t) {
+    [659.3, 830.6, 987.8, 1318.5, 1661.2, 1975.5].forEach((f, i) => bell(ctx, out, t + i * 0.12, f, 0.08, 1.6));
+  },
+  // Testnet $CHOG coming in (src/purse.js).
+  coin(ctx, out, t) {
+    bell(ctx, out, t, 1975.5, 0.05, 0.25);
+    bell(ctx, out, t + 0.08, 2637, 0.045, 0.4);
+  },
 };
 
 export function createAudio({ button = null } = {}) {
@@ -289,6 +319,7 @@ export function createAudio({ button = null } = {}) {
     sfxBus.gain.value = 0.9;
     sfxBus.connect(master);
     for (const name of SFX) {
+      if (!RECORDED.has(name)) continue;
       fetch(`${BASE}audio/sfx/${name}.mp3`)
         .then((r) => (r.ok && (r.headers.get('content-type') ?? '').includes('audio') ? r.arrayBuffer() : null))
         .then((b) => b && ctx.decodeAudioData(b))
