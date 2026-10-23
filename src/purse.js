@@ -237,6 +237,10 @@ export function createPurse({ scene, camera, travel, session, audio }) {
   const tmp = new THREE.Vector3();
   return {
     earn,
+    // Whose progress this is: the wallet, 'demo' or 'guest' (src/playerstore.js keys quests, stars and the race by it).
+    get player() {
+      return who().key;
+    },
     // For the casino's cash in (src/casino.js): false if the balance is short.
     spend,
     get balance() {

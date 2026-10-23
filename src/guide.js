@@ -1,3 +1,4 @@
+import { playerStore } from './playerstore.js';
 import { SPRITE, PAL } from './pixelloader.js';
 import { perksFor } from './casinoperks.js';
 import { islandPerksFor } from './islandperks.js';
@@ -161,7 +162,7 @@ export function createGuide({ travel, session, purse, stars, quests }) {
     const where = { firewood: 'Beacon island, at his campfire', can: 'the tree island, in her garden', flower: 'the plaza, on his throne' };
     let race = {};
     try {
-      race = JSON.parse(localStorage.getItem('chogworld.race.v1') || '{}');
+      race = playerStore('chogworld.race.v1').get();
     } catch {}
     const p = purse?.today ?? { got: 0, cap: 150, rate: 1, hello: false };
     const found = stars?.found ?? 0, total = stars?.total ?? 12;

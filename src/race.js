@@ -1,3 +1,4 @@
+import { playerStore } from './playerstore.js';
 import * as THREE from 'three';
 import { HOODS } from './layout.js';
 import { surfaceAt } from './travel.js';
@@ -25,18 +26,6 @@ const at = (a, r = R) => new THREE.Vector3(HOOD.x + Math.cos(a) * r, 0, HOOD.z +
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
 const KEY = 'chogworld.race.v1';
-const load = () => {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || '{}');
-  } catch {
-    return {};
-  }
-};
-const save = (v) => {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(v));
-  } catch {}
-};
 const sfx = (name) => dispatchEvent(new CustomEvent('chog-sfx', { detail: name }));
 
 // The arch over the road: a half ring of light, a soft glow round it, a turning diamond on top.
@@ -154,12 +143,14 @@ export function createRace({ scene, camera, travel, npcs, dip, onWin = null, per
   let rider = null;
   let t = 0, count = 0, prog = 0, lastA = 0, passed = 0, offBoard = 0, rest = 0, outro = 0;
   let pLaps = -1, pLast = 0, pTime = null, myTime = null;
-  const best = load();
+  // This player's best time and wins (src/playerstore.js).
+  const store = playerStore(KEY);
   const me = new THREE.Vector3(), head = new THREE.Vector3();
   const st = () => travel.state;
 
   const show = (node, on) => node.hidden !== !on && (node.hidden = !on);
   function offer(onBoard) {
+    const best = store.get();
     const b = best.best ? ` Your best: ${fmt(best.best)}.` : '';
     ui.offerText.textContent = onBoard ? `One lap of the loop, through the gates.${b}` : `Hop on a hoverboard to race him. One waits by every dome.${b}`;
     show(ui.go.parentNode, onBoard);
@@ -235,13 +226,11 @@ export function createRace({ scene, camera, travel, npcs, dip, onWin = null, per
     ui.flash.classList.remove('on');
     void ui.flash.offsetWidth;
     ui.flash.classList.add('on');
+    const best = store.get();
     const isBest = !best.best || myTime < best.best;
-    if (isBest) {
-      best.best = +myTime.toFixed(2);
-      save(best);
-    }
+    if (isBest) best.best = +myTime.toFixed(2);
     if (won) best.wins = (best.wins ?? 0) + 1;
-    save(best);
+    store.save();
     ui.resTitle.textContent = won ? 'You beat Patrol' : 'Patrol wins';
     ui.resText.textContent = won
       ? `${fmt(myTime)}${isBest ? ', your best yet' : `, best ${fmt(best.best)}`}.`
