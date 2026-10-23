@@ -28,6 +28,7 @@ import { createRace } from './race.js';
 import { createStars } from './stars.js';
 import { createPurse } from './purse.js';
 import { createQuests } from './quests.js';
+import { createGuide } from './guide.js';
 import './play.css';
 import './motion.js';
 import { createEntry } from './entry.js';
@@ -346,6 +347,7 @@ let race = null;
 let stars = null;
 let purse = null;
 let quests = null;
+let guide = null;
 const birdFocus = new THREE.Vector3(), birdMe = new THREE.Vector3();
 let debug = null;
 // Walking your Chog round the islands (src/travel.js), and the last frame's step for its tweens.
@@ -530,6 +532,8 @@ async function init() {
         leaveRoomUI();
       },
       dt: () => frameDt,
+      // Out walking for the first time: the guide says hello (src/guide.js).
+      welcome: (o) => guide?.welcome(o),
     },
   });
   } catch (err) {
@@ -543,6 +547,8 @@ async function init() {
   if (travel) stars = createStars({ scene, camera, travel, onFound: () => purse?.earn('star', 10), onAll: () => purse?.earn('stars', 50) });
   // Small asks from the cast, for testnet $CHOG (B, src/quests.js; the user's pick, 10-23).
   if (travel) quests = createQuests({ scene, camera, travel, purse });
+  // The guide: the pixel Chog that explains it all, with Quests and Traits (B, src/guide.js; the user, 10-23).
+  if (travel) guide = createGuide({ travel, session: () => session, purse, stars, quests });
   if (travel) race = createRace({ scene, camera, travel, npcs: () => npcs, dip: (fn) => new Promise((resolve) => fadeThrough(() => (fn(), resolve()))), onWin: () => purse?.earn('race', 25) });
   // Signing in, and the Chogs who live round the world.
   session = initSession({
@@ -680,16 +686,23 @@ async function init() {
   // The casino's game (B8): its panel shows while you're inside.
   // The postcard camera (B19): the view, framed and saved as a PNG.
   // (A, 10-21: where you are, and your Chog's art for the stamp; then a sheet to share it.)
-  $('btn-photo')?.addEventListener('click', () => {
+  // (10-23, the user: your Chog turns to the camera and waves first.)
+  let shooting = false;
+  $('btn-photo')?.addEventListener('click', async () => {
+    if (shooting) return;
+    shooting = true;
     const own = session?.active?.info, guest = travel?.active ? travel.guest : null;
     const id = own?.id ?? guest?.id ?? null;
-    postcard({
+    const back = travel?.active && !inRoom ? await travel.pose().catch(() => null) : null;
+    await postcard({
       frame,
       canvas: renderer.domElement,
       name: own?.name ?? guest?.name ?? 'Chog World',
       place: inRoom?.room?.name ?? (travel?.active ? travel.placeName() : 'Chog World'),
       art: id ? `${import.meta.env.BASE_URL}art/${id}.webp` : null,
-    });
+    }).catch(() => {});
+    back?.();
+    shooting = false;
   });
   casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active, sky });
   // The session warms its Chogs' shaders as it starts: the loader waits for those too.
@@ -717,7 +730,7 @@ async function init() {
       });
     }
   }
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, audio, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, get race() { return race; }, get stars() { return stars; }, get purse() { return purse; }, get quests() { return quests; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, audio, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, get race() { return race; }, get stars() { return stars; }, get purse() { return purse; }, get quests() { return quests; }, get guide() { return guide; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: one of the demo video's shots (src/shots.js), with the interface hidden. What a shot

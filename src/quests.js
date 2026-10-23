@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hudRow } from './hudrow.js';
 
 /*
  * Small asks from the cast (the user's pick, 10-23), each worth some testnet $CHOG (src/purse.js) once a
@@ -176,7 +177,7 @@ export function createQuests({ scene, camera, travel, purse }) {
   cBtn.addEventListener('click', () => action?.());
   const pill = document.createElement('div');
   pill.className = 'pl-qpill';
-  document.body.append(pill);
+  hudRow().append(pill);
   const toast = document.createElement('div');
   toast.className = 'pl-toast pl-qtoast';
   document.body.append(toast);
@@ -227,7 +228,13 @@ export function createQuests({ scene, camera, travel, purse }) {
     if (q) itemsOf(q).forEach((o, i) => (o.visible = !st.got.includes(i)));
   }
 
+  let pinned = null;
   return {
+    // What the guide shows (src/guide.js): each ask, where, and how it stands today.
+    status() {
+      fresh();
+      return QUESTS.map((q) => ({ id: q.id, title: q.title, giver: q.giver, reward: q.reward, need: q.items.length, got: st.active === q.id ? st.got.length : 0, state: st.done[q.id] ? 'done' : st.active === q.id ? 'active' : 'open' }));
+    },
     update(dt, { busy = false } = {}) {
       fresh();
       const out = travel.active && travel.chog && !busy && !travel.state.busy;
@@ -237,6 +244,20 @@ export function createQuests({ scene, camera, travel, purse }) {
       if (pill.textContent !== label) pill.textContent = label;
       pill.classList.toggle('on', !!(q && travel.active && travel.chog));
       if (toastT > 0 && (toastT -= dt) <= 0) toast.classList.remove('on');
+      // On the map (the user, 10-23): who has an ask for you; once you've taken one, only where its things
+      // lie, then its giver again to hand them over.
+      const pins = !travel.active
+        ? []
+        : q
+          ? st.got.length >= q.items.length
+            ? [{ x: q.at[0], z: q.at[1], kind: 'back' }]
+            : q.items.map(([x, z], i) => (st.got.includes(i) ? null : { x, z, kind: 'item' })).filter(Boolean)
+          : QUESTS.filter((x) => !st.done[x.id]).map((x) => ({ x: x.at[0], z: x.at[1], kind: 'quest' }));
+      const pinKey = pins.map((p) => `${p.kind}${p.x},${p.z}`).join('|');
+      if (pinKey !== pinned) {
+        pinned = pinKey;
+        travel.setPins?.('quests', pins);
+      }
       // Its things: turning, bobbing, picked up as you reach them.
       if (q) {
         const things = itemsOf(q);
@@ -263,7 +284,8 @@ export function createQuests({ scene, camera, travel, purse }) {
       const near = QUESTS.find((x) => Math.hypot(p.x - x.at[0], p.z - x.at[1]) < x.r);
       if (!near || st.done[near.id]) return showCard(null);
       if (!q) return showCard(near.title, near.ask, "I'll help", () => begin(near));
-      if (q.id !== near.id) return showCard(near.title, `${near.giver} needs a hand too, once you've finished ${q.title.toLowerCase().replace(/^a /, 'the ')}.`);
+      // One at a time (the user, 10-23): another of the cast waits till you've finished.
+      if (q.id !== near.id) return showCard(near.title, `One thing at a time: finish ${q.title.replace(/^A /, 'the ')} first, then come back to ${near.giver}.`);
       const left = q.items.length - st.got.length;
       if (left > 0) return showCard(q.title, q.more(left));
       return showCard(q.title, `${q.ready} ${q.reward} testnet $CHOG.`, 'Hand over', () => finish(q));

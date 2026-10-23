@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { makeChog, CHOG_HEIGHT, setChogGround } from './chog.js';
-import { chogInfo } from './chogdata.js';
+import { chogInfo, loadChogs } from './chogdata.js';
 import { modelFor } from './traitmap.js';
 import { ISLANDS, HOODS, DOMES, DOME_R, DOWNTOWN, ROADS, TERRACES, PORTAL_SPOTS, roadDistance } from './layout.js';
 import { heightAt, islandAt, cameraFloor, rimPoint } from './terrain.js';
@@ -137,6 +137,14 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     return { a: c.clone().sub(along), b: c.clone().add(along), r: f.r, y: c.y };
   });
   for (const f of furniture.round) blocks.push({ p: P(f.x, f.z), r: f.r });
+  // King Pom's throne on its dais, and the pots of Quackers' arch with him under it (src/castspots.js, set
+  // out by src/npcs.js at 1.7x, facing the fountain): the user, 10-23, went straight through the throne.
+  blocks.push({ p: P(-11, 50), r: 4.2 });
+  {
+    const a = Math.atan2(0 - -24, 40 - 36);
+    for (const sd of [-1, 1]) blocks.push({ p: P(-24 + Math.cos(a) * sd * 4.52, 36 - Math.sin(a) * sd * 4.52), r: 0.9 });
+    blocks.push({ p: P(-24, 36), r: 1.1 });
+  }
   // Trees, rocks, bushes and tall flowers (island.js), in 8 m cells for a quick look round you.
   const OB = 8;
   const obstacles = new Map();
@@ -399,7 +407,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   window.addEventListener('keydown', (e) => {
     if (!state.on || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     const k = e.key.toLowerCase();
-    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', 'q', 'e'].includes(k)) {
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', 'q', 'e'].includes(k) || (state.float > 0.3 && (k === ' ' || k === 'c'))) {
+      if (k === ' ') e.preventDefault();
       keys.add(k);
       hud.hint.classList.add('gone');
       e.stopImmediatePropagation();
@@ -572,6 +581,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
 
   // ---------- the camera ----------
   let stairLift = 0, stairDip = 0;
+  const _flyLook = new THREE.Vector3();
   function placeCamera(dt, snap = false) {
     if (state.zoomTo !== null) {
       state.camDist += (state.zoomTo - state.camDist) * (snap ? 1 : 1 - Math.exp(-dt * 5));
@@ -596,12 +606,18 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const want0 = climb > 0.05 ? Math.atan(climb) : 0;
     stairDip = snap ? want0 : stairDip + (want0 - stairDip) * (1 - Math.exp(-dt * 2.5));
     look.y += stairDip * 2.2;
-    const pitch0 = THREE.MathUtils.clamp(Math.max(state.camPitch - stairDip * 0.9, stairLift) + state.domeTilt, CAM.pitchMin, CAM.pitchMax);
+    // Floating high in Cosmo's dome, the camera dips a little below your Chog and looks up at it (there's
+    // more room under it than over it, under the glass).
+    const fk = THREE.MathUtils.clamp(state.float ?? 0, 0, 1);
+    const high = fk * THREE.MathUtils.clamp((state.zgUp ?? 0) / 2.9, 0, 1);
+    const pitch0 = THREE.MathUtils.clamp(Math.max(state.camPitch - stairDip * 0.9, stairLift) + state.domeTilt - high * 0.32, CAM.pitchMin - high * 0.3, CAM.pitchMax);
     // Behind and above, by yaw and pitch, pulled in where something's in the way.
     const cp = Math.cos(pitch0);
     const dir = _w.set(Math.sin(state.camYaw) * cp, Math.sin(pitch0), Math.cos(state.camYaw) * cp);
     const want = new THREE.Vector3();
-    let dist = state.camDist;
+    // In Cosmo's dome it comes in to a steady, closer follow as your Chog starts to float (the user, 10-23:
+    // pulled in by the glass frame by frame, it lurched as you came in at the door).
+    let dist = state.camDist + (Math.min(state.camDist, 6.4) - state.camDist) * fk;
     const inTunnel = tunnels?.inside(look);
     const steps = 14;
     for (let i = 1; i <= steps; i++) {
@@ -676,7 +692,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     else {
       // From where the camera is now, in (or back out) over a second or so.
       if (state.domeLim > dist) state.domeLim = dist;
-      state.domeLim += (Math.min(domeMax, dist) - state.domeLim) * (1 - Math.exp(-dt * 1.8));
+      state.domeLim += (Math.min(domeMax, dist) - state.domeLim) * (1 - Math.exp(-dt * 1.1));
     }
     dist = Math.min(dist, state.domeLim);
     want.copy(look).addScaledVector(dir, dist);
@@ -694,6 +710,19 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     }
     camera.position.copy(state.camPos);
     camera.lookAt(state.camLook);
+    // Arriving (a guest, 10-23): the view glides down from wherever it was (the island seen from above)
+    // to behind your Chog, rather than cut there.
+    if (state.fly) {
+      const f = state.fly;
+      f.t += dt;
+      const k = THREE.MathUtils.smootherstep(f.t, 0, f.dur);
+      // Its look leads its position a little, so it turns toward your Chog as it comes down.
+      const kl = THREE.MathUtils.smootherstep(f.t, 0, f.dur * 0.75);
+      camera.position.lerpVectors(f.from, state.camPos, k);
+      _flyLook.lerpVectors(f.look, state.camLook, kl);
+      camera.lookAt(_flyLook);
+      if (f.t >= f.dur) state.fly = null;
+    }
     // Squeezed right up to your Chog: it fades out of the way rather than fill the screen.
     if (!state.busy && state.chog) state.chog.setFade?.(smooth(1.3, 2.8, state.camPos.distanceTo(state.camLook)));
   }
@@ -760,6 +789,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     const runV = THREE.MathUtils.clamp(runFeet, ...RUN_BAND);
     const top = (w.run ? runV : walkV) * (state.board >= 0 ? BOARD_BOOST : 1);
     const target = mag > 0.01 ? want.normalize().multiplyScalar(top * Math.max(mag, 0.35)) : want.set(0, 0, 0);
+    // A walk of its own (stepping out of its dome on arrival): that way, at a walk, while input waits.
+    if (state.auto) target.copy(state.auto).setLength(walkV);
     state.vel.lerp(target, 1 - Math.exp(-dt * ACCEL));
     const speed = state.vel.length();
     if (speed > 0.05) {
@@ -804,7 +835,12 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     chog.root.position.copy(state.pos);
     // (Lower near the edge, where the glass comes down: its head, or a trick, kept under it.)
     const headroom = fk > 0.001 && island.cosmo ? island.cosmo.headroom(state.pos) - CHOG_HEIGHT * SCALE * 1.15 - 0.4 : 9;
-    state.lift = fk * Math.max(0.3, Math.min(2.4 + Math.sin(state.floatT * 0.9) * 0.35, headroom)) + rideLift;
+    // Up and down at will in there (Space and C, or the buttons), kept under the glass; it stays where you leave it.
+    const rise = (keys.has(' ') ? 1 : 0) - (keys.has('c') ? 1 : 0);
+    if (fk > 0.05) state.zgUp = THREE.MathUtils.clamp((state.zgUp ?? 0) + rise * dt * 2.4, -2.1, Math.max(0, headroom - 2.4));
+    else state.zgUp = 0;
+    state.lift = fk * Math.max(0.3, Math.min(2.4 + state.zgUp + Math.sin(state.floatT * 0.9) * 0.35, headroom)) + rideLift;
+    if (hud.float.hidden !== !(state.float > 0.5)) hud.float.hidden = !(state.float > 0.5);
     chog.root.position.y += state.lift;
     // (Yaw, then its own pitch and roll.)
     chog.root.rotation.order = 'YXZ';
@@ -1029,8 +1065,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
         if (there && h.t >= 0.5) (h.phase = 'jump'), (h.t2 = 0), (h.s0 = h.s);
       }
       if (h.phase === 'jump') {
-        // Up and over its tail, landing near its middle.
-        const j = hop(h.len - 0.15, 0, top);
+        // Up and over its tail, landing on its middle.
+        const j = hop(h.len, 0, top);
         feet = j.feet;
         if (j.u >= 1) (h.phase = 'rise'), (h.t2 = 0);
       }
@@ -1044,6 +1080,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
         if (u >= 1) {
           state.hop = null;
           state.ridePitch = 0;
+          // Facing straight along it as the ride takes over (the board turns with your Chog from here).
+          state.yaw = Math.atan2(h.dir.x, h.dir.z);
+          state.rideYaw = state.yaw;
         }
       }
       boards.carry(b, h.at, yaw, 0, top, 0);
@@ -1091,7 +1130,11 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     // (Not into a dome's glass or a tree, if it has to back off to make room.)
     collide(state.pos, c1);
     c1.y = groundAt(c1.x, c1.z, state.pos.y)?.y ?? state.pos.y;
+    // Walk and hop straight at where it comes to rest (pushed clear of things, it can sit off the first
+    // line), landing on its middle: it never has to jump under your Chog afterwards (the user, 10-23).
+    if (Math.hypot(c1.x - state.pos.x, c1.z - state.pos.z) > 0.3) dir.set(c1.x - state.pos.x, 0, c1.z - state.pos.z).normalize();
     const len = Math.max(BOARD.len / 2 + 0.2, Math.hypot(c1.x - state.pos.x, c1.z - state.pos.z));
+    c1.set(state.pos.x + dir.x * len, c1.y, state.pos.z + dir.z * len);
     const along = Math.atan2(dir.x, dir.z);
     const yaw1 = Math.abs(wrap(along - bd.yaw)) <= Math.PI / 2 ? along : along + Math.PI;
     state.board = b;
@@ -1297,6 +1340,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       <div class="tv-stick"${isTouch ? '' : ' hidden'}><div class="tv-knob"></div></div>
       <div class="tv-portal" hidden></div>
       <button class="tv-ride" hidden></button>
+      <div class="tv-float" hidden><button class="cel tv-up" aria-label="Float up"><span class="cel-well"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14.5l6-6 6 6"/></svg></span></button><button class="cel tv-down" aria-label="Float down"><span class="cel-well"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg></span></button><span class="cel-lb">${isTouch ? 'Float' : 'Space / C'}</span></div>
       <button class="tv-zoom" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21M7.5 10.5h6"/><path class="tv-zoom-plus" d="M10.5 7.5v6"/></svg></button>
       <p class="tv-hint">${isTouch ? 'The stick walks (push it to the edge to run). Drag anywhere else to look round, pinch to zoom.' : 'W and S to walk, A and D to steer, Shift to run. Drag to look round, scroll to zoom. M for the map.'}</p>
       <div class="tv-full" hidden>
@@ -1318,12 +1362,21 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       knob: q('.tv-knob'),
       portal: q('.tv-portal'),
       ride: q('.tv-ride'),
+      float: q('.tv-float'),
       zoom: q('.tv-zoom'),
       hint: q('.tv-hint'),
       full: q('.tv-full'),
       fullCanvas: q('.tv-full canvas'),
       flash: q('.tv-flash'),
     };
+    // Floating up and down in zero g (the user, 10-23): held, these do what Space and C do.
+    for (const [cls, key] of [['.tv-up', ' '], ['.tv-down', 'c']]) {
+      const b = q(cls);
+      const on = (e) => (e.preventDefault(), e.stopPropagation(), keys.add(key));
+      const off = () => keys.delete(key);
+      b.addEventListener('pointerdown', on);
+      for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, off);
+    }
     el.mapBtn.addEventListener('click', () => toggleMap());
     q('.tv-close').addEventListener('click', () => closeMap());
     el.full.addEventListener('click', (e) => e.target === el.full && closeMap());
@@ -1437,6 +1490,37 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     return { canvas: c, k, X, Z, S };
   }
 
+  // Markers other parts of the game put on the map (src/quests.js: who has an ask for you, and where the
+  // things you're fetching lie), by key: [{ x, z, kind: 'quest' | 'item' | 'back' }].
+  const pins = new Map();
+  function pinIcon(g, kind, r) {
+    if (kind === 'item') {
+      g.beginPath();
+      g.moveTo(0, -r * 1.25);
+      g.lineTo(r, 0);
+      g.lineTo(0, r * 1.25);
+      g.lineTo(-r, 0);
+      g.closePath();
+      g.fillStyle = '#ff8fc4';
+      g.strokeStyle = '#ffffff';
+      g.lineWidth = Math.max(2, r * 0.32);
+      g.stroke();
+      g.fill();
+      return;
+    }
+    g.beginPath();
+    g.arc(0, 0, r, 0, Math.PI * 2);
+    g.fillStyle = '#f2c95c';
+    g.strokeStyle = 'rgba(20, 12, 40, 0.85)';
+    g.lineWidth = Math.max(2, r * 0.3);
+    g.stroke();
+    g.fill();
+    g.fillStyle = '#2a1846';
+    g.font = `800 ${Math.round(r * 1.5)}px Cinzel, serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(kind === 'back' ? '?' : '!', 0, r * 0.08);
+  }
   function drawHud() {
     const heading = state.camYaw + Math.PI; // the way the camera looks (0: toward +z... see bearing())
     // Compass: bearings round the way you're looking, cardinal points and the places to head for.
@@ -1538,6 +1622,17 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       rune(m, 8);
       m.restore();
     }
+    // The quest markers: on the map where they're in range, otherwise on its rim (below, with the places).
+    for (const list of pins.values())
+      for (const p of list) {
+        const dx = (p.x - state.pos.x) * (R / metres), dz = (p.z - state.pos.z) * (R / metres);
+        if (Math.hypot(dx, dz) > R - 30) continue;
+        m.save();
+        m.translate(dx, dz);
+        m.rotate(look);
+        pinIcon(m, p.kind, 14);
+        m.restore();
+      }
     m.restore();
     m.save();
     m.translate(R, R);
@@ -1617,6 +1712,16 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       m.fillRect(-6, -6, 12, 12);
       m.restore();
     }
+    for (const list of pins.values())
+      for (const p of list) {
+        const dx = p.x - state.pos.x, dz = p.z - state.pos.z;
+        if (Math.hypot(dx, dz) * (R / metres) <= R - 30) continue;
+        const a = bearingOf(_v.set(dx, 0, dz));
+        m.save();
+        m.translate(Math.sin(a) * (R - 14), -Math.cos(a) * (R - 14));
+        pinIcon(m, p.kind, 11);
+        m.restore();
+      }
     m.restore();
     if (!hud.full.hidden) drawFull();
     return heading;
@@ -1664,6 +1769,13 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       g.font = '600 18px Figtree, sans-serif';
       g.fillText(l.name, x, y + 30);
     }
+    for (const list of pins.values())
+      for (const p of list) {
+        g.save();
+        g.translate(map.X(p.x) * f, map.Z(p.z) * f);
+        pinIcon(g, p.kind, 14);
+        g.restore();
+      }
     // You.
     const x = map.X(state.pos.x) * f, y = map.Z(state.pos.z) * f;
     g.save();
@@ -1757,12 +1869,20 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   async function beginOwn(s) {
     const home = homeDoor(s.room);
     if (!home) return;
+    // It walks out of its own door (the user, 10-23: the cut straight outside felt skipped), the camera
+    // behind it, and you have it from there.
     await world.dip(() => {
       takeChog(s.chog, true);
-      const at = home.domeDoor.clone().addScaledVector(home.out, 3.2);
+      const at = home.domeDoor.clone().addScaledVector(home.out, -0.4);
       place(at, Math.atan2(home.out.x, home.out.z));
       state.lastDoor = null;
+      state.busy = 'arrive';
+      state.auto = home.out.clone();
     });
+    await new Promise((r) => setTimeout(r, 2400));
+    state.auto = null;
+    if (state.busy === 'arrive') state.busy = null;
+    world.welcome?.({ own: true });
   }
 
   // The picker's portraits are short animated loops (tools/models/portraits.html, ~300 KB each): fetched
@@ -1773,52 +1893,66 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   else setTimeout(warm, 4000);
 
   /** A guest picks who to walk as, then beams down on the plaza. */
-  function pickGuest() {
-    return new Promise((resolve) => {
-      const el = document.createElement('div');
-      el.className = 'tv-pick';
-      el.innerHTML = `<div class="tv-pick-card">
-        <h2>Who are you exploring as?</h2>
-        <p>Pick a Chog from the island's own crowd to walk around with.</p>
-        <div class="tv-pick-grid">${CAST.map((c) => `<button data-id="${c.id}"><img src="${import.meta.env.BASE_URL}faces/portraits/${c.id}.webp" alt="" width="160" height="160"><strong>${c.name}</strong><span>${c.line}</span></button>`).join('')}</div>
-      </div>`;
-      document.body.append(el);
-      requestAnimationFrame(() => el.classList.add('on'));
-      el.querySelectorAll('button').forEach((b) =>
-        b.addEventListener('click', async () => {
-          const id = Number(b.dataset.id);
-          el.classList.add('busy');
-          b.classList.add('chosen');
-          const info = await chogInfo(id).catch(() => ({ name: CAST.find((c) => c.id === id).name }));
-          const chog = await makeChog({ ...info, traits: { ...info.traits, Aura: null }, ...modelFor(id, info.traits) });
-          await world.prewarm?.(chog.root);
-          el.classList.remove('on');
-          setTimeout(() => el.remove(), 400);
-          state.guestId = id;
-          world.setAway?.(id, true);
-          takeChog(chog, false);
-          const pad = portalFx[0];
-          place(pad.centre, pad.facing);
-          state.onPortal = 0;
-          if (!teleportFx?.arrives) chog.setBeam?.(1.1, 1);
-          resolve();
-          // Beams down onto the plaza's portal.
-          pad.charge = 1;
-          pad.beam = 1.4;
-          if (teleportFx?.arrives) {
-            await teleportFx.arrives({ chog, pad, scene, camera });
-            if (teleportFx.facingAfter) state.yaw = teleportFx.facingAfter(pad);
-          } else
-            await tween(1.1, (t) => {
-              pad.beam = (1 - t) * 1.4;
-              chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, 1);
-            });
-          chog.setBeam?.(0, 0);
-          pad.charge = 0;
-          chog.play('wave');
-        }),
-      );
-    });
+  // A guest (the user, 10-23): no picking from the cast (a cast Chog walked as left its own place empty).
+  // You visit as a Chog from the collection, a different one each time, and the view glides down from the
+  // island to the plaza's portal as it beams in. (Named pickGuest still: src/session.js calls it.)
+  async function pickGuest() {
+    const data = await loadChogs().catch(() => null);
+    const cast = new Set(CAST.map((c) => c.id));
+    const ids = data ? Object.keys(data.chogs).map(Number).filter((id) => !cast.has(id) && data.chogs[id]?.t?.Form !== 'Skull') : [43];
+    const id = ids[Math.floor(Math.random() * ids.length)] ?? 43;
+    const info = await chogInfo(id).catch(() => ({ id, name: `Chog #${id}`, traits: {} }));
+    const chog = await makeChog({ ...info, ...modelFor(id, info.traits) });
+    await world.prewarm?.(chog.root);
+    const from = camera.position.clone();
+    const look = camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(60).add(camera.position);
+    state.guestId = null;
+    state.visitor = { id, name: info.name ?? `Chog #${id}`, traits: info.traits ?? {} };
+    // (Input waits while the view comes down and it beams in.)
+    state.busy = 'arrive';
+    takeChog(chog, false);
+    const pad = portalFx[0];
+    place(pad.centre, pad.facing);
+    state.onPortal = 0;
+    chog.root.visible = false;
+    state.fly = { t: 0, dur: 3.2, from, look };
+    if (!teleportFx?.arrives) chog.setBeam?.(1.1, 1);
+    // Beams down onto the plaza's portal as the view arrives.
+    await new Promise((r) => setTimeout(r, 1900));
+    chog.root.visible = true;
+    pad.charge = 1;
+    pad.beam = 1.4;
+    if (teleportFx?.arrives) {
+      await teleportFx.arrives({ chog, pad, scene, camera });
+      if (teleportFx.facingAfter) state.yaw = teleportFx.facingAfter(pad);
+    } else
+      await tween(1.1, (t) => {
+        pad.beam = (1 - t) * 1.4;
+        chog.setBeam?.(1.1 - THREE.MathUtils.smoothstep(t, 0, 1) * 1.15, 1);
+      });
+    chog.setBeam?.(0, 0);
+    pad.charge = 0;
+    chog.play('wave');
+    if (state.busy === 'arrive') state.busy = null;
+    world.welcome?.({ guest: true, name: info.name ?? `Chog #${id}` });
+  }
+
+  // The postcard (the user, 10-23: "the chog should turn to face the camera"): it turns to the view and
+  // waves for the shutter. Resolves with a function that hands it back to you (null if it can't pose now).
+  async function pose() {
+    const chog = state.chog;
+    if (!state.on || !chog || state.busy || state.hop || state.board >= 0 || state.float > 0.3) return null;
+    state.busy = 'pose';
+    const from = state.yaw;
+    const d = wrap(Math.atan2(camera.position.x - state.pos.x, camera.position.z - state.pos.z) - from);
+    await tween(0.45, (t) => (state.yaw = from + d * smooth(0, 1, t)));
+    chog.play('wave');
+    state.move = 'wave';
+    await new Promise((r) => setTimeout(r, 650));
+    return () => {
+      if (state.busy === 'pose') state.busy = null;
+      setTimeout(() => state.move === 'wave' && ((state.move = ''), 0), 900);
+    };
   }
 
   /** Stop: signed out, or a guest leaving. */
@@ -1843,6 +1977,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     update,
     beginOwn,
     pickGuest,
+    pose,
+    setPins: (key, list) => (list?.length ? pins.set(key, list) : pins.delete(key)),
     end,
     portals,
     // Where you are, by the nearest portal's place (for the postcard), and the cast Chog you walk as.
@@ -1856,7 +1992,7 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     },
     get guest() {
       const c = CAST.find((g) => g.id === state.guestId);
-      return c ? { id: c.id, name: c.name } : null;
+      return c ? { id: c.id, name: c.name } : !state.own && state.visitor ? state.visitor : null;
     },
     // The hoverboards (src/hoverboard.js), for the cast to keep clear of.
     get boards() {

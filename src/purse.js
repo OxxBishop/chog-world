@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hudRow } from './hudrow.js';
 
 /*
  * Testnet $CHOG (the user's pick, 10-23): an in-game balance, earned round the islands and spent on things
@@ -76,7 +77,7 @@ export function createPurse({ scene, camera, travel, session, audio }) {
   pill.className = 'pl-purse';
   pill.title = 'Testnet $CHOG: earned and spent round the islands, never on-chain';
   pill.innerHTML = `${COIN_SVG}<span></span><small>$CHOG</small>`;
-  document.body.append(pill);
+  hudRow().append(pill);
   const plus = document.createElement('div');
   plus.className = 'pl-plus';
   document.body.append(plus);
@@ -227,6 +228,10 @@ export function createPurse({ scene, camera, travel, session, audio }) {
     earn,
     get balance() {
       return purse().bal;
+    },
+    // For the guide (src/guide.js): today's earnings against the cap, the Chog's rate, and the hello.
+    get today() {
+      return { got: purse().got, cap: CAP, rate: rate(), hello: purse().hello === today() };
     },
     update(dt, { busy = false } = {}) {
       const out = travel.active && travel.chog;

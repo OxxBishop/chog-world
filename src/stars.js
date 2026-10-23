@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hudRow } from './hudrow.js';
 
 /*
  * The star hunt (the user's pick, 10-23): twelve gold stars tucked round the islands, one on every island
@@ -123,7 +124,7 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
   pill.className = 'pl-stars';
   pill.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6l2.8 6.1 6.6.7-4.9 4.5 1.4 6.5L12 17.1l-5.9 3.3 1.4-6.5-4.9-4.5 6.6-.7z"/></svg><span></span>';
   pill.title = 'Stars found round the islands';
-  document.body.append(pill);
+  hudRow().append(pill);
   const toast = document.createElement('div');
   toast.className = 'pl-toast';
   document.body.append(toast);

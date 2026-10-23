@@ -205,18 +205,21 @@ export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip, qu
         warp.set({ flash: 1 });
         return Promise.resolve();
       }
-      // In by film when it's ready: the planet, the dive, the clouds, white; the white is held for the caller.
-      if (clips.ready('arrival')) {
-        state = 'in';
-        return clips.play('arrival').then(() => {
-          state = 'held';
-          warp.set({ flash: 1 });
-        });
-      }
+      // In by film: the planet, the dive, the clouds, white; the white is held for the caller. It's given a
+      // few seconds to come in if it hasn't yet; the game's own dive only if it can't.
       state = 'in';
-      return new Promise((resolve) => {
-        run = { kind: 'in', t: 0, p0: camera.position.clone(), l0: look.clone(), l: new THREE.Vector3(), fov0: camera.fov, done: resolve };
-      });
+      const own = () =>
+        new Promise((resolve) => {
+          run = { kind: 'in', t: 0, p0: camera.position.clone(), l0: look.clone(), l: new THREE.Vector3(), fov0: camera.fov, done: resolve };
+        });
+      return clips.whenReady('arrival', 4000).then(() =>
+        clips.ready('arrival')
+          ? clips.play('arrival').then(() => {
+              state = 'held';
+              warp.set({ flash: 1 });
+            })
+          : own(),
+      );
     },
 
     // Poses the camera. Call each frame after the rig has had its turn. Runs on real time, like the

@@ -34,53 +34,134 @@ function roundRect(g, x, y, w, h, r) {
   g.closePath();
 }
 
-// The card, as a canvas.
+// The game's own type (src/celestial.css), loaded before the card is drawn so the canvas uses it.
+const DISPLAY = "Cinzel, 'Times New Roman', serif";
+const LABEL = "'Josefin Sans', system-ui, sans-serif";
+const fontsReady = () =>
+  Promise.race([
+    Promise.all(['800 64px Cinzel', '600 32px Cinzel', '600 24px "Josefin Sans"', '700 24px "Josefin Sans"'].map((f) => document.fonts.load(f))),
+    new Promise((r) => setTimeout(r, 1500)),
+  ]).catch(() => {});
+
+// Text with letter spacing where the browser can (older Safari draws it plain).
+function spaced(g, text, x, y, em) {
+  if ('letterSpacing' in g) {
+    g.letterSpacing = `${em}em`;
+    g.fillText(text, x, y);
+    g.letterSpacing = '0px';
+  } else g.fillText(text, x, y);
+}
+
+// The card, as a canvas (the user, 10-23: "it still just looks like a screenshot"). A printed photo on
+// cream card stock: a white border, a warm grade and a soft vignette on the picture, "Greetings from"
+// over it in big gold letters like an old holiday card, the stamp and postmark, and a written line under.
 async function draw({ canvas, name, place, art }) {
+  await fontsReady();
   // At most 1600 px across, whatever the screen.
   const k = Math.min(1, 1600 / canvas.width);
   const w = Math.round(canvas.width * k), h = Math.round(canvas.height * k);
   const u = Math.min(w, h) / 100;
-  const pad = Math.round(u * 4.2), foot = Math.round(u * 15);
+  const pad = Math.round(u * 4.6), foot = Math.round(u * 14), edge = Math.round(u * 1.1);
   const out = document.createElement('canvas');
   out.width = w + pad * 2;
   out.height = h + pad + foot;
   const g = out.getContext('2d');
-  // Card stock: warm cream with a faint grain.
-  g.fillStyle = '#fbf3e4';
+  // Card stock: warm cream with a faint grain and a darker rim, like old paper.
+  g.fillStyle = '#f5ecd8';
+  g.fillRect(0, 0, out.width, out.height);
+  const rim = g.createRadialGradient(out.width / 2, out.height / 2, Math.min(out.width, out.height) * 0.45, out.width / 2, out.height / 2, Math.hypot(out.width, out.height) * 0.6);
+  rim.addColorStop(0, 'rgba(160, 120, 70, 0)');
+  rim.addColorStop(1, 'rgba(160, 120, 70, 0.22)');
+  g.fillStyle = rim;
   g.fillRect(0, 0, out.width, out.height);
   const grain = g.createImageData(out.width, out.height);
   for (let i = 0; i < grain.data.length; i += 4) {
-    const v = Math.random() * 18;
-    grain.data[i] = grain.data[i + 1] = grain.data[i + 2] = 120;
-    grain.data[i + 3] = v;
+    grain.data[i] = grain.data[i + 1] = grain.data[i + 2] = 110;
+    grain.data[i + 3] = Math.random() * 20;
   }
   const tmp = document.createElement('canvas');
   tmp.width = out.width;
   tmp.height = out.height;
   tmp.getContext('2d').putImageData(grain, 0, 0);
-  g.globalAlpha = 0.35;
+  g.globalAlpha = 0.4;
   g.drawImage(tmp, 0, 0);
   g.globalAlpha = 1;
-  // The picture, rounded, with a thin shadow line.
+  // The print: a white border round the picture, lifted off the card by a soft shadow.
   g.save();
-  roundRect(g, pad, pad, w, h, u * 1.6);
-  g.clip();
-  g.drawImage(canvas, pad, pad, w, h);
+  g.shadowColor = 'rgba(60, 35, 20, 0.28)';
+  g.shadowBlur = u * 1.4;
+  g.shadowOffsetY = u * 0.35;
+  g.fillStyle = '#fffdf7';
+  g.fillRect(pad - edge, pad - edge, w + edge * 2, h + edge * 2);
   g.restore();
-  roundRect(g, pad, pad, w, h, u * 1.6);
-  g.strokeStyle = 'rgba(58, 40, 99, 0.18)';
-  g.lineWidth = Math.max(1, u * 0.18);
-  g.stroke();
-  // The caption.
-  const cy = h + pad + foot * 0.4;
-  g.fillStyle = '#3a2c63';
-  g.textBaseline = 'middle';
-  g.font = `700 ${Math.round(u * 4.6)}px Fredoka, system-ui, sans-serif`;
-  g.fillText(`Greetings from ${place}`, pad, cy);
-  g.fillStyle = '#7a6aa6';
-  g.font = `500 ${Math.round(u * 2.6)}px Figtree, system-ui, sans-serif`;
+  // The picture, graded: a touch warmer, the corners softly darker.
+  g.drawImage(canvas, pad, pad, w, h);
+  g.save();
+  g.beginPath();
+  g.rect(pad, pad, w, h);
+  g.clip();
+  g.globalCompositeOperation = 'soft-light';
+  g.fillStyle = 'rgba(255, 196, 130, 0.35)';
+  g.fillRect(pad, pad, w, h);
+  g.globalCompositeOperation = 'source-over';
+  const vig = g.createRadialGradient(pad + w / 2, pad + h * 0.45, Math.min(w, h) * 0.35, pad + w / 2, pad + h / 2, Math.hypot(w, h) * 0.58);
+  vig.addColorStop(0, 'rgba(25, 12, 40, 0)');
+  vig.addColorStop(1, 'rgba(25, 12, 40, 0.42)');
+  g.fillStyle = vig;
+  g.fillRect(pad, pad, w, h);
+  // Under the title, a little shade so the letters read on any sky.
+  const shade = g.createLinearGradient(0, pad + h * 0.55, 0, pad + h);
+  shade.addColorStop(0, 'rgba(20, 10, 36, 0)');
+  shade.addColorStop(1, 'rgba(20, 10, 36, 0.5)');
+  g.fillStyle = shade;
+  g.fillRect(pad, pad + h * 0.55, w, h * 0.45);
+  g.restore();
+  // "Greetings from" and the place, big and gold over the lower left of the picture.
+  const tx = pad + u * 4.5;
+  let size = u * 11;
+  g.font = `800 ${size}px ${DISPLAY}`;
+  const title = place.toUpperCase();
+  const room = w * 0.62;
+  if (g.measureText(title).width > room) size *= room / g.measureText(title).width;
+  const ty = pad + h - u * 4.8;
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = '#fff6e0';
+  g.shadowColor = 'rgba(15, 6, 30, 0.7)';
+  g.shadowBlur = u * 0.8;
+  g.font = `700 ${Math.round(u * 3.1)}px ${LABEL}`;
+  spaced(g, 'GREETINGS FROM', tx + u * 0.3, ty - size * 0.92, 0.28);
+  g.font = `800 ${Math.round(size)}px ${DISPLAY}`;
+  g.shadowBlur = u * 1.6;
+  g.shadowOffsetY = u * 0.5;
+  g.lineJoin = 'round';
+  g.lineWidth = Math.max(2, size * 0.09);
+  g.strokeStyle = '#2a1846';
+  g.strokeText(title, tx, ty);
+  g.shadowColor = 'transparent';
+  const gold = g.createLinearGradient(0, ty - size * 0.8, 0, ty);
+  gold.addColorStop(0, '#fff1b8');
+  gold.addColorStop(0.5, '#f2c95c');
+  gold.addColorStop(1, '#c98a2b');
+  g.fillStyle = gold;
+  g.fillText(title, tx, ty);
+  g.shadowOffsetY = 0;
+  // Under the print: who wrote it and when, and the address.
   const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  g.fillText(`${name}  ·  ${date}  ·  chog-world.vercel.app`, pad, cy + u * 4.8);
+  const cy = h + pad + foot * 0.5;
+  g.textBaseline = 'middle';
+  g.fillStyle = '#3a2c63';
+  g.font = `600 ${Math.round(u * 3.6)}px ${DISPLAY}`;
+  g.fillText(`With love, ${name}`, pad, cy - u * 1.6);
+  g.fillStyle = '#7a6a96';
+  g.font = `600 ${Math.round(u * 2.2)}px ${LABEL}`;
+  spaced(g, `${date.toUpperCase()}   ·   CHOG-WORLD.VERCEL.APP`, pad, cy + u * 2.6, 0.14);
+  g.textAlign = 'right';
+  g.fillStyle = 'rgba(58, 44, 99, 0.55)';
+  g.font = `600 ${Math.round(u * 2.4)}px ${DISPLAY}`;
+  spaced(g, 'POST CARD', w + pad, cy - u * 1.6, 0.3);
+  g.font = `600 ${Math.round(u * 1.8)}px ${LABEL}`;
+  spaced(g, 'MONAD TESTNET', w + pad, cy + u * 2.6, 0.22);
+  g.textAlign = 'left';
   // The stamp: your Chog's art in a perforated frame, top right over the picture, a postmark over its corner.
   const img = await loadImage(art);
   const sw = u * 19, sh = u * 22, sx = w + pad - sw - u * 2.4, sy = pad + u * 2.4;
@@ -100,7 +181,7 @@ async function draw({ canvas, name, place, art }) {
   for (let x = step / 2; x < sw; x += step) for (const y of [0, sh]) g.beginPath(), g.arc(x, y, bite, 0, Math.PI * 2), g.fill();
   for (let y = step / 2; y < sh; y += step) for (const x of [0, sw]) g.beginPath(), g.arc(x, y, bite, 0, Math.PI * 2), g.fill();
   g.globalCompositeOperation = 'source-over';
-  const m = u * 1.3, iw = sw - m * 2, ih = sh - m * 2 - u * 3;
+  const m = u * 1.3, iw = sw - m * 2, ih = sh - m * 2 - u * 3.6;
   if (img) g.drawImage(img, m, m, iw, ih);
   else {
     g.fillStyle = '#8a63ff';
@@ -108,8 +189,9 @@ async function draw({ canvas, name, place, art }) {
   }
   g.fillStyle = '#5b3fd6';
   g.textAlign = 'center';
-  g.font = `700 ${Math.round(u * 1.9)}px Fredoka, system-ui, sans-serif`;
-  g.fillText('CHOG WORLD', sw / 2, sh - m - u * 1.4);
+  g.textBaseline = 'middle';
+  g.font = `800 ${Math.round(u * 1.8)}px ${DISPLAY}`;
+  g.fillText('CHOG WORLD', sw / 2, sh - m - u * 1.3);
   g.restore();
   // The postmark: a ring with the place and wavy cancel lines, over the stamp's lower left corner.
   g.save();
@@ -126,7 +208,8 @@ async function draw({ canvas, name, place, art }) {
   g.arc(0, 0, R * 0.78, 0, Math.PI * 2);
   g.stroke();
   g.textAlign = 'center';
-  g.font = `700 ${Math.round(u * 1.5)}px Figtree, system-ui, sans-serif`;
+  g.textBaseline = 'middle';
+  g.font = `700 ${Math.round(u * 1.5)}px ${LABEL}`;
   g.fillText(place.toUpperCase().slice(0, 16), 0, -u * 0.6);
   g.fillText(date.toUpperCase(), 0, u * 1.6);
   for (let i = -1; i <= 1; i++) {

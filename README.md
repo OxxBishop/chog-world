@@ -11,11 +11,12 @@ A cosy 3D world in the browser where your Chog NFT comes to life. Sign in with y
 - **A world to wander.** Floating islands over a sea of clouds: the plaza with a fountain and a singer on stage, Chog Hub, three neighbourhoods of domes, glass bridges, portals between islands, hoverboards, birds, manta rays and a whale in the sky. Real time of day, with an aurora at night.
 - **A cast of Chogs, each with a place of their own.** Snooze naps under the giant tree, Patrol rides his hover chopper, King Pom holds court on his throne by the fountain, Quackers poses in a flower arch, Toasty tells stories by his campfire, Dash runs laps of the glass bridge, Peel holds up the bar. They greet you as you pass.
 - **Chog Hub.** A lobby, a bar, and the Starlite Lounge casino with Chog Slots and roulette on free testnet chips. Every Chog trait gives you an edge at the tables.
-- **Things to do.** Race Patrol round the first loop on a hoverboard against his chopper. Hunt down twelve stars hidden across the islands; find them all and a Chog lights up in the night sky. Help the cast with small daily asks: firewood for Toasty, Petal's watering can, a flower for King Pom.
+- **Things to do.** Race Patrol round the first loop on a hoverboard against his chopper. Hunt down twelve stars hidden across the islands; find them all and a Chog lights up in the night sky. Help the cast with small daily asks: firewood for Toasty, Petal's watering can, a flower for King Pom. Open asks and the things you're fetching show on the map.
+- **A guide.** A little pixel Chog waves from the corner. Tap it for how to get about, what's on the islands, every quest as it stands, and what your Chog's traits give it.
 - **Testnet $CHOG.** Earned from stars, races, quests and a daily hello from your Chog, a little more for rarer traits. Spend it on a wish at the fountain or a song request for the singer. It lives in the game only and never touches a chain.
 - **Your traits are noticed.** The cast comment on your crown, your shades or your aura, and light up when you share a trait with them.
 - **The Monad ticker.** An LED band round the Hub's dome that keeps changing: the Monad mark, gmonad, pixel Chogs hopping, Chogs from the collection.
-- **Postcards.** Frame any moment as a postcard with your Chog as the stamp, and share it to X.
+- **Postcards.** Your Chog turns to the camera and waves, and the moment comes out as a vintage postcard with your Chog as the stamp, ready to share to X.
 - **When a Chog leaves your wallet,** it goes grey, says goodbye and walks out of the world.
 - **Music.** An island theme by day, a night theme after dark, and the singer's song you can hear from across the plaza.
 

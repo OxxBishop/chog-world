@@ -26,24 +26,32 @@ export function createClips() {
   const ok = {};
   // An upright screen (a phone) gets the tall cuts.
   const tall = matchMedia('(orientation: portrait)').matches;
-  const load = () => {
-    for (const name of NAMES) {
-      const v = document.createElement('video');
-      v.src = `${BASE}video/${name}${tall ? '-tall' : ''}.mp4`;
-      v.preload = 'auto';
-      v.playsInline = true;
-      v.setAttribute('playsinline', '');
-      v.className = 'clip';
-      v.addEventListener('canplaythrough', () => (ok[name] = true), { once: true });
-      v.addEventListener('error', () => (ok[name] = false), { once: true });
-      v.load();
-      vids[name] = v;
-    }
-  };
-  // Once the page has settled (they're a few MB each, and the world comes first).
-  const later = () => (window.requestIdleCallback ? requestIdleCallback(load, { timeout: 6000 }) : setTimeout(load, 3000));
-  if (document.readyState === 'complete') later();
-  else addEventListener('load', later, { once: true });
+  // Each film fetched whole into memory (a phone won't preload a video, and one streamed from the network
+  // stalls on its first frame), then handed to its video; ready once that has its first frame. The dive in
+  // comes first, at once (the user, 10-23: it sometimes wasn't in yet and the old warp played instead).
+  const pending = {};
+  const fetchClip = (name) =>
+    (pending[name] ??= fetch(`${BASE}video/${name}${tall ? '-tall' : ''}.mp4`)
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(r.status))))
+      .then(
+        (blob) =>
+          new Promise((resolve) => {
+            const v = document.createElement('video');
+            v.preload = 'auto';
+            v.playsInline = true;
+            v.setAttribute('playsinline', '');
+            v.className = 'clip';
+            v.addEventListener('loadeddata', () => resolve((ok[name] = true)), { once: true });
+            v.addEventListener('error', () => resolve((ok[name] = false)), { once: true });
+            v.src = URL.createObjectURL(blob);
+            v.load();
+            vids[name] = v;
+          }),
+      )
+      .catch(() => (ok[name] = false)));
+  // The rest (the sale's goodbye, 7 MB) well after, so it never shares the line with your Chog's own
+  // files as you sign in (the user, 10-23: the demo button felt slow to take).
+  fetchClip('arrival').then(() => setTimeout(() => NAMES.forEach(fetchClip), 45000));
 
   const cover = (color) => {
     const el = document.createElement('div');
@@ -61,6 +69,12 @@ export function createClips() {
 
   return {
     ready: (name) => !!ok[ALIAS[name] ?? name] && !matchMedia('(prefers-reduced-motion: reduce)').matches,
+    // Resolves once it's ready, or after ms at most (whichever first): a little grace before falling back.
+    whenReady(name, ms = 3500) {
+      name = ALIAS[name] ?? name;
+      if (ok[name] !== undefined) return Promise.resolve(!!ok[name]);
+      return Promise.race([fetchClip(name).then(() => !!ok[name]), new Promise((r) => setTimeout(() => r(false), ms))]);
+    },
     async play(name, { intro = null } = {}) {
       name = ALIAS[name] ?? name;
       const v = vids[name];
@@ -74,7 +88,10 @@ export function createClips() {
       }
       v.currentTime = 0;
       v.muted = false;
+      // Shown once it's actually moving (no frozen first frame, no black).
+      v.style.opacity = '0';
       document.body.append(v);
+      const shown = () => (v.currentTime > 0.02 ? (v.style.opacity = '1') : requestAnimationFrame(shown));
       try {
         await v.play();
       } catch {
@@ -88,6 +105,7 @@ export function createClips() {
           return;
         }
       }
+      requestAnimationFrame(shown);
       // Out of the white into the film.
       if (white) white.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1200, fill: 'forwards', easing: 'ease-out' }).onfinish = () => white.remove();
       const skip = SKIP[name];

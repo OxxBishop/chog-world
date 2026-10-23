@@ -462,7 +462,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     if (has('Body', /hoodie/i)) out.push('That hoodie looks so cosy.');
     else if (has('Body', /jacket|suit|coat/i)) out.push(`Sharp ${String(mine.Body).toLowerCase()}.`);
     else if (has('Body', /jersey/i)) out.push('Love the jersey. Game day?');
-    if (mine.Aura) out.push(`Your ${String(mine.Aura).toLowerCase()} aura is glowing today.`);
+    if (mine.Aura && mine.Aura !== 'None') out.push(`Your ${String(mine.Aura).toLowerCase().replace(/\s*aura$/, '')} aura is glowing today.`);
     if (mine.Form === 'Skull') out.push('Spooky. In a good way.');
     if (mine.Accessory && mine.Accessory !== 'None') out.push(`That ${String(mine.Accessory).toLowerCase()} suits you.`);
     return out.length ? pick1(out) : null;
@@ -599,7 +599,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     y = Math.max(y, el.offsetHeight + 10);
     // (The compass, the map, the title, Sign in and your Chog's panel; looked up again now and then, as
     // they come and go.)
-    if (!hud || t - hudAt > 2) (hud = [...document.querySelectorAll('.tv-compass, .tv-map, .hud.top-left, #btn-signin, #chog-chip')]), (hudAt = t);
+    if (!hud || t - hudAt > 2) (hud = [...document.querySelectorAll('.tv-compass, .tv-map, .hud.top-left, #btn-signin, #chog-chip, #chog-chip .cel-acts, .pl-row, .tv-zoom, .pl-qpill')]), (hudAt = t);
     const half = el.offsetWidth / 2, h = el.offsetHeight;
     let cx = Math.min(Math.max(x, half + 8), window.innerWidth - half - 8);
     for (const box of hud) {
