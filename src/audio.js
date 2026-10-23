@@ -90,6 +90,21 @@ function loopTrack(ctx, url, out) {
       setTimeout(() => old.el.pause(), XFADE * 1000 + 200);
       cur = 1 - cur;
     },
+    // From the top, crossfading over from wherever it is (the singer's encore, src/purse.js).
+    restart() {
+      if (!on) return;
+      const v = voices[cur], next = voices[1 - cur];
+      const now = ctx.currentTime;
+      next.g.gain.cancelScheduledValues(now);
+      next.g.gain.setValueAtTime(0, now);
+      next.g.gain.linearRampToValueAtTime(1, now + 1.2);
+      v.g.gain.cancelScheduledValues(now);
+      v.g.gain.setValueAtTime(v.g.gain.value, now);
+      v.g.gain.linearRampToValueAtTime(0, now + 1.2);
+      start(next, 0);
+      setTimeout(() => v.el.pause(), 1400);
+      cur = 1 - cur;
+    },
     // For a test: where each voice is.
     get state() {
       return voices.map((v) => (v.el.paused ? 'paused' : `playing ${v.el.currentTime.toFixed(1)}s`) + (v.el.error ? ` error ${v.el.error.code}` : ''));
@@ -369,6 +384,10 @@ export function createAudio({ button = null } = {}) {
     },
     // An effect by name (see SFX); the same as dispatching a 'chog-sfx' event.
     sfx,
+    // The singer's song from the top (a request, src/purse.js).
+    encore() {
+      singer?.restart();
+    },
     // Something with its own sound (a cutscene) wants the music down: 0 silent to 1 full.
     duck(k) {
       ducked = k;

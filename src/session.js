@@ -451,7 +451,7 @@ export function initSession(world) {
     const s = session;
     chip.innerHTML = `
       ${s.info.image ? `<img src="${esc(s.info.image)}" data-alt="${esc(s.info.images.slice(1).join(' '))}" alt="">` : ''}
-      <div class="cel-who"><strong>${esc(s.info.name)}</strong><span>${s.demo ? 'Demo Chog' : esc(short(s.address))}</span></div>
+      <div class="cel-who"><strong>${esc(s.info.name)}</strong><span>${s.demo ? 'Demo Chog' : esc(short(s.address))}</span><span data-purse></span></div>
       <div class="cel-acts">
         <button class="talk cel" aria-label="Talk"><span class="cel-well">${ICONS.talk}</span><span class="cel-lb">Talk</span></button>
         <button class="home cel" aria-label="Home"><span class="cel-well">${ICONS.home}</span><span class="cel-lb">Home</span></button>

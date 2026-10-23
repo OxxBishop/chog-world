@@ -26,6 +26,7 @@ import { createSpace } from './space.js';
 import { createAudio } from './audio.js';
 import { createRace } from './race.js';
 import { createStars } from './stars.js';
+import { createPurse } from './purse.js';
 import './play.css';
 import './motion.js';
 import { createEntry } from './entry.js';
@@ -342,6 +343,7 @@ function stagePos() {
 let birds = null;
 let race = null;
 let stars = null;
+let purse = null;
 const birdFocus = new THREE.Vector3(), birdMe = new THREE.Vector3();
 let debug = null;
 // Walking your Chog round the islands (src/travel.js), and the last frame's step for its tweens.
@@ -533,9 +535,11 @@ async function init() {
     console.error('Travel:', err);
   }
   // Racing Patrol round the first neighbourhood's loop (B, src/race.js; the user's pick, 10-23).
-  // And the star hunt (B, src/stars.js; the user's pick, 10-23).
-  if (travel) stars = createStars({ scene, camera, travel });
-  if (travel) race = createRace({ scene, camera, travel, npcs: () => npcs, dip: (fn) => new Promise((resolve) => fadeThrough(() => (fn(), resolve()))) });
+  // Testnet $CHOG (B, src/purse.js; the user's pick, 10-23): earned by the star hunt (src/stars.js) and the race,
+  // spent at the fountain and the stage. Never on-chain.
+  if (travel) purse = createPurse({ scene, camera, travel, session: () => session, audio });
+  if (travel) stars = createStars({ scene, camera, travel, onFound: () => purse?.earn('star', 10), onAll: () => purse?.earn('stars', 50) });
+  if (travel) race = createRace({ scene, camera, travel, npcs: () => npcs, dip: (fn) => new Promise((resolve) => fadeThrough(() => (fn(), resolve()))), onWin: () => purse?.earn('race', 25) });
   // Signing in, and the Chogs who live round the world.
   session = initSession({
     get travel() {
@@ -709,7 +713,7 @@ async function init() {
       });
     }
   }
-  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, audio, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, get race() { return race; }, get stars() { return stars; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
+  if (import.meta.env.DEV) window.chogWorld = { THREE, time, rig, camera, post, scene, sky, island, clouds, renderer, frame, VIEWS, perf, audio, get session() { return session; }, get npcs() { return npcs; }, space, get entry() { return entry; }, get intro() { return intro; }, get arrival() { return arrival; }, get casino() { return casino; }, get travel() { return travel; }, get birds() { return birds; }, get race() { return race; }, get stars() { return stars; }, get purse() { return purse; }, enterRoom: (id) => enterRoom(island.rooms.find((r) => r.id === id)), back: () => $('btn-back').click() };
 }
 
 // ?demo=<shot>: one of the demo video's shots (src/shots.js), with the interface hidden. What a shot
@@ -1034,6 +1038,7 @@ function frame() {
   npcs?.update(dt, camera, env, renderer, travel?.active ? travel.chog?.root : null, travel?.boards);
   race?.update(dt);
   stars?.update(dt, env);
+  purse?.update(dt, { busy: !!race?.active });
   // Near your Chog out walking, else near what the camera looks at; hidden in rooms and in space.
   if (birds) {
     const me = travel?.active && travel.chog ? travel.chog.root.getWorldPosition(birdMe) : null;
