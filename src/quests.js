@@ -18,7 +18,7 @@ const QUESTS = [
   {
     id: 'firewood',
     giver: 'Toasty',
-    at: [207.8, -112.5],
+    at: [205.5, -106.8],
     r: 6.2,
     title: "Toasty's firewood",
     short: 'Firewood',

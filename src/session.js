@@ -290,6 +290,9 @@ export function initSession(world) {
     if (!screen) return;
     const { findWallets } = await chain();
     const wallets = await findWallets();
+    // While you choose: the collection's index and the demo Chog's art, so a tap goes straight in.
+    loadChogs().catch(() => {});
+    new Image().src = `${import.meta.env.BASE_URL}art/${DEMO_CHOG}.webp`;
     tell('connect', {
       wallets: [...wallets.map((w) => ({ name: w.name, icon: w.icon, pick: () => arriveWith(w) })), { name: 'Try a demo Chog', icon: null, pick: () => demoArrival() }],
       guest,

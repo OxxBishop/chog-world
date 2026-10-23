@@ -145,6 +145,8 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     for (const sd of [-1, 1]) blocks.push({ p: P(-24 + Math.cos(a) * sd * 4.52, 36 - Math.sin(a) * sd * 4.52), r: 0.9 });
     blocks.push({ p: P(-24, 36), r: 1.1 });
   }
+  // Toasty's campfire on the beacon island (src/npcs.js): its ring of stones.
+  blocks.push({ p: new THREE.Vector3(205.5, 0, -106.8), r: 1.6 });
   // Trees, rocks, bushes and tall flowers (island.js), in 8 m cells for a quick look round you.
   const OB = 8;
   const obstacles = new Map();
@@ -1993,6 +1995,12 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
     pickGuest,
     pose,
     setPins: (key, list) => (list?.length ? pins.set(key, list) : pins.delete(key)),
+    // Whether your Chog could stand at p (nothing solid there): the stars keep to such places.
+    walkable(p) {
+      _cn.copy(p);
+      pushOut(p, _cn, RADIUS, true);
+      return Math.abs(_cn.x - p.x) + Math.abs(_cn.z - p.z) < 1e-3;
+    },
     end,
     portals,
     // Where you are, by the nearest portal's place (for the postcard), and the cast Chog you walk as.

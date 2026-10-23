@@ -27,7 +27,7 @@ export function createClips() {
   // An upright screen (a phone) gets the tall cuts.
   const tall = matchMedia('(orientation: portrait)').matches;
   // Each film fetched whole into memory (a phone won't preload a video, and one streamed from the network
-  // stalls on its first frame), then handed to its video; ready once that has its first frame. The dive in
+  // stalls on its first frame), then handed to its video; ready once it is all here. The dive in
   // comes first, at once (the user, 10-23: it sometimes wasn't in yet and the old warp played instead).
   const pending = {};
   const fetchClip = (name) =>
@@ -41,11 +41,14 @@ export function createClips() {
             v.playsInline = true;
             v.setAttribute('playsinline', '');
             v.className = 'clip';
-            v.addEventListener('loadeddata', () => resolve((ok[name] = true)), { once: true });
             v.addEventListener('error', () => resolve((ok[name] = false)), { once: true });
             v.src = URL.createObjectURL(blob);
             v.load();
             vids[name] = v;
+            // Ready as soon as the whole file is here: an iPhone won't decode a video it isn't playing, so
+            // waiting for its first frame waited for nothing, and the old dive stood in.
+            ok[name] = true;
+            resolve(true);
           }),
       )
       .catch(() => (ok[name] = false)));

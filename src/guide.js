@@ -28,6 +28,22 @@ const write = (v) => {
   } catch {}
 };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+// On a computer, every key the game listens to (the user, 10-23: so testers know what to do).
+const key = (...k) => k.map((x) => `<kbd>${x}</kbd>`).join('');
+const KEYS = `
+      <h4>Keyboard</h4>
+      <div class="pl-keys">
+        <span>${key('W', 'S')}</span><em>walk forward and back (or the arrow keys)</em>
+        <span>${key('A', 'D')}</span><em>steer</em>
+        <span>${key('Shift')}</span><em>run</em>
+        <span>${key('Q', 'E')}</span><em>turn the view (or drag with the mouse; scroll to zoom)</em>
+        <span>${key('F')}</span><em>hop on or off a hoverboard</em>
+        <span>${key('M')}</span><em>the map</em>
+        <span>${key('Space', 'C')}</span><em>float up and down in Cosmo's dome</em>
+        <span>${key('Esc')}</span><em>close a panel, or step back</em>
+        <span>${key('Space')}</span><em>at the casino: spin</em>
+        <span>${key('1', '5')}</span><em>at the casino: pick a chip</em>
+      </div>`;
 const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
 const ICON = {
   quests: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h9l3 3V20.5H6z"/><path d="M15 3.5v3h3"/><path d="M9 11h6M9 14.5h6M9 18h3.5"/></svg>',
@@ -125,11 +141,12 @@ export function createGuide({ travel, session, purse, stars, quests }) {
       <p>${who}</p>
       <h4>Getting about</h4>
       <ul>
-        <li>${touch ? 'Walk with the stick at the bottom left; push it all the way to run. Drag anywhere else to look round, pinch to zoom.' : 'W and S walk, A and D steer, Shift runs. Drag to look round, scroll to zoom.'}</li>
+        <li>${touch ? 'Walk with the stick at the bottom left; push it all the way to run. Drag anywhere else to look round, pinch to zoom.' : 'W and S walk, A and D steer, Shift runs. Drag to look round, scroll to zoom. Every key is listed below.'}</li>
         <li>Hop on a <b>hoverboard</b>: one waits by every dome's door, and goes twice as fast.</li>
         <li>Step onto a glowing <b>portal</b> to travel between islands.</li>
         <li>Tap the map for the whole archipelago. <b>Postcard</b> frames the moment.</li>
       </ul>
+      ${touch ? '' : KEYS}
       <h4>On the islands</h4>
       <ul>
         <li><b>Chog Hub</b>: the lobby, the bar, and the Starlite Lounge casino on free testnet chips, where every trait is an edge.</li>

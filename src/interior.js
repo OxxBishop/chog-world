@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { goldChog } from './statue.js';
 import { piece, kitMaterial } from './kaykit.js';
 import { mergeByMaterial } from './merge.js';
 import { createGlows } from './glows.js';
@@ -303,13 +304,14 @@ function screen(draw, w, h, px = 512) {
   return m;
 }
 
-// The placeholder Chog: brass on a stone plinth, until the real model arrives.
+// A gold Chog on a stone plinth (src/statue.js).
 function chogStatue(room, x, z, rot) {
   const g = new THREE.Group();
   const stone = new THREE.MeshLambertMaterial({ color: '#efe3cf' });
   g.add(new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.7, 1.4, 24).translate(0, 0.7, 0), stone));
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(1.1, 24, 16).scale(1, 1.15, 0.95).translate(0, 2.6, 0), room.mats.brass));
-  for (const sx of [-0.55, 0.55]) g.add(new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.75, 12).rotateZ(-sx * 0.3).translate(sx, 4.0, 0), room.mats.brass));
+  const chog = goldChog(3.1);
+  chog.position.y = 1.4;
+  g.add(chog);
   g.position.set(x, 0, z);
   g.rotation.y = rot;
   room.group.add(g);

@@ -39,7 +39,7 @@ export const NPC_SLOTS = {
     { id: 66, glb: M('chog-66'), at: [-24, 36], prop: 'arch', moves: ['cheer', 'wave'], every: [4, 8] },
   ],
   // Toasty at his campfire on the beacon island, telling stories; Dash laps the beacon bridge.
-  storyteller: { id: 52, glb: M('chog-52'), at: [207.8, -112.5] },
+  storyteller: { id: 52, glb: M('chog-52'), at: [205.5, -106.8] },
   // By the lobby door, in the Monad look.
   doorman: { id: 1151, glb: M('chog-1151'), plaza: [-5.2, 23.2] },
   gardener: { id: 271, glb: M('chog-271'), hood: 0 },
