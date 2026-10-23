@@ -52,7 +52,7 @@ export function createClips() {
           }),
       )
       .catch(() => (ok[name] = false)));
-  // The rest (the sale's goodbye, 7 MB) well after, so it never shares the line with your Chog's own
+  // The rest (the sale's goodbye, 1.3 MB) well after, so it never shares the line with your Chog's own
   // files as you sign in (the user, 10-23: the demo button felt slow to take).
   fetchClip('arrival').then(() => setTimeout(() => NAMES.forEach(fetchClip), 45000));
 
