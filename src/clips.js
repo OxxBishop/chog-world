@@ -24,6 +24,9 @@ const SKIP = { sale: [1.55, 3.45] };
 export function createClips() {
   const vids = {};
   const ok = {};
+  // A film fully over the screen: the world needn't be drawn under it (src/main.js), so the video has
+  // the machine to itself (the user, 10-23: the sign-out's film lagged and froze).
+  let covering = false;
   // An upright screen (a phone) gets the tall cuts.
   const tall = matchMedia('(orientation: portrait)').matches;
   // Each film fetched whole into memory (a phone won't preload a video, and one streamed from the network
@@ -71,6 +74,9 @@ export function createClips() {
   });
 
   return {
+    get covering() {
+      return covering;
+    },
     ready: (name) => !!ok[ALIAS[name] ?? name] && !matchMedia('(prefers-reduced-motion: reduce)').matches,
     // Resolves once it's ready, or after ms at most (whichever first): a little grace before falling back.
     whenReady(name, ms = 3500) {
@@ -100,6 +106,8 @@ export function createClips() {
       const shown = () => {
         if (v.currentTime <= 0.02) return requestAnimationFrame(shown);
         v.style.opacity = '1';
+        // (Once it has faded all the way in.)
+        setTimeout(() => !v.paused && !v.ended && (covering = true), 350);
         onShow?.();
         // (Back on top once the welcome has torn away.)
         if (under) setTimeout(() => (v.style.zIndex = ''), 800);
@@ -141,6 +149,7 @@ export function createClips() {
         setTimeout(r, (v.duration || 8) * 1000 + 2500);
       });
       v.pause();
+      covering = false;
       // The world takes over under it, then it goes.
       requestAnimationFrame(() => frames(2).then(() => v.remove()));
     },

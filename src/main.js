@@ -1112,8 +1112,9 @@ function frame() {
 
   // A room's neon (the casino's) asks the bloom for more than the night alone would give.
   post.setNight(Math.max(env.night, casino?.glow ?? 0));
-  // A demo shot's long seek moves the world on without drawing every step.
-  const drawn = !demo || demo.draws;
+  // A demo shot's long seek moves the world on without drawing every step; and nothing is drawn under a
+  // film that covers the screen (src/clips.js).
+  const drawn = (!demo || demo.draws) && !space?.clips?.covering;
   if (drawn && debug && !debug.state.post) {
     renderer.render(scene, camera);
     renderer.autoClear = false;
@@ -1121,7 +1122,7 @@ function frame() {
     renderer.autoClear = true;
   } else if (drawn) post.render(dt);
   // A shot holds its quality (and a held take's time isn't the GPU's).
-  if (!demo) tunePerf(realDt * 1000, realDt);
+  if (!demo && drawn) tunePerf(realDt * 1000, realDt);
   debug?.end(realDt, performance.now() - cpu0);
 }
 
