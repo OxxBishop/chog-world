@@ -198,9 +198,12 @@ export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip, qu
      * caller takes it from there (puts the view where it wants it, under its own cover) and calls
      * leave() to let go of space.
      */
-    dive() {
-      if (state === 'off') return Promise.resolve();
+    // onShow(): called the moment the film is on screen (under the welcome, which tears away over it: the
+    // user, 10-23, saw a cut from the planet to the film), or at once if the game's own dive plays.
+    dive({ onShow = null } = {}) {
+      if (state === 'off') return onShow?.(), Promise.resolve();
       if (still()) {
+        onShow?.();
         state = 'held';
         warp.set({ flash: 1 });
         return Promise.resolve();
@@ -214,11 +217,11 @@ export function createSpace({ scene, camera, renderer, sky, clouds, rig, dip, qu
         });
       return clips.whenReady('arrival', 4000).then(() =>
         clips.ready('arrival')
-          ? clips.play('arrival').then(() => {
+          ? clips.play('arrival', { onShow, under: true }).then(() => {
               state = 'held';
               warp.set({ flash: 1 });
             })
-          : own(),
+          : (onShow?.(), own()),
       );
     },
 

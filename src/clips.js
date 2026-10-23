@@ -78,10 +78,11 @@ export function createClips() {
       if (ok[name] !== undefined) return Promise.resolve(!!ok[name]);
       return Promise.race([fetchClip(name).then(() => !!ok[name]), new Promise((r) => setTimeout(() => r(false), ms))]);
     },
-    async play(name, { intro = null } = {}) {
+    // under: it starts beneath the welcome screen (src/intro.js), which goes once it's showing (onShow).
+    async play(name, { intro = null, onShow = null, under = false } = {}) {
       name = ALIAS[name] ?? name;
       const v = vids[name];
-      if (!v) return;
+      if (!v) return onShow?.();
       let white = null;
       if (intro === 'white') {
         white = cover('#f6f0ff');
@@ -93,8 +94,16 @@ export function createClips() {
       v.muted = false;
       // Shown once it's actually moving (no frozen first frame, no black).
       v.style.opacity = '0';
+      v.style.transition = 'opacity 0.3s ease-out';
+      v.style.zIndex = under ? '9' : '';
       document.body.append(v);
-      const shown = () => (v.currentTime > 0.02 ? (v.style.opacity = '1') : requestAnimationFrame(shown));
+      const shown = () => {
+        if (v.currentTime <= 0.02) return requestAnimationFrame(shown);
+        v.style.opacity = '1';
+        onShow?.();
+        // (Back on top once the welcome has torn away.)
+        if (under) setTimeout(() => (v.style.zIndex = ''), 800);
+      };
       try {
         await v.play();
       } catch {
@@ -105,6 +114,7 @@ export function createClips() {
         } catch {
           v.remove();
           white?.remove();
+          onShow?.();
           return;
         }
       }

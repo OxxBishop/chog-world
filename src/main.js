@@ -591,13 +591,19 @@ async function init() {
       flyHome: async (room) => {
         // The welcome has its moment first; the world's controls stay away until the camera is there.
         await intro.held();
-        intro.close({ keepHud: true });
-        // From the planet (B25): the warp in, the screen goes blank, and you wake up in the dome.
+        // From the planet (B25): the dive in, the screen goes blank, and you wake up in the dome. The film
+        // starts under the welcome, and the welcome tears away over it once it's showing.
+        let closed = false;
+        const tear = () => closed || ((closed = true), intro.close({ keepHud: true }));
         let landed;
         if (space.active) {
-          await space.dive();
+          await space.dive({ onShow: tear });
+          tear();
           landed = await arrival.wake(room);
-        } else landed = await arrival.fly(room);
+        } else {
+          tear();
+          landed = await arrival.fly(room);
+        }
         intro.revealHud();
         return landed;
       },
