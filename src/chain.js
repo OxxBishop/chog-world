@@ -93,7 +93,15 @@ function walletConnect() {
     }));
   wcProvider = {
     async request(args) {
-      return (await load()).request(args);
+      const p = await load();
+      // Asked for the wallet's address with no session yet: open WalletConnect's window and wait for the
+      // wallet (this provider won't do that by itself: "Please call connect() before request()", the user
+      // 10-23). Asked anything else before then, nothing is connected.
+      if (!p.session) {
+        if (args?.method === 'eth_requestAccounts') return p.enable();
+        if (args?.method === 'eth_accounts') return [];
+      }
+      return p.request(args);
     },
     on(ev, fn) {
       if (real) real.then((p) => p.on(ev, fn));
