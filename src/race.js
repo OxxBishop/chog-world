@@ -285,6 +285,16 @@ export function createRace({ scene, camera, travel, npcs, dip, onWin = null }) {
     get active() {
       return mode === 'count' || mode === 'race';
     },
+    // For the trailer (src/shots.js): his line round the loop, and every gate up, the next one gold.
+    get track() {
+      return track;
+    },
+    showcase(on, next = 1) {
+      for (let i = 0; i < GATES; i++) {
+        gates[i].group.visible = on || i === 0;
+        gates[i].set(on && i === next % GATES ? 'next' : 'idle');
+      }
+    },
     update(dt) {
       // The gates rising for a race, their diamonds turning.
       for (const g of gates) {

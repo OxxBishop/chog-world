@@ -4,6 +4,9 @@
  * hairline, Cinzel for names and numbers, Josefin Sans for the rest.
  */
 
+/* A demo shot of a room on its own (src/shots.js). */
+body.demo.demo-clean .cz-ui { display: none !important; }
+
 /* A card at the bottom middle: an offer, a result. */
 .pl-card {
   position: fixed; left: 50%; bottom: 112px; transform: translateX(-50%); z-index: 8;

@@ -749,6 +749,13 @@ function shotWorld() {
     get travel() {
       return travel;
     },
+    // And the cast and the race (B, 10-23: the trailer's race against Patrol).
+    get npcs() {
+      return npcs;
+    },
+    get race() {
+      return race;
+    },
     enterRoom: (id) => enterRoom(room(id)),
     inRoom: (id) => rig.room === room(id)?.pod,
     // Models still loading or shaders still warming, which a shot waits for before it starts.
