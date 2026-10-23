@@ -1018,10 +1018,11 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   const aroundRider = () => {
     around.length = 0;
     const at = rider.group.position;
-    const add = (x, z, r) => (x - at.x) ** 2 + (z - at.z) ** 2 < 400 && around.push({ x, z, r });
+    const add = (x, z, r, you = false) => (x - at.x) ** 2 + (z - at.z) ** 2 < 400 && around.push({ x, z, r, you });
     if (lastMe) {
       lastMe.getWorldPosition(meAt);
-      add(meAt.x, meAt.z, lastBoards?.some((b) => !b.parked) ? 1.7 : 1.1);
+      // (You: the one he may barge past in a race, src/rider.js.)
+      add(meAt.x, meAt.z, lastBoards?.some((b) => !b.parked) ? 1.7 : 1.1, true);
     }
     for (const b of lastBoards ?? []) if (b.parked) add(b.x, b.z, 1.5);
     for (const a of actors) {

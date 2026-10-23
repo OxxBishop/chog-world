@@ -324,6 +324,9 @@ export function createRider({ chog, groundAt }) {
   let t = 0;
   // Swerving round your Chog: how far he's off his line, to his right.
   let side = 0, sideV = 0, slow = 1;
+  // Racing (src/race.js): his line across the road, by how far round he is (u, 0 to 1), off his track; how
+  // long you've kept him boxed in, and the moment he barges past you.
+  let line = null, boxed = 0, barge = 0;
   const p = new THREE.Vector3(), ahead = new THREE.Vector3(), behind = new THREE.Vector3();
   const hits = [];
   // The bike's half width and how far it reaches behind him, out here; how far he swings off his line.
@@ -339,16 +342,21 @@ export function createRider({ chog, groundAt }) {
     // (the user, 10-21: he rode through a hoverboard and Dash).
     const fx = ahead.x - behind.x, fz = ahead.z - behind.z, fl = Math.hypot(fx, fz) || 1;
     const dx = fx / fl, dz = fz / fl;
-    let goal = 0, ease = 1;
+    const racing = pace !== null;
+    const base = racing && line ? line(u) : 0;
+    let goal = base, ease = 1;
     hits.length = 0;
+    if (barge > 0) barge -= dt;
     for (const o of avoid ?? []) {
+      // (Barging past you in a race: you're no longer in his way, for a moment.)
+      if (o.you && barge > 0) continue;
       const rx = o.x - p.x, rz = o.z - p.z;
       const f = rx * dx + rz * dz, l = rx * -dz + rz * dx;
-      if (f > -BIKE_BACK && f < 16 && Math.abs(l) < 7) hits.push({ f, l, r: o.r + BIKE_HALF });
+      if (f > -BIKE_BACK && f < 16 && Math.abs(l) < 7) hits.push({ f, l, r: o.r + BIKE_HALF, you: !!o.you });
     }
     if (hits.length) {
       const clear = (g) => Math.abs(g) <= SWERVE && hits.every((h) => Math.abs(h.l - g) >= h.r - 0.01);
-      let best = clear(0) ? 0 : null;
+      let best = clear(base) ? base : null;
       for (const h of hits) for (const g of [h.l - h.r, h.l + h.r]) if (clear(g) && (best === null || Math.abs(g - side) < Math.abs(best - side))) best = g;
       // The nearest thing ahead still across his path where he is now.
       let block = null;
@@ -362,7 +370,17 @@ export function createRider({ chog, groundAt }) {
         goal = best;
         if (block) ease = THREE.MathUtils.clamp((block.f - block.r) / 7, 0, 1);
       }
-    }
+      // Racing, he goes round you at speed rather than braking behind (the user, 10-23: blocking him won
+      // every race); boxed in for a second, he barges past.
+      if (racing) {
+        if (best !== null) ease = Math.max(ease, 0.85);
+        boxed = block?.you && ease < 0.8 ? boxed + dt : Math.max(0, boxed - dt * 2);
+        if (boxed > 1) {
+          barge = 1.4;
+          boxed = 0;
+        }
+      }
+    } else boxed = Math.max(0, boxed - dt * 2);
     sideV += ((goal - side) * 6 - sideV * 4.5) * dt;
     side += sideV * dt;
     slow += (ease - slow) * Math.min(1, dt * 3);
@@ -397,6 +415,8 @@ export function createRider({ chog, groundAt }) {
     },
     // Racing (src/race.js): onto a closed track (a curve), d along it, at speed m/s (set as it goes).
     race(track, d = 0, speed = SPEED) {
+      line = null;
+      boxed = barge = 0;
       route = track;
       length = track.getLength();
       s = d;
@@ -407,6 +427,10 @@ export function createRider({ chog, groundAt }) {
     },
     set speed(v) {
       pace = v;
+    },
+    // His line across the road in a race (u, 0 to 1 round the track -> metres off it, to his right).
+    set line(fn) {
+      line = fn;
     },
     get speed() {
       return pace ?? SPEED;

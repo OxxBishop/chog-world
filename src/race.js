@@ -22,6 +22,8 @@ const R = HOOD.loopR;
 // Where the bridge's road meets the loop: the start and finish. The race goes the way his patrol does.
 const A0 = HOOD.angle + Math.PI;
 const GATES = 6;
+// How far from the road's middle counts as through a gate's arch (its half span, and a little).
+const GATE_IN = 3.9;
 const at = (a, r = R) => new THREE.Vector3(HOOD.x + Math.cos(a) * r, 0, HOOD.z + Math.sin(a) * r);
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
@@ -143,6 +145,8 @@ export function createRace({ scene, camera, travel, npcs, dip, onWin = null, per
   let rider = null;
   let t = 0, count = 0, prog = 0, lastA = 0, passed = 0, offBoard = 0, rest = 0, outro = 0;
   let pLaps = -1, pLast = 0, pTime = null, myTime = null;
+  // How he rides this race (begin sets it).
+  let style = { chase: 0.42, endAt: 0.74, endEase: 0.93, bursts: [] };
   // This player's best time and wins (src/playerstore.js).
   const store = playerStore(KEY);
   const me = new THREE.Vector3(), head = new THREE.Vector3();
@@ -180,6 +184,18 @@ export function createRace({ scene, camera, travel, npcs, dip, onWin = null, per
       s.lastLook = 0;
       s.busy = 'race';
       rider.race(track, track.getLength() - 2.2, 0);
+      // Each race his own (the user, 10-23: his line and pace learned, he was easy to beat): a line that
+      // weaves across the road its own way, a couple of sprints, and how hard he chases and eases off. A
+      // flat-out run still edges him at the line.
+      const rnd = Math.random;
+      const w = { off: (rnd() * 2 - 1) * 1.1, a: 0.6 + rnd() * 1.5, f: 1 + Math.floor(rnd() * 3), ph: rnd() * Math.PI * 2 };
+      rider.line = (u) => THREE.MathUtils.clamp(w.off + Math.sin(u * Math.PI * 2 * w.f + w.ph) * w.a, -3.2, 2.4);
+      style = {
+        chase: 0.34 + rnd() * 0.16,
+        endAt: 0.68 + rnd() * 0.1,
+        endEase: 0.9 + rnd() * 0.05,
+        bursts: [0, 1].map((i) => ({ at: 0.12 + i * 0.32 + rnd() * 0.2, len: 0.06 + rnd() * 0.05, add: 1 + rnd() * 1.3 })),
+      };
       rider.salute = 0;
       for (const g of gates) {
         g.group.visible = true;
@@ -377,8 +393,11 @@ export function createRace({ scene, camera, travel, npcs, dip, onWin = null, per
       pLast = rider.along;
       const theirs = (pLaps * L + rider.along) / L;
       if (pTime === null && theirs >= 1) pTime = t;
-      // The next gate, passed on the road (cutting across the middle misses it).
-      if (passed < GATES - 1 && prog >= (passed + 1) / GATES && Math.abs(r - R) < 4.6) {
+      // The next gate, ridden through: within its arch, at its line (the user, 10-23: cutting across the
+      // middle and back onto the road ticked off every gate missed). Miss one and it waits, gold: back
+      // through it, then on.
+      const ng = gates[passed + 1];
+      if (passed < GATES - 1 && ng && Math.abs(r - R) < GATE_IN && Math.abs(wrap(a - ng.a) * R) < 2.5) {
         passed++;
         gates[passed].set('done');
         if (passed < GATES - 1) gates[passed + 1].set('next');
@@ -391,8 +410,11 @@ export function createRace({ scene, camera, travel, npcs, dip, onWin = null, per
       const yours = Math.hypot(s.vel.x, s.vel.z);
       const lane = (R + 1.8) / Math.max(18, r);
       const gap = (prog - theirs) * L;
-      let want = THREE.MathUtils.clamp(Math.max(yours, 6.5) * lane + gap * 0.42 + 0.35, 6.2, 12.8);
-      if (theirs > 0.74 && pTime === null) want = Math.min(want, Math.max(yours * lane * 0.93, 6.2));
+      // (This race's own ways, from begin: how hard he chases, when and how much he eases off at the end,
+      // and his sprints.)
+      let want = THREE.MathUtils.clamp(Math.max(yours, 6.5) * lane + gap * style.chase + 0.35, 6.2, 12.8);
+      for (const b of style.bursts) if (theirs > b.at && theirs < b.at + b.len) want += b.add * Math.sin(Math.PI * (theirs - b.at) / b.len);
+      if (theirs > style.endAt && pTime === null) want = Math.min(want, Math.max(yours * lane * style.endEase, 6.2));
       if (pTime !== null) want = 7.5;
       // Quick start (a Head trait): he waits a moment at Go.
       if (t < (perks?.()?.head ?? 0)) want = 0;
@@ -403,7 +425,8 @@ export function createRace({ scene, camera, travel, npcs, dip, onWin = null, per
       const goal = passed >= GATES - 1 ? '<b>Finish</b>' : missed ? `<b>Back to gate ${passed + 1}</b>` : `<b>Gate ${passed + 1}</b> of ${GATES - 1}`;
       const html = `<span>${goal}</span><span class="pl-time">${fmt(t)}</span><span><b>${place === 1 ? '1st' : '2nd'}</b></span>`;
       if (html !== lastHud) ui.hud.innerHTML = lastHud = html;
-      if (passed >= GATES - 1 && prog >= 1) finish();
+      // (Over the line itself, under its arch: an extra lap round to the last gates doesn't end it there.)
+      if (passed >= GATES - 1 && prog >= 1 && Math.abs(r - R) < GATE_IN && Math.abs(wrap(a - A0) * R) < 3) finish();
     },
   };
 }
