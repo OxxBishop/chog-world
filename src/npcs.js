@@ -478,7 +478,9 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     const answer = api && who.name ? fill(pick(meN(api), MY_HI), who.name) : null;
     const after = answer ? 0.3 + lineLen(answer, 2.4, 4) : 0;
     say(n, line, { len, total: len + after, move: who.move ?? 'talk', wave: who.move ? 0 : WAVE_FOR });
-    if (answer) mine.pending = { line: answer, at: t + len + 0.3, len: after - 0.3 };
+    // (A beat after the greeting starts, not once it's read through: it came so late you'd walked on. The
+    // user, 10-23.)
+    if (answer) mine.pending = { line: answer, at: t + Math.min(1.1, len * 0.35), len: after - 0.3 };
     if (who.reach && lastCamera) c.reach(lastCamera, n.left);
   }
   // Your Chog's own bubble (it answers a greeting).
