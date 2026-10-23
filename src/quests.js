@@ -1,3 +1,4 @@
+import { playerStore, playerKey } from './playerstore.js';
 import * as THREE from 'three';
 import { hudRow } from './hudrow.js';
 
@@ -61,18 +62,6 @@ const QUESTS = [
     reward: 10,
   },
 ];
-const read = () => {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || '{}');
-  } catch {
-    return {};
-  }
-};
-const write = (v) => {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(v));
-  } catch {}
-};
 const sfx = (name) => dispatchEvent(new CustomEvent('chog-sfx', { detail: name }));
 
 let glowTex = null;
@@ -137,8 +126,17 @@ function thing(kind) {
 }
 
 export function createQuests({ scene, camera, travel, purse }) {
-  const st = read();
+  // This player's day of quests (src/playerstore.js), swapped in as the player changes.
+  const store = playerStore(KEY);
+  let st = store.get();
+  let who = playerKey();
+  const write = () => store.save();
   const fresh = () => {
+    if (who !== playerKey()) {
+      who = playerKey();
+      st = store.get();
+      showItems();
+    }
     if (st.day !== today()) Object.assign(st, { day: today(), done: {}, active: null, got: [] });
     st.done ??= {};
     st.got ??= [];
@@ -222,11 +220,14 @@ export function createQuests({ scene, camera, travel, purse }) {
     sfx('finish');
     note(q.thanks, 3.6);
   }
-  // A quest left going from before (the page reloaded): its things back where they were.
-  {
+  // The things of the quest under way (one left going from before a reload, or this player's), back where
+  // they were; any other quest's hidden.
+  function showItems() {
+    for (const [id, objs] of made) if (id !== st.active) objs.forEach((o) => (o.visible = false));
     const q = QUESTS.find((x) => x.id === st.active);
-    if (q) itemsOf(q).forEach((o, i) => (o.visible = !st.got.includes(i)));
+    if (q) itemsOf(q).forEach((o, i) => (o.visible = !st.got?.includes(i)));
   }
+  showItems();
 
   let pinned = null;
   return {

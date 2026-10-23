@@ -38,6 +38,7 @@ import { createArrival } from './arrival.js';
 import { createCasino } from './casino.js';
 import { postcard } from './fx/postcard.js';
 import { createTravel } from './travel.js';
+import { setPlayer } from './playerstore.js';
 import { createBirds } from './birds.js';
 
 const $ = (id) => document.getElementById(id);
@@ -548,6 +549,8 @@ async function init() {
   // collection Chog it visits as.
   const islandPerks = () => islandPerksFor(session?.active?.info?.traits ?? travel?.guest?.traits ?? {});
   if (travel) purse = createPurse({ scene, camera, travel, session: () => session, audio });
+  // Quests, stars and the race keep progress per player, as the purse does (src/playerstore.js).
+  setPlayer(() => purse?.player ?? 'guest');
   if (travel) stars = createStars({ scene, camera, travel, onFound: () => purse?.earn('star', 10), onAll: () => purse?.earn('stars', 50), sense: () => islandPerks().sense });
   // Small asks from the cast, for testnet $CHOG (B, src/quests.js; the user's pick, 10-23).
   if (travel) quests = createQuests({ scene, camera, travel, purse });

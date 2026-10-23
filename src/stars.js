@@ -1,3 +1,4 @@
+import { playerStore, playerKey } from './playerstore.js';
 import * as THREE from 'three';
 import { hudRow } from './hudrow.js';
 
@@ -28,18 +29,6 @@ const SPOTS = [
   ['beacon loop', 193, -120.4, 1.6],
 ];
 const KEY = 'chogworld.stars.v1';
-const read = () => {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || '{}');
-  } catch {
-    return {};
-  }
-};
-const write = (v) => {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(v));
-  } catch {}
-};
 const sfx = (name) => dispatchEvent(new CustomEvent('chog-sfx', { detail: name }));
 
 // A soft round glow, drawn once.
@@ -92,7 +81,11 @@ const _d = new THREE.Vector3(), _w = new THREE.Vector3(), _n = new THREE.Vector3
 let trailMat = null;
 
 export function createStars({ scene, camera, travel, onFound = null, onAll = null, sense = null }) {
-  const saved = read();
+  // This player's stars (src/playerstore.js), swapped in as the player changes (update).
+  const store = playerStore(KEY);
+  let saved = store.get();
+  let who = playerKey();
+  const write = () => store.save();
   const found = new Set(saved.found ?? []);
   const geo = starGeometry();
   trailMat ??= new THREE.PointsMaterial({ map: glowTexture(), size: 0.9, sizeAttenuation: true, vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false });
@@ -206,6 +199,28 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
   }
   if (found.size === SPOTS.length) buildSky(false);
 
+  // Another player: their stars out again where they haven't found them, and their sky.
+  function swap() {
+    who = playerKey();
+    saved = store.get();
+    found.clear();
+    for (const n of saved.found ?? []) found.add(n);
+    for (const s of stars) {
+      s.gone = 0;
+      s.mesh.visible = true;
+      s.mesh.scale.setScalar(1);
+      s.beam.visible = true;
+      if (s.glow.material !== glowMat) s.glow.material = glowMat;
+      s.group.visible = !found.has(s.name);
+    }
+    if (sky && found.size < SPOTS.length) {
+      scene.remove(sky.group);
+      sky = null;
+    } else if (!sky && found.size === SPOTS.length) buildSky(false);
+    lookUp = null;
+    first = !saved.told;
+    count();
+  }
   const me = new THREE.Vector3();
   let first = !saved.told;
   let lookUp = null;
@@ -298,6 +313,7 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
     },
     total: SPOTS.length,
     update(dt, env) {
+      if (who !== playerKey()) swap();
       const night = env?.night ?? 0;
       const out = chaser ? true : travel.active && travel.chog;
       if (out !== shown) document.body.classList.toggle('stars-on', (shown = !!out));

@@ -657,7 +657,9 @@ export function buildHub() {
   const BAR_DOOR = { half: 1.8, bottom: BAR_ROOM.y, top: 5.0, z: WING_FRONT + 0.35 };
   const barIn = BAR_ROOM.z + barRoom.d / 2;
   carve(barWing, new THREE.Box3(new THREE.Vector3(bx - BAR_DOOR.half, BAR_DOOR.bottom, barIn + 1), new THREE.Vector3(bx + BAR_DOOR.half, BAR_DOOR.top, BAR_DOOR.z + 0.4)), group);
-  for (const side of [-1, 1]) props.add(box(0.35, BAR_DOOR.top + 0.35, 1.8, mats.darkWood, bx + side * (BAR_DOOR.half + 0.175), (BAR_DOOR.top + 0.35) / 2, WING_FRONT - 0.45));
+  // (Their inner faces 2 cm proud of the hall's walls, as the casino's: on the same plane the wood and the
+  // cream fought for the pixels down the walk in, the user, 10-23.)
+  for (const side of [-1, 1]) props.add(box(0.35, BAR_DOOR.top + 0.35, 1.8, mats.darkWood, bx + side * (BAR_DOOR.half + 0.155), (BAR_DOOR.top + 0.35) / 2, WING_FRONT - 0.45));
   props.add(box(BAR_DOOR.half * 2 + 0.7, 0.35, 1.8, mats.darkWood, bx, BAR_DOOR.top + 0.175, WING_FRONT - 0.45));
   props.add(box(BAR_DOOR.half * 2 + 0.8, BAR_DOOR.bottom, 0.9, mats.steps, bx, BAR_DOOR.bottom / 2, BAR_DOOR.z + 0.55));
   const barDoor = doorMats(mats);

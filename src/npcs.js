@@ -952,6 +952,53 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       },
     );
 
+  // ---------- the astronaut, floating in zero g in his own dome on the middle island ----------
+  // (B, the user 10-19: src/cosmo.js builds the dome.) He drifts round the front half of it, slowly
+  // turning head over heels, clear of his pod at the back. (Lost on 10-23 when the cast got places of
+  // their own, and put back: the user found the dome empty.)
+  const w = NPC_SLOTS.walker;
+  const cd = DOMES[COSMO_DOME];
+  const stroll = new THREE.Group();
+  stroll.position.set(cd.x, cd.y, cd.z);
+  stroll.rotation.y = cd.facing;
+  scene.add(stroll);
+  const floatAt = (tt, out) => out.set(Math.sin(tt * 0.11) * 5.2, 5.4 + Math.sin(tt * 0.37) * 0.9, 8.2 + Math.sin(tt * 0.07 + 1) * 4.2);
+  set(
+    (v) => stroll.localToWorld(v.set(0, 5.4, 8.2)),
+    async () => {
+      const astro = await npc(w.glb, w.id);
+      astro.root.scale.setScalar(OUTDOOR);
+      astro.float?.(true);
+      // He turns about his middle, not his feet.
+      const pivot = new THREE.Group();
+      pivot.add(astro.root);
+      // (His middle, for your Chog to bump into: src/travel.js.)
+      astro.root.userData.centre = pivot;
+      astro.root.position.y = -CHOG_HEIGHT * OUTDOOR * 0.45;
+      stroll.add(pivot);
+      astro.play('idle');
+      let ft = Math.random() * 40;
+      const drift = own(astro, (tt, dt) => {
+        ft += dt;
+        floatAt(ft, pivot.position);
+        pivot.rotation.set(Math.sin(ft * 0.13) * 0.7 + Math.sin(ft * 0.05) * 0.5, Math.PI + Math.sin(ft * 0.09) * 1.3, Math.sin(ft * 0.17) * 0.45);
+      });
+      const at = new THREE.Vector3();
+      let faded = 1;
+      return {
+        group: stroll,
+        chogs: await shown(stroll, [astro]),
+        where: (v) => pivot.getWorldPosition(v),
+        tick: (tt, dt) => {
+          drift(tt, dt);
+          // Floating with him, the camera can drift right up to him: he fades out of its way.
+          const k = lastCamera ? THREE.MathUtils.smoothstep(lastCamera.position.distanceTo(pivot.getWorldPosition(at)), 2.0, 3.4) : 1;
+          if (Math.abs(k - faded) > 0.01) astro.setFade?.((faded = k));
+        },
+      };
+    },
+  );
+
   // ---------- Patrol on his hover chopper, riding round the islands (B, src/rider.js; the user 10-19) ----------
   // The ride's ground: a bridge's deck where it crosses one, else the walking surface.
   const rideGround = (x, z) => {
