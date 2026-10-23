@@ -1,4 +1,5 @@
-import { createPublicClient, createWalletClient, custom, http, parseAbi, parseAbiItem, defineChain, toHex } from 'viem';
+import { createPublicClient, createWalletClient, custom, http, parseAbi, parseAbiItem, defineChain, toHex, getAddress } from 'viem';
+import { createSiweMessage, generateSiweNonce } from 'viem/siwe';
 
 /*
  * Chog World's link to Monad testnet: finding the wallet, signing in, and reading the testnet Chog
@@ -172,17 +173,19 @@ async function toTestnet(wallet) {
 
 /** A free signature to sign in: proves the wallet is yours, sends nothing. */
 export async function signIn({ wallet, address }) {
-  const nonce = crypto.getRandomValues(new Uint32Array(2)).join('');
-  const message = [
-    'Sign in to Chog World',
-    '',
-    `Wallet: ${address}`,
-    `Network: ${MONAD_TESTNET.name} (${MONAD_TESTNET.id})`,
-    `Nonce: ${nonce}`,
-    `Issued: ${new Date().toISOString()}`,
-    '',
-    'This is a free signature. It does not send a transaction or move anything.',
-  ].join('\n');
+  // The standard sign-in (Sign-In with Ethereum, EIP-4361): a wallet shows it as a sign-in, names the site
+  // and checks it is the site asking. A message of our own made the wallets' scam checks wary (the user,
+  // 10-23: they flagged the site). api/_lib/auth.js checks the site, the network and the time.
+  const message = createSiweMessage({
+    domain: location.host,
+    address: getAddress(address),
+    statement: 'Sign in to Chog World. A free signature: it does not send a transaction or move anything.',
+    uri: location.origin,
+    version: '1',
+    chainId: MONAD_TESTNET.id,
+    nonce: generateSiweNonce(),
+    issuedAt: new Date(),
+  });
   const signature = await wallet.signMessage({ account: address, message });
   return { message, signature };
 }
