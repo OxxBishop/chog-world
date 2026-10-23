@@ -137,13 +137,16 @@ function chogShader(material, geometry, fx, face, faceOn) {
     shader.uniforms.uFade = fx.uFade;
     shader.uniforms.uCut = fx.uCut;
     shader.uniforms.uYRange = range;
+    shader.uniforms.uHair = fx.uHair;
+    shader.uniforms.uSkinT = fx.uSkinT;
     Object.assign(shader.uniforms, face, { uFaceOn: faceOn });
     shader.vertexShader =
-      'varying float vChogY;\nvarying vec3 vChogP;\nvarying vec3 vFaceP;\nvarying float vFaceW;\nuniform mat4 uFaceM;\nuniform vec3 uFaceDir;\nuniform float uFaceHead;\n' +
+      'varying float vChogY;\nvarying float vBindY;\nvarying vec3 vChogP;\nvarying vec3 vFaceP;\nvarying float vFaceW;\nuniform mat4 uFaceM;\nuniform vec3 uFaceDir;\nuniform float uFaceHead;\n' +
       shader.vertexShader.replace(
         '#include <skinning_vertex>',
         `#include <skinning_vertex>
   vChogY = transformed.y;
+  vBindY = position.y;
   vChogP = transformed;
   vFaceP = vec3((uFaceM * vec4(position, 1.0)).xy, dot(normal, uFaceDir));
   #ifdef USE_SKINNING
@@ -153,10 +156,37 @@ function chogShader(material, geometry, fx, face, faceOn) {
   #endif`,
       );
     shader.fragmentShader =
-      'uniform float uGrey;\nuniform float uFade;\nuniform vec2 uCut;\nuniform vec2 uYRange;\nvarying float vChogY;\nvarying vec3 vChogP;\nuniform sampler2D uFace;\nuniform float uFaceOn;\nuniform float uEye;\nuniform float uMouth;\nvarying vec3 vFaceP;\nvarying float vFaceW;\n' +
+      'uniform float uGrey;\nuniform float uFade;\nuniform vec2 uCut;\nuniform vec2 uYRange;\nuniform vec4 uHair;\nuniform vec4 uSkinT;\nvarying float vChogY;\nvarying float vBindY;\nvarying vec3 vChogP;\nuniform sampler2D uFace;\nuniform float uFaceOn;\nuniform float uEye;\nuniform float uMouth;\nvarying vec3 vFaceP;\nvarying float vFaceW;\n' +
       shader.fragmentShader.replace(
         '#include <map_fragment>',
         `#include <map_fragment>
+  // The plain body in its Skin trait's colours, as its art has them: the purple spikes above the neck
+  // (the purple suit below keeps its colour), and the peach and pink of the face and hands. Shading kept.
+  if (uHair.w > 0.0 || uSkinT.w > 0.0) {
+    vec3 c = diffuseColor.rgb;
+    float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b)), dl = mx - mn;
+    float sat = mx > 1e-4 ? dl / mx : 0.0;
+    float hue = 0.0;
+    if (dl > 1e-4) {
+      if (mx == c.r) hue = mod((c.g - c.b) / dl, 6.0);
+      else if (mx == c.g) hue = (c.b - c.r) / dl + 2.0;
+      else hue = (c.r - c.g) / dl + 4.0;
+      hue /= 6.0;
+    }
+    float head = smoothstep(0.93, 1.0, vBindY);
+    float purple = smoothstep(0.6, 0.65, hue) * (1.0 - smoothstep(0.88, 0.92, hue)) * smoothstep(0.18, 0.32, sat);
+    float hairK = step(0.5, uHair.w) * head * purple;
+    vec3 hairC = uHair.rgb;
+    if (uHair.w > 1.5) {
+      float hh = fract(vBindY * 0.9 + vChogP.x * 0.6 + vChogP.z * 0.4);
+      hairC = clamp(abs(mod(hh * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0) * 0.75 + 0.1;
+    }
+    float skinHue = max(1.0 - smoothstep(0.09, 0.15, hue), smoothstep(0.88, 0.93, hue));
+    float skinK = uSkinT.w * skinHue * smoothstep(0.05, 0.12, sat) * (1.0 - smoothstep(0.62, 0.75, sat)) * smoothstep(0.3, 0.45, mx);
+    c = mix(c, hairC * clamp(mx / 0.79, 0.0, 1.3), hairK);
+    c = mix(c, uSkinT.rgb * clamp(mx / 0.9, 0.0, 1.15), skinK);
+    diffuseColor.rgb = c;
+  }
   // Beaming (a portal): a cut that rises from the feet (uCut.y 1) or falls from the head (-1), with a
   // glowing edge (added as light below).
   float cutEdge = 0.0;
@@ -186,7 +216,7 @@ function chogShader(material, geometry, fx, face, faceOn) {
   }`,
       ).replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(0.55, 0.95, 1.0) * cutEdge * 3.0;');
   };
-  material.customProgramCacheKey = () => 'chog-model-3';
+  material.customProgramCacheKey = () => 'chog-model-4';
 }
 
 /*
@@ -794,6 +824,58 @@ function standee(images, name) {
   return { body, card, stand, mat, ready };
 }
 
+// Its own art as a round badge in a gold ring (the first of its copies that loads), once per Chog.
+const artBadges = new Map();
+function artBadgeTexture(images) {
+  const key = images[0];
+  if (!key) return Promise.resolve(null);
+  if (artBadges.has(key)) return artBadges.get(key);
+  const load = (i) =>
+    i >= images.length
+      ? Promise.resolve(null)
+      : new Promise((resolve) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve(img);
+          img.onerror = () => resolve(load(i + 1));
+          img.src = images[i];
+        });
+  const p = load(0).then((img) => {
+    if (!img) return null;
+    const S = 192, c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d');
+    const R = S / 2;
+    // A soft dark halo so it reads on any sky, the art in a circle, a double gold ring.
+    g.beginPath();
+    g.arc(R, R, R - 2, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(20, 12, 40, 0.55)';
+    g.fill();
+    g.save();
+    g.beginPath();
+    g.arc(R, R, R - 14, 0, Math.PI * 2);
+    g.clip();
+    g.drawImage(img, 14, 14, S - 28, S - 28);
+    g.restore();
+    g.lineWidth = 7;
+    g.strokeStyle = '#ecdcae';
+    g.beginPath();
+    g.arc(R, R, R - 13, 0, Math.PI * 2);
+    g.stroke();
+    g.lineWidth = 2;
+    g.strokeStyle = 'rgba(236, 220, 174, 0.6)';
+    g.beginPath();
+    g.arc(R, R, R - 4, 0, Math.PI * 2);
+    g.stroke();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  });
+  artBadges.set(key, p);
+  return p;
+}
+
 // A mood badge over the head: a round tag with the mood's glyph, drawn once per mood.
 const badgeTextures = new Map();
 function badgeTexture(mood) {
@@ -917,7 +999,7 @@ void main() {
  * names a Chog's own rigged file (an NPC from public/models/npcs/) in place of the trait-built one;
  * tint shades its colours, so copies of one model look like different Chogs.
  */
-export async function makeChog({ traits = {}, image = null, images = image ? [image] : [], name = 'Chog', model: modelUrl = null, tint = null, keep = 1 } = {}) {
+export async function makeChog({ traits = {}, image = null, images = image ? [image] : [], name = 'Chog', model: modelUrl = null, tint = null, skin: skinLook = null, nameplate = false, keep = 1 } = {}) {
   const look = lookFor(traits);
   const base = modelUrl ?? look.base;
   const personality = personalityFor(traits);
@@ -929,7 +1011,17 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   const clipOf = {};
   const tintables = [];
   // A model's grey and dissolve (see chogShader), shared by all its pieces.
-  const fx = { uGrey: { value: 0 }, uFade: { value: 1 }, uCut: { value: new THREE.Vector2(0, 0) } };
+  const fx = { uGrey: { value: 0 }, uFade: { value: 1 }, uCut: { value: new THREE.Vector2(0, 0) }, uHair: { value: new THREE.Vector4(0, 0, 0, 0) }, uSkinT: { value: new THREE.Vector4(0, 0, 0, 0) } };
+  // The plain body's colours from its Skin trait (SKIN_LOOK in src/traitmap.js): w 1 on, 2 a rainbow.
+  if (skinLook?.hair === 'rainbow') fx.uHair.value.set(1, 1, 1, 2);
+  else if (skinLook?.hair) {
+    const c = new THREE.Color(skinLook.hair);
+    fx.uHair.value.set(c.r, c.g, c.b, 1);
+  }
+  if (skinLook?.skin) {
+    const c = new THREE.Color(skinLook.skin);
+    fx.uSkinT.value.set(c.r, c.g, c.b, 1);
+  }
   // Its face (see FACES): the sheet, how its vertices map onto it, and the current eye and mouth state.
   const face = {
     uFace: { value: noFace },
@@ -1093,6 +1185,22 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   badge.renderOrder = 6;
   badge.visible = false;
   root.add(badge);
+  // Its own art floating over its head (the user, 10-23: every wallet Chog wears the same plain body, so
+  // this says which Chog it is). Out of the way while a mood badge shows; it fades as the Chog greys.
+  let art = null, artReady = false;
+  if (nameplate && images.length) {
+    art = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, opacity: 0 }));
+    art.scale.setScalar(0.46);
+    art.position.y = CHOG_HEIGHT + 0.3;
+    art.renderOrder = 5;
+    root.add(art);
+    artBadgeTexture(images).then((tex) => {
+      if (!tex) return;
+      art.material.map = tex;
+      art.material.needsUpdate = true;
+      artReady = true;
+    });
+  }
   let moodT = 0;
   let moodLeft = 0;
   let resumeAct = 'idle';
@@ -1249,6 +1357,11 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       t += dt;
       stateT += dt;
       if (aura) aura.material.uniforms.uTime.value = t;
+      if (art) {
+        const want = artReady && moodLeft <= 0 ? 1 - fx.uGrey.value : 0;
+        art.material.opacity += (want - art.material.opacity) * Math.min(1, dt * 6);
+        art.position.y = CHOG_HEIGHT + 0.3 + Math.sin(t * 1.6) * 0.04;
+      }
       if (moodLeft > 0) {
         moodT += dt;
         moodLeft -= dt;
