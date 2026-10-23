@@ -680,8 +680,9 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
         }
       }
       // No room behind it there: the camera swings round to the dome's middle side and tips up to look
-      // down at it (behind his pod, from over its roof).
-      if (domeMax < 4.6 && !snap) {
+      // down at it (behind his pod, from over its roof). Not while you turn the view yourself, nor for a
+      // moment after: it pulled the view back every frame, so turning seemed stuck (the user, 10-23).
+      if (domeMax < 4.6 && !snap && state.lastLook > 2.5) {
         const c = island.cosmo.centre;
         const toMid = Math.atan2(c.x - look.x, c.z - look.z);
         state.camYaw += wrap(toMid - state.camYaw) * (1 - Math.exp(-dt * 2.5));
