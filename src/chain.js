@@ -69,6 +69,15 @@ let wcProvider = null;
  * asked for accounts it opens WalletConnect's own window (the QR code, or the wallet apps on a phone),
  * and asks for Monad testnet, which the wallet can add if it doesn't know it yet.
  */
+/**
+ * Gets WalletConnect ready ahead of a tap (its code, about 2 MB, and its link to the relay), so its
+ * window opens at once rather than 20 s later (the user, 10-23). Quietly; a failure is tried again on
+ * the tap.
+ */
+export function warmWalletConnect() {
+  if (WC_PROJECT) walletConnect().warm?.();
+}
+
 function walletConnect() {
   if (wcProvider) return wcProvider;
   let real = null;
@@ -112,6 +121,9 @@ function walletConnect() {
     },
     async disconnect() {
       if (real) await (await real).disconnect().catch(() => {});
+    },
+    warm() {
+      load().catch(() => {});
     },
   };
   return wcProvider;

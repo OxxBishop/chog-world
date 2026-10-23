@@ -90,8 +90,9 @@ export function initSession(world) {
 
   // ---------- the first screen ----------
   async function start(note = '') {
-    const { findWallets } = await chain();
+    const { findWallets, warmWalletConnect } = await chain();
     const wallets = await findWallets();
+    warmWalletConnect?.();
     const list = wallets.length
       ? wallets.map((w, i) => `<button class="wallet" data-i="${i}">${w.icon ? `<img src="${esc(w.icon)}" alt="">` : ''}<span>${esc(w.name)}</span></button>`).join('')
       : '<p class="muted">No wallet found in this browser. You can still try a demo Chog.</p>';
@@ -301,10 +302,12 @@ export function initSession(world) {
   async function startIntro(s = screen, note = '') {
     screen = s;
     if (!screen) return;
-    const { findWallets } = await chain();
+    const { findWallets, warmWalletConnect } = await chain();
     const wallets = await findWallets();
-    // While you choose: the collection's index and the demo Chog's art, so a tap goes straight in.
+    // While you choose: the collection's index and the demo Chog's art, so a tap goes straight in; and
+    // WalletConnect, a moment after the screen is up.
     loadChogs().catch(() => {});
+    setTimeout(() => warmWalletConnect?.(), 1500);
     new Image().src = `${import.meta.env.BASE_URL}art/${DEMO_CHOG}.webp`;
     tell('connect', {
       wallets: [...wallets.map((w) => ({ name: w.name, icon: w.icon, pick: () => arriveWith(w) })), { name: 'Try a demo Chog', icon: null, pick: () => demoArrival() }],
