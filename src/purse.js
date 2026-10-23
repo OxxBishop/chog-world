@@ -245,10 +245,11 @@ export function createPurse({ scene, camera, travel, session, audio }) {
       encoreT = Math.max(0, encoreT - dt);
       // What's on offer where you stand: the fountain's wish, the singer's song.
       let o = null;
-      if (out && !busy && !travel.state.busy) {
+      // (Never over a cast quest's card: King Pom's throne is near the fountain.)
+      if (out && !busy && !travel.state.busy && !document.querySelector('.pl-quest:not([hidden])')) {
         const at = travel.state.pos;
         const bal = p.bal;
-        if (Math.hypot(at.x - FOUNTAIN.x, at.z - FOUNTAIN.z) < 11.5 && !coin)
+        if (Math.hypot(at.x - FOUNTAIN.x, at.z - FOUNTAIN.z) < 9.8 && !coin)
           o = { title: 'Make a wish', text: bal >= WISH ? `Toss a coin in the fountain for ${WISH} testnet $CHOG.` : `A wish costs ${WISH} testnet $CHOG. Find stars or race Patrol to earn some.`, button: 'Wish', can: bal >= WISH, go: wish };
         else if (Math.hypot(at.x - STAGE.x, at.z - STAGE.z) < 12 && encoreT <= 0)
           o = { title: 'Request a song', text: bal >= SONG ? `Tip the singer ${SONG} testnet $CHOG for your request.` : `A request costs ${SONG} testnet $CHOG. Find stars or race Patrol to earn some.`, button: 'Request', can: bal >= SONG, go: song };
