@@ -327,7 +327,8 @@ Object.assign(SHOTS, {
     hour: 21.2,
     length: 6,
     async setup(w) {
-      localStorage.setItem('chogworld.stars.v1', JSON.stringify({ found: [], told: true }));
+      // (None found yet, so the beacon's star is out to be chased: stars are kept per player now.)
+      w.stars.setFound([]);
       const c = await makeChog({ model: 'models/npcs/plain.glb', name: 'Chaser', traits: {} });
       c.root.scale.setScalar(1.7);
       w.scene.add(c.root);
@@ -475,6 +476,45 @@ Object.assign(SHOTS, {
   },
 });
 
+// ---------- One Day (the user, 10-23: the X trailer, dawn to night) ----------
+// A time-lapse of the whole day over the archipelago, then the day in its places, each at its hour, and
+// the night sky at the end. The shots above, at new hours; the time-lapse and the night sky are new.
+const atHour = (name, hour, more = {}) => ({ ...SHOTS[name], hour, ...more });
+// The time-lapse's clock, from k (0 to 1 through the shot): dawn held a while, the day sped through,
+// the gold and the sunset slower, then on into night.
+const DAY = [[0, 5.45], [0.24, 6.7], [0.46, 15.2], [0.74, 18.7], [1, 21.4]];
+const dayAt = (k) => {
+  for (let i = 1; i < DAY.length; i++) {
+    const [k1, h1] = DAY[i];
+    const [k0, h0] = DAY[i - 1];
+    if (k <= k1) return h0 + (h1 - h0) * smooth((k - k0) / (k1 - k0));
+  }
+  return DAY[DAY.length - 1][1];
+};
+Object.assign(SHOTS, {
+  'd-lapse': { hour: dayAt, keys: drift(8, [160, 235, 480], [126, 225, 463], [44, 0, 18], [38, 0, 15]), update: (w) => lens(w, 45) },
+  'd-dawn': atHour('t-domes', 6.3),
+  'd-morning': atHour('t-board', 8.8),
+  'd-noon': atHour('t-throne', 12.6),
+  'd-singer': atHour('t-singer', 13.3),
+  'd-race': atHour('t-race', 15.2),
+  'd-cosmo': atHour('t-cosmo', 16.3),
+  'd-star': atHour('t-star', 17.7),
+  'd-sky': atHour('t-sky', 18.7),
+  'd-casino': atHour('jackpot', 20.2),
+  'd-fire': atHour('t-campfire', 21.8),
+  // The night sky: from the plaza's edge over the first neighbourhood's lit domes, the view rises to the
+  // Chog in the stars (all twelve found) with the aurora's curtains over it.
+  'd-aurora': {
+    hour: 22.8,
+    keys: drift(7, [0, 37, 66], [0, 41, 70], [-6, 14, 230], [-20, 121, 465]),
+    setup(w) {
+      w.stars.setFound(w.stars.names);
+    },
+    update: (w) => lens(w, 50),
+  },
+});
+
 // B5's name for it.
 SHOTS.opening = SHOTS.overview;
 
@@ -497,7 +537,7 @@ export function createDemo(w, name, { capture = false, from = null } = {}) {
   const flight = shot.keys ? createFlight(shot) : null;
   const length = shot.length ?? flight.duration;
   const events = [...(shot.events ?? [])].sort((a, b) => a[0] - b[0]);
-  const hourAt = (t) => (Array.isArray(shot.hour) ? shot.hour[0] + (shot.hour[1] - shot.hour[0]) * clamp01(t / length) : shot.hour);
+  const hourAt = (t) => (typeof shot.hour === 'function' ? shot.hour(clamp01(t / length)) : Array.isArray(shot.hour) ? shot.hour[0] + (shot.hour[1] - shot.hour[0]) * clamp01(t / length) : shot.hour);
   const realWait = (ms) => new Promise((r) => setTimeout(r, ms));
   let started = false;
   let t0 = 0;
