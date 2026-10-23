@@ -219,6 +219,8 @@ Object.assign(SHOTS, {
     async setup(w) {
       const info = await chogInfo(1151);
       const rider = await makeChog({ ...info, traits: { ...info.traits, Aura: null }, model: 'models/npcs/chog-1151.glb' });
+      // (Its outdoor size, as your Chog is out on the islands.)
+      rider.root.scale.setScalar(1.7);
       w.scene.add(rider.root);
       rider.play('idle');
       const boards = w.travel.hoverboards;
@@ -320,9 +322,63 @@ Object.assign(SHOTS, {
   // King Pom holding court on his throne by the fountain.
   't-throne': { hour: 17.3, keys: drift(6, [-1.6, 33.9, 46.0], [-2.6, 33.7, 44.6], [-11, 33.1, 50], [-11.2, 33.1, 50.2]), update: (w) => lens(w, 42) },
   // A star by the Beacon after dark, turning in its column of light.
-  't-star': { hour: 21.2, keys: drift(6, [216.8, 4.4, -88.6], [215.6, 4.3, -90.4], [211.2, 3.2, -93.9]), update: (w) => lens(w, 40) },
+  // The star chase: a Chog runs after the beacon's star, which darts away trailing light, tires, and is caught.
+  't-star': {
+    hour: 21.2,
+    length: 6,
+    async setup(w) {
+      localStorage.setItem('chogworld.stars.v1', JSON.stringify({ found: [], told: true }));
+      const c = await makeChog({ model: 'models/npcs/plain.glb', name: 'Chaser', traits: {} });
+      c.root.scale.setScalar(1.7);
+      w.scene.add(c.root);
+      c.play('walk');
+      const pos = new THREE.Vector3(205.6, 0, -87.6);
+      pos.y = surfaceAt(pos.x, pos.z);
+      this._chase = { c, pos, last: 0, cam: null, look: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, -1) };
+      w.stars.chase(pos);
+    },
+    update(w, t) {
+      const r = this._chase;
+      if (!r) return;
+      lens(w, 46);
+      const dt = Math.max(0, Math.min(0.1, t - r.last));
+      r.last = t;
+      const star = w.stars.where('beacon');
+      // Off after it at a run a moment in (the star notices and darts away).
+      if (!star && !r.won) {
+        // Caught: a little cheer.
+        r.won = true;
+        r.c.play('cheer');
+      }
+      if (star && t > 0.4) {
+        const d = new THREE.Vector3(star.x - r.pos.x, 0, star.z - r.pos.z);
+        const len = d.length();
+        if (len > 0.3) {
+          d.divideScalar(len);
+          r.dir.lerp(d, 1 - Math.exp(-dt * 6)).normalize();
+          const v = Math.min(4.7, 1.6 + t * 3);
+          r.pos.addScaledVector(r.dir, Math.min(len, v * dt));
+          r.c.play('run');
+          r.c.setPace?.((r.c.paceFor?.('run') ?? 1) * 1.05);
+        }
+      }
+      r.pos.y = surfaceAt(r.pos.x, r.pos.z);
+      r.c.root.position.copy(r.pos);
+      r.c.root.rotation.y = Math.atan2(r.dir.x, r.dir.z);
+      r.c.update(dt, w.camera);
+      // The camera: off its shoulder, low, both in view, easing after them.
+      const side = new THREE.Vector3(r.dir.z, 0, -r.dir.x);
+      const want = r.pos.clone().addScaledVector(r.dir, -4.6).addScaledVector(side, 3.4).setY(r.pos.y + 2.6);
+      const look = star ? r.pos.clone().lerp(star, 0.55).setY(r.pos.y + 1.6) : r.pos.clone().setY(r.pos.y + 1.6);
+      if (!r.cam) (r.cam = want.clone()), r.look.copy(look);
+      r.cam.lerp(want, 1 - Math.exp(-dt * 2.5));
+      r.look.lerp(look, 1 - Math.exp(-dt * 4));
+      w.camera.position.copy(r.cam);
+      w.camera.lookAt(r.look);
+    },
+  },
   // Toasty's campfire at night.
-  't-campfire': { hour: 21.6, keys: drift(6, [216.5, 6.2, -102.5], [214.4, 5.8, -104.8], [207.8, 2.4, -112.5]), update: (w) => lens(w, 44) },
+  't-campfire': { hour: 21.6, keys: drift(6, [214.2, 4.8, -96.8], [212.1, 4.4, -99.1], [205.5, 2.0, -106.8]), update: (w) => lens(w, 44) },
   // Chog Hub at night: the lobby's arch, the bar, the casino, the ticker round the dome.
   't-hub': { hour: 20.5, keys: drift(6, [20, 44.2, 70], [16.6, 43.6, 66.6], [9, 40.9, 31.7], [8.4, 40.6, 31.2]), update: (w) => lens(w, 46) },
   // Inside: the lobby, and the Starlite Lounge.

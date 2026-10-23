@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from './merge.js';
 import { createGlows } from './glows.js';
 import { buildLobbyRoom, buildBarRoom } from './interior.js';
+import { goldChog } from './statue.js';
 import { buildCasinoRoom } from './casino.js';
 import { createLobbyFx } from './fx/lobbyfx.js';
 import { domeTicker } from './fx/domeTicker.js';
@@ -606,12 +607,12 @@ export function buildHub() {
   rug.userData.keep = true;
   group.add(rug);
 
-  // The statue: a placeholder Chog in brass on a stone plinth, until the real model arrives.
+  // The statue: a gold Chog on a stone plinth (src/statue.js).
   const statue = new THREE.Group();
   statue.add(box(3, 1.6, 3, mats.cream, 0, 0.8, 0));
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1.2, 24, 16).scale(1, 1.15, 0.95).translate(0, 2.9, 0), mats.brass);
-  statue.add(body);
-  for (const sx of [-0.6, 0.6]) statue.add(new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 12).rotateZ(-sx * 0.3).translate(sx, 4.4, 0), mats.brass));
+  const gold = goldChog(3.4);
+  gold.position.y = 1.6;
+  statue.add(gold);
   statue.position.set(-13, 0, LOBBY_FRONT + 10);
   statue.rotation.y = 0.4;
   props.add(statue);

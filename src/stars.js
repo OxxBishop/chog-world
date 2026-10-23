@@ -84,10 +84,18 @@ const SKY = [
 const SKY_AZ = -0.05;
 const SKY_LINES = [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 0];
 
+// The chase (the user, 10-23: "make the stars move around ... just a fun chase"). Each star drifts about its
+// spot like a wisp; come close and it darts away, a little slower than you run, tiring as you chase it, and
+// never further than LEASH from its spot (or off the island), so it can always be caught.
+const LEASH = 9, NOTICE = 8.5, FLEE = 3.4, TRAIL = 16;
+const _d = new THREE.Vector3(), _w = new THREE.Vector3(), _n = new THREE.Vector3();
+let trailMat = null;
+
 export function createStars({ scene, camera, travel, onFound = null, onAll = null, sense = null }) {
   const saved = read();
   const found = new Set(saved.found ?? []);
   const geo = starGeometry();
+  trailMat ??= new THREE.PointsMaterial({ map: glowTexture(), size: 0.9, sizeAttenuation: true, vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false });
   const mat = new THREE.MeshStandardMaterial({ color: '#ffe6a0', emissive: new THREE.Color('#ffc94a'), emissiveIntensity: 1.3, roughness: 0.3, metalness: 0.35 });
   const glowMat = new THREE.SpriteMaterial({ map: glowTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.6, fog: false });
   // The column of light: brightest at its foot, gone at its top.
@@ -116,7 +124,17 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
     group.add(glow, mesh, beam);
     group.visible = !found.has(name);
     scene.add(group);
-    return { name, group, mesh, glow, beam, y, k: i * 1.37, gone: 0 };
+    // Its trail: a few glows behind it, fading (a wisp's tail).
+    const tg = new THREE.BufferGeometry();
+    tg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL * 3).fill(0), 3));
+    tg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(TRAIL * 3).fill(0), 3));
+    const trail = new THREE.Points(tg, trailMat);
+    trail.frustumCulled = false;
+    trail.visible = group.visible;
+    scene.add(trail);
+    const home = new THREE.Vector3(x, y, z);
+    const on = g?.on ?? 'land';
+    return { name, group, mesh, glow, beam, y, lift, home, on, pos: home.clone(), vel: new THREE.Vector3(), tired: 0, chased: 0, trail, hist: [], histT: 0, leash: lift > 3 ? 2.4 : LEASH, k: i * 1.37, seed: i * 2.39, gone: 0 };
   });
 
   // ---------- the count, and a note now and then ----------
@@ -193,17 +211,98 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
   let lookUp = null;
   let shown = false;
 
+  // Where it goes: a slow wander round its spot; away from you when you're close.
+  function move(s, dt, out) {
+    const t = s.k + s.seed;
+    // The wander: two slow sines each way, round its spot.
+    _w.set(Math.sin(t * 0.33) * 0.6 + Math.sin(t * 0.71 + 1.3) * 0.4, 0, Math.cos(t * 0.29 + 0.7) * 0.6 + Math.sin(t * 0.53) * 0.4).multiplyScalar(s.leash * 0.45).add(s.home);
+    _d.subVectors(_w, s.pos).setY(0);
+    const wander = Math.min(1.3, _d.length() * 0.7);
+    _d.setLength(wander);
+    let chasing = false;
+    if (out) {
+      _n.set(s.pos.x - me.x, 0, s.pos.z - me.z);
+      const dist = _n.length();
+      if (dist < NOTICE) {
+        chasing = true;
+        // Away, faster the closer you are, slower as it tires.
+        const k = THREE.MathUtils.smoothstep(NOTICE - dist, 0, NOTICE * 0.6);
+        _n.setLength(FLEE * k * (1 - s.tired));
+        _d.lerp(_n, k);
+      }
+    }
+    s.tired = THREE.MathUtils.clamp(s.tired + (chasing ? dt / 7 : -dt / 4), 0, 0.55);
+    // Held to its spot: at the end of its leash it slips round the edge instead of on away.
+    _n.subVectors(s.pos, s.home).setY(0);
+    const off = _n.length();
+    if (off > s.leash * 0.8) {
+      _n.divideScalar(off || 1);
+      const outward = _d.dot(_n);
+      if (outward > 0) _d.addScaledVector(_n, -outward * Math.min(1, (off - s.leash * 0.8) / (s.leash * 0.2)));
+      if (off > s.leash) _d.addScaledVector(_n, -(off - s.leash) * 3);
+    }
+    s.vel.lerp(_d, 1 - Math.exp(-dt * 3.2));
+    // Never anywhere you can't follow: off the island, off its bridge, into the fountain or a wall. Blocked,
+    // it slips along the edge instead (the way turned a little, then more), or waits.
+    const ok = (nx, nz) => {
+      const g = s.lift > 3 ? { y: s.home.y - s.lift, on: s.on } : travel.groundAt?.(nx, nz, s.pos.y + 4);
+      if (!g || g.y < s.home.y - s.lift - 3 || (s.on !== 'land' && g.on !== s.on)) return null;
+      _w.set(nx, s.pos.y - s.lift, nz);
+      return s.lift > 3 || !travel.walkable || travel.walkable(_w) ? g : null;
+    };
+    const vx = s.vel.x, vz = s.vel.z;
+    for (const a of [0, 0.7, -0.7, 1.4, -1.4, 2.2, -2.2]) {
+      const c = Math.cos(a), sn = Math.sin(a);
+      const dx = (vx * c - vz * sn) * dt, dz = (vx * sn + vz * c) * dt;
+      const g = ok(s.pos.x + dx, s.pos.z + dz);
+      if (!g) continue;
+      if (a) s.vel.set(dx / dt, 0, dz / dt);
+      s.pos.x += dx;
+      s.pos.z += dz;
+      s.pos.y += (g.y + s.lift - s.pos.y) * (1 - Math.exp(-dt * 6));
+      return;
+    }
+    s.vel.multiplyScalar(0.5);
+  }
+  // The trail: where it's been, the newest brightest.
+  function drawTrail(s, dt) {
+    s.trail.visible = true;
+    if ((s.histT += dt) > 0.035) {
+      s.histT = 0;
+      s.hist.unshift(s.group.position.x, s.group.position.y, s.group.position.z);
+      s.hist.length = Math.min(s.hist.length, TRAIL * 3);
+    }
+    const P = s.trail.geometry.attributes.position, C = s.trail.geometry.attributes.color;
+    const n = s.hist.length / 3;
+    for (let i = 0; i < TRAIL; i++) {
+      const j = Math.min(i, n - 1);
+      if (j < 0) break;
+      P.setXYZ(i, s.hist[j * 3], s.hist[j * 3 + 1], s.hist[j * 3 + 2]);
+      const f = i < n ? Math.pow(1 - i / TRAIL, 1.6) * 0.85 : 0;
+      C.setXYZ(i, f, f * 0.82, f * 0.45);
+    }
+    P.needsUpdate = true;
+    C.needsUpdate = true;
+  }
   let senseT = 0, sensed = '';
+  // A Chog of the trailer's (src/shots.js) to chase them in place of yours.
+  let chaser = null;
   return {
+    chase(p) {
+      chaser = p;
+      first = false;
+    },
+    where: (name) => stars.find((st) => st.name === name && st.group.visible && !st.gone)?.group.position ?? null,
     get found() {
       return found.size;
     },
     total: SPOTS.length,
     update(dt, env) {
       const night = env?.night ?? 0;
-      const out = travel.active && travel.chog;
+      const out = chaser ? true : travel.active && travel.chog;
       if (out !== shown) document.body.classList.toggle('stars-on', (shown = !!out));
-      if (out) me.copy(travel.state.pos);
+      if (chaser) me.copy(chaser);
+      else if (out) me.copy(travel.state.pos);
       mat.emissiveIntensity = 1.2 + night * 1.6;
       glowMat.opacity = 0.5 + night * 0.4;
       // A word about the hunt, the first time you're out walking.
@@ -218,7 +317,7 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
         senseT = 0.5;
         const r = out ? (sense?.() ?? 0) : 0;
         const near = r ? stars.filter((st) => st.group.visible && !st.gone && Math.hypot(me.x - st.group.position.x, me.z - st.group.position.z) < r) : [];
-        const key = near.map((st) => st.name).join('|');
+        const key = near.map((st) => `${st.name}${Math.round(st.pos.x / 3)},${Math.round(st.pos.z / 3)}`).join('|');
         if (key !== sensed) {
           sensed = key;
           travel.setPins?.('stars', near.map((st) => ({ x: st.group.position.x, z: st.group.position.z, kind: 'star' })));
@@ -238,17 +337,20 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
           s.mesh.visible = k < 0.6;
           s.beam.visible = false;
           if (k >= 1) s.group.visible = false;
+          s.trail.visible = false;
           continue;
         }
         s.mesh.rotation.y = s.k * 1.3;
-        s.group.position.y = s.y + Math.sin(s.k * 1.8) * 0.12;
+        move(s, dt, out);
+        s.group.position.set(s.pos.x, s.pos.y + Math.sin(s.k * 1.8) * 0.12, s.pos.z);
+        drawTrail(s, dt);
         // The column shows from a way off and goes as you come close.
         const d = camera.position.distanceTo(s.group.position);
         s.beam.material.uniforms.uA.value = THREE.MathUtils.smoothstep(d, 10, 34) * (0.55 + night * 0.45);
         if (!out) continue;
         const dx = me.x - s.group.position.x, dz = me.z - s.group.position.z;
         // (Its middle: floating in zero g it's up off the ground.)
-        const dy = me.y + (travel.state.lift ?? 0) + 1 - s.group.position.y;
+        const dy = me.y + (chaser ? 0 : travel.state.lift ?? 0) + 1 - s.group.position.y;
         if (dx * dx + dz * dz < 2.2 * 2.2 && Math.abs(dy) < 2.6) {
           found.add(s.name);
           saved.found = [...found];

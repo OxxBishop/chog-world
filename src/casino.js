@@ -314,48 +314,92 @@ function signTex(title, sub) {
   });
 }
 
-// The leaderboard's face: the top Chogs by chips, or how to get on it, in the look's colours.
-const BOARD_THEMES = {
-  classic: { bg: '#1a0812', edge: 'rgba(232, 184, 74, 0.5)', title: '#ffe6a8', glow: '#ff9a3c', sub: '#ffb3c8', row: '#fff6e8', first: '#ffd23f', head: '600 64px Fredoka, sans-serif', font: 'Fredoka, sans-serif' },
-  capsule: { bg: '#120a2a', edge: 'rgba(62, 242, 255, 0.7)', title: '#ff3d8b', glow: '#ff3d8b', sub: '#3ef2ff', row: '#fff4e6', first: '#ffe27a', head: '700 66px "Pixelify Sans", monospace', font: '"Pixelify Sans", monospace' },
-  starlite: { bg: '#0e2232', edge: 'rgba(255, 201, 74, 0.8)', title: '#ff6f61', glow: '#3ef2ff', sub: '#7ff0c9', row: '#fff1d6', first: '#ffc94a', head: '600 64px Fredoka, sans-serif', font: 'Fredoka, sans-serif' },
-  pier: { bg: '#fff9ef', edge: 'rgba(255, 143, 184, 0.9)', title: '#ff3d8b', glow: null, sub: '#4fb2d4', row: '#5a3a2a', first: '#ff3d8b', head: '700 64px Fredoka, sans-serif', font: 'Fredoka, sans-serif' },
-};
-function drawBoard(canvas, rows, shared, theme = 'classic') {
-  const T = BOARD_THEMES[theme] ?? BOARD_THEMES.classic;
+// The leaderboard's face: the top Chogs by chips, or how to get on it, in the game's Celestial look (the
+// user, 10-23: it still had the old type and colours): dark glass in a double gold rule, Cinzel for the
+// title, the ranks and the chips, Josefin Sans for the names. The same in every casino look.
+const CEL = { bg: '#140e28', bg2: '#21183f', gold: '#ecdcae', bright: '#ffe08a', line: 'rgba(236, 220, 174, 0.55)', row: '#f6f0ff', dim: 'rgba(236, 220, 174, 0.7)' };
+const DISPLAY = "Cinzel, 'Times New Roman', serif", LABEL = "'Josefin Sans', system-ui, sans-serif";
+function spaced(g, text, x, y, em) {
+  if ('letterSpacing' in g) {
+    g.letterSpacing = `${em}em`;
+    g.fillText(text, x, y);
+    g.letterSpacing = '0px';
+  } else g.fillText(text, x, y);
+}
+function drawBoard(canvas, rows, shared, theme = 'classic', tex = null) {
+  // (Drawn again once the game's type has loaded, if it hadn't yet.)
+  if (!document.fonts.check(`700 60px ${DISPLAY}`) && !canvas._fontWait) {
+    canvas._fontWait = true;
+    Promise.all([document.fonts.load(`700 60px ${DISPLAY}`), document.fonts.load(`600 28px ${LABEL}`)])
+      .then(() => {
+        drawBoard(canvas, canvas._rows ?? rows, canvas._shared ?? shared, theme, tex ?? canvas._tex);
+        (tex ?? canvas._tex) && ((tex ?? canvas._tex).needsUpdate = true);
+      })
+      .catch(() => {});
+  }
+  canvas._rows = rows;
+  canvas._shared = shared;
   const g = canvas.getContext('2d');
   const { width: w, height: h } = canvas;
-  g.fillStyle = T.bg;
+  const bg = g.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, CEL.bg2);
+  bg.addColorStop(1, CEL.bg);
+  g.fillStyle = bg;
   g.fillRect(0, 0, w, h);
-  g.strokeStyle = T.edge;
-  g.lineWidth = 4;
+  g.strokeStyle = CEL.line;
+  g.lineWidth = 3;
   g.strokeRect(14, 14, w - 28, h - 28);
+  g.lineWidth = 1.5;
+  g.strokeRect(24, 24, w - 48, h - 48);
   g.textAlign = 'center';
-  g.fillStyle = T.title;
-  g.shadowColor = T.glow ?? 'transparent';
-  g.shadowBlur = T.glow ? 18 : 0;
-  g.font = T.head;
-  g.fillText('TOP CHOGS', w / 2, 86);
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = CEL.gold;
+  g.shadowColor = 'rgba(255, 214, 120, 0.55)';
+  g.shadowBlur = 16;
+  g.font = `700 58px ${DISPLAY}`;
+  spaced(g, 'TOP CHOGS', w / 2, 92, 0.08);
   g.shadowBlur = 0;
-  g.font = '500 24px Figtree, sans-serif';
-  g.fillStyle = T.sub;
-  g.fillText(shared ? 'most chips in Chog World' : 'most chips at this machine', w / 2, 124);
+  g.font = `600 20px ${LABEL}`;
+  g.fillStyle = CEL.dim;
+  spaced(g, (shared ? 'most chips in Chog World' : 'most chips at this machine').toUpperCase(), w / 2, 128, 0.22);
+  // A thin gold rule with a diamond in its middle.
+  g.strokeStyle = CEL.line;
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.moveTo(90, 150);
+  g.lineTo(w / 2 - 12, 150);
+  g.moveTo(w / 2 + 12, 150);
+  g.lineTo(w - 90, 150);
+  g.stroke();
+  g.fillStyle = CEL.gold;
+  g.beginPath();
+  g.moveTo(w / 2, 144);
+  g.lineTo(w / 2 + 6, 150);
+  g.lineTo(w / 2, 156);
+  g.lineTo(w / 2 - 6, 150);
+  g.fill();
   rows.slice(0, 7).forEach((row, i) => {
-    const y = 180 + i * 46;
-    g.fillStyle = i === 0 ? T.first : T.row;
-    g.font = `600 32px ${T.font}`;
+    const y = 196 + i * 44;
+    const top = i === 0;
+    g.fillStyle = top ? CEL.bright : CEL.gold;
+    g.font = `700 30px ${DISPLAY}`;
+    g.textAlign = 'center';
+    g.fillText(`${i + 1}`, 78, y);
+    g.fillStyle = top ? CEL.bright : CEL.row;
+    g.font = `600 28px ${LABEL}`;
     g.textAlign = 'left';
-    g.fillText(`${i + 1}`, 64, y);
     g.fillText(String(row.name).slice(0, 18), 112, y);
+    g.font = `700 28px ${DISPLAY}`;
     g.textAlign = 'right';
+    g.fillStyle = top ? CEL.bright : CEL.gold;
     g.fillText(Number(row.chips).toLocaleString('en-US'), w - 64, y);
   });
   if (!rows.length) {
     g.textAlign = 'center';
-    g.fillStyle = T.row;
-    g.font = '500 30px Figtree, sans-serif';
-    g.fillText('Sign in with your Chog', w / 2, 270);
-    g.fillText('to get on the board.', w / 2, 312);
+    g.fillStyle = CEL.row;
+    g.font = `600 28px ${LABEL}`;
+    g.fillText('Sign in with your Chog', w / 2, 268);
+    g.fillText('to get on the board.', w / 2, 308);
   }
 }
 
@@ -657,7 +701,8 @@ function makeBoard(wall, { x, y, w, h, frame, theme = 'classic' }) {
   const edge = new THREE.Mesh(new THREE.BoxGeometry(w + 0.26, h + 0.26, 0.08), frame);
   edge.position.set(x, y, 0.02);
   wall.add(edge);
-  drawBoard(canvas, [], false, theme);
+  canvas._tex = tex;
+  drawBoard(canvas, [], false, theme, tex);
   return { canvas, tex, theme };
 }
 

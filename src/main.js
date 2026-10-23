@@ -636,6 +636,9 @@ async function init() {
           VIEWS.farewell = { pos: cam0.clone(), target: door.clone().setY(from.y + 1.2) };
           rig.jump('farewell');
           scene.add(chog.root);
+          // At its outdoor size, like every Chog out on the islands (src/travel.js): from its home's room it
+          // came at its indoor size and walked away shrunken (the user, 10-23).
+          chog.root.scale.setScalar(1.7);
           chog.root.position.copy(from);
           chog.root.rotation.y = Math.atan2(out.x, out.z);
           chog.root.visible = true;
@@ -643,7 +646,7 @@ async function init() {
           chog.play('walk');
           // A slow walk, its feet keeping to the ground (its pace from how fast its walk clip goes).
           const v = from.distanceTo(to) / walkS;
-          chog.setPace?.(v / (chog.speedOf?.('walk') || v));
+          chog.setPace?.(v / ((chog.speedOf?.('walk') || v / 1.7) * 1.7));
           cutCam = (camera, dt) => {
             t += dt;
             const k = Math.min(1, t / walkS);
@@ -772,6 +775,9 @@ function shotWorld() {
     },
     get race() {
       return race;
+    },
+    get stars() {
+      return stars;
     },
     enterRoom: (id) => enterRoom(room(id)),
     inRoom: (id) => rig.room === room(id)?.pod,

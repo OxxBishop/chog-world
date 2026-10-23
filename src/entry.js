@@ -464,6 +464,9 @@ export function createEntry({ camera, rig, hub, fovs, dom, session }) {
     // From just inside the door out to a few steps out front, where travel takes over (with the view
     // the walk ends on: walker.exit.resume, read by travel.js resume()).
     const exit = walker.exit ? walker.exit.at.clone().addScaledVector(walker.exit.out, OUT_LEN) : H(e.x, 0, e.z + 0.6 + OUT_LEN);
+    // Down on the plaza at the end, not at the height of the door's top step (it walked out on air, then
+    // dropped as you took over: the user, 10-23).
+    exit.y = Math.min(exit.y, H(e.x, 0, e.z + 0.6 + OUT_LEN).y);
     const path = polyline(doorPts(e, exit, 1.3).reverse());
     const sDoor = path.sAt(H(e.x, e.sill, e.z));
     // The camera out front, off to the side toward the Hub's middle, low, looking in at the door; round
