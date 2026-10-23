@@ -1,5 +1,9 @@
 // First, so a demo shot's clock is in place before anything reads the time (B13).
 import { demoClock } from './democlock.js';
+import { inject } from '@vercel/analytics';
+
+// Initialize Vercel Web Analytics
+inject();
 import * as THREE from 'three';
 import { loadAll } from './assets.js';
 import { Sky } from './sky.js';
