@@ -460,6 +460,9 @@ async function loadSkyTables() {
 // How long the clouds take to fade in once they are ready, in seconds.
 const FADE_IN = 2.5;
 
+// How loosely the clouds' frame-to-frame build-up keeps what it had (the library's check, varianceGamma).
+const LOOSE = 5;
+
 export function createVolumetricClouds(renderer, camera) {
   const atmosphere = new AtmosphereParameters();
   const clouds = new CloudsEffect(camera, {}, atmosphere);
@@ -642,8 +645,14 @@ export function createVolumetricClouds(renderer, camera) {
       s.cascadeCount = 1;
       // The clouds are drawn a sixteenth at a time and built up over frames. Under a quick swipe the
       // library threw that history away too eagerly, and the deck thinned to see-through for a moment.
-      // A looser check keeps it whole; any ghosting is hard to see on clouds.
-      clouds.cloudsPass.resolveMaterial.uniforms.varianceGamma.value = 5;
+      // A looser check keeps it whole; any ghosting is hard to see on clouds (but see setMoving).
+      clouds.cloudsPass.resolveMaterial.uniforms.varianceGamma.value = LOOSE;
+    },
+    // Your Chog on the move, 0 to 1: the check tightens to the library's own. With the camera following
+    // a running Chog against the sky, the loose check kept the Chog-shaped gap it leaves in the clouds
+    // for frames on end, a ghost of its body beside it (the user, 10-23).
+    setMoving(k) {
+      clouds.cloudsPass.resolveMaterial.uniforms.varianceGamma.value = THREE.MathUtils.lerp(LOOSE, 2, k);
     },
     update(env, sky, t) {
       lastT = t;
