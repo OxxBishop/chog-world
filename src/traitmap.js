@@ -86,23 +86,25 @@ export function modelFor(id, traits = {}) {
   return { model: PLAIN, tint: null, skin: SKIN_LOOK[traits.Skin] ?? null };
 }
 
-// What the Skin trait does in the art (the user, 10-23: "it's gotta match the art"): mostly the colour
-// of the spiky hair, and for some the face and hands too. Pink and Origin keep the classic purple hair.
-// hair 'rainbow' runs the colours round the spikes.
+// What the Skin trait does in the art (the user, 10-23: "it's gotta match the art"; colours taken from the
+// art, the colour every Chog of that Skin shares): the colour of the spikes and the body (the plain body's
+// purple), and for some the face and hands too (its peach and pink). Pink, Red and Yellow are the spikes'
+// colour with the white face; Black has a brown face; the skull Skins (White, Grey, Beige, Metal, Purple,
+// Jade) are one colour all over, Blue and Green lighter on the face. 'rainbow' runs the colours round.
 export const SKIN_LOOK = {
-  Pink: { skin: '#f7c6d2' },
-  Red: { hair: '#d8402f' },
-  Black: { hair: '#2a2430', skin: '#6b4632' },
-  Yellow: { hair: '#ffd23f' },
-  Blue: { hair: '#4a86e0', skin: '#a9cdf5' },
-  White: { hair: '#f2eff7' },
-  Green: { hair: '#5cb85c', skin: '#c4e8b6' },
-  Jade: { hair: '#38a382', skin: '#b0e0cb' },
-  Purple: { skin: '#dac6f4' },
-  Beige: { hair: '#d6b98a' },
-  Metal: { hair: '#aeb6c4', skin: '#d8dde6' },
-  Grey: { hair: '#8d8997', skin: '#d4d1da' },
-  'Multi Colored': { hair: 'rainbow' },
+  Pink: { hair: '#f46cb2' },
+  Red: { hair: '#f0201a' },
+  Yellow: { hair: '#fcd824' },
+  Black: { hair: '#24202a', skin: '#5e3c26' },
+  Blue: { hair: '#2ab2e6', skin: '#62e6dc' },
+  Green: { hair: '#40c414', skin: '#d6f048' },
+  White: { hair: '#f4f2f6', skin: '#f6f4f4' },
+  Grey: { hair: '#969696', skin: '#a6a6a6' },
+  Beige: { hair: '#e2dcc0', skin: '#ebe5d0' },
+  Metal: { hair: '#666a86', skin: '#74789a' },
+  Purple: { hair: '#8e76d6', skin: '#a08ae4' },
+  Jade: { hair: '#7ccc98', skin: '#8cdcaa' },
+  'Multi Colored': { hair: 'rainbow', skin: 'rainbow' },
 };
 
 // Skin colours, for the "Skin" material and the stand-in.

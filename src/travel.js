@@ -731,8 +731,10 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
       camera.lookAt(_flyLook);
       if (f.t >= f.dur) state.fly = null;
     }
-    // Squeezed right up to your Chog: it fades out of the way rather than fill the screen.
-    if (!state.busy && state.chog) state.chog.setFade?.(smooth(1.3, 2.8, state.camPos.distanceTo(state.camLook)));
+    // Squeezed right up to your Chog: it fades out of the way rather than fill the screen. Only when it's
+    // jammed right up close, and quickly: half dissolved, the dither's holes showed the far side of its own
+    // body, like a second Chog laid over it (the user, 10-23, in a dome, where the camera comes in close).
+    if (!state.busy && state.chog) state.chog.setFade?.(smooth(1.05, 1.45, state.camPos.distanceTo(state.camLook)));
   }
   // Whether the camera can't be at p: inside a building or a house (a dome's glass it may pass).
   // (A bridge's hoops it may now go out through: they fade away by the camera, and held under their arch
