@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { islandPerksFor } from './islandperks.js';
 import { hudRow } from './hudrow.js';
 
 /*
@@ -59,7 +60,8 @@ export function createPurse({ scene, camera, travel, session, audio }) {
     const s = session()?.active;
     if (s?.address) return { key: s.address.toLowerCase(), name: s.info?.name, traits: s.info?.traits ?? {} };
     if (s?.demo) return { key: 'demo', name: s.info?.name, traits: s.info?.traits ?? {} };
-    return { key: 'guest', name: travel.guest?.name, traits: {} };
+    // (A guest visits as a Chog from the collection: its traits, its rate and perks.)
+    return { key: 'guest', name: travel.guest?.name, traits: travel.guest?.traits ?? {} };
   };
   const purse = () => {
     const w = who();
@@ -108,6 +110,9 @@ export function createPurse({ scene, camera, travel, session, audio }) {
       p.races += 1;
       base = p.races === 1 ? base : Math.min(base, 5);
     }
+    // Its traits' perks round the islands (src/islandperks.js): a bigger hello, more for quests and stars.
+    const perk = islandPerksFor(who().traits);
+    base += kind === 'hello' ? perk.hello : kind === 'quest' ? perk.quest : kind === 'star' ? perk.star : 0;
     const room = Math.max(0, CAP - p.got);
     const amount = Math.min(room, Math.round(base * rate()));
     if (amount <= 0) {
@@ -175,8 +180,14 @@ export function createPurse({ scene, camera, travel, session, audio }) {
   let coin = null;
   const LINES = ['The fountain heard you.', 'Something lucky is on its way.', 'Your wish is safe with the fountain.', 'A little luck, tucked away for later.', 'The water sparkles back at you.'];
 
+  // A lucky charm (an Accessory) makes the day's first wish free.
+  const freeWish = () => islandPerksFor(who().traits).wish && purse().wish !== today();
   function wish() {
-    if (coin || !spend(WISH)) return;
+    if (coin) return;
+    if (freeWish()) {
+      purse().wish = today();
+      write(all);
+    } else if (!spend(WISH)) return;
     const s = travel.state;
     const from = s.pos.clone().add(new THREE.Vector3(0, 2.4, 0));
     const a = Math.random() * Math.PI * 2, r = 1.5 + Math.random() * 2.5;
@@ -231,7 +242,7 @@ export function createPurse({ scene, camera, travel, session, audio }) {
     },
     // For the guide (src/guide.js): today's earnings against the cap, the Chog's rate, and the hello.
     get today() {
-      return { got: purse().got, cap: CAP, rate: rate(), hello: purse().hello === today() };
+      return { got: purse().got, cap: CAP, rate: rate(), hello: purse().hello === today(), perks: islandPerksFor(who().traits) };
     },
     update(dt, { busy = false } = {}) {
       const out = travel.active && travel.chog;
@@ -255,7 +266,9 @@ export function createPurse({ scene, camera, travel, session, audio }) {
         const at = travel.state.pos;
         const bal = p.bal;
         if (Math.hypot(at.x - FOUNTAIN.x, at.z - FOUNTAIN.z) < 9.8 && !coin)
-          o = { title: 'Make a wish', text: bal >= WISH ? `Toss a coin in the fountain for ${WISH} testnet $CHOG.` : `A wish costs ${WISH} testnet $CHOG. Find stars or race Patrol to earn some.`, button: 'Wish', can: bal >= WISH, go: wish };
+          o = freeWish()
+            ? { title: 'Make a wish', text: 'Your lucky charm makes today\'s first wish free.', button: 'Wish', can: true, go: wish }
+            : { title: 'Make a wish', text: bal >= WISH ? `Toss a coin in the fountain for ${WISH} testnet $CHOG.` : `A wish costs ${WISH} testnet $CHOG. Find stars or race Patrol to earn some.`, button: 'Wish', can: bal >= WISH, go: wish };
         else if (Math.hypot(at.x - STAGE.x, at.z - STAGE.z) < 12 && encoreT <= 0)
           o = { title: 'Request a song', text: bal >= SONG ? `Tip the singer ${SONG} testnet $CHOG for your request.` : `A request costs ${SONG} testnet $CHOG. Find stars or race Patrol to earn some.`, button: 'Request', can: bal >= SONG, go: song };
       }

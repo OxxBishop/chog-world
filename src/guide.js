@@ -1,12 +1,14 @@
 import { SPRITE, PAL } from './pixelloader.js';
 import { perksFor } from './casinoperks.js';
+import { islandPerksFor } from './islandperks.js';
 
 /*
  * The guide (the user, 10-23): the loading screen's pixel Chog, small, in a gold ring on the left, hopping
  * and waving. Tap it and it tells you everything in one place, in three tabs:
  *   Welcome  getting about, and what's on the islands
  *   Quests   the star hunt, the race, the cast's asks, the daily hello, testnet $CHOG, all as they stand
- *   Traits   your Chog's traits and what each one gives it (its edges at the tables, its $CHOG rate)
+ *   Traits   your Chog's traits and what each one gives it (its edges at the tables, its $CHOG rate, its
+ *            perks round the islands: src/islandperks.js)
  * Quests and Traits have buttons of their own under it. It opens by itself on your first visit.
  *
  * createGuide({ travel, session, purse, stars, quests }) -> { open(tab), welcome(info) }
@@ -149,14 +151,14 @@ export function createGuide({ travel, session, purse, stars, quests }) {
     return `
       <div class="pl-bal"><span>${(purse?.balance ?? 0).toLocaleString('en')}</span> testnet $CHOG <small>${p.got} of ${p.cap} earned today${p.rate > 1 ? `, at ${p.rate}x for your Chog's rarity` : ''}</small></div>
       <ul class="pl-qlist">
-        <li><b>Star hunt</b><em class="${found === total ? 'ok' : 'on'}">${found} of ${total}</em><span>Twelve stars hidden round the islands; look for their columns of light. 10 $CHOG each, 50 more for all twelve, and a Chog lights up in the sky.</span></li>
-        <li><b>Race Patrol</b><em>${race.best ? `Best ${fmt(race.best)}` : 'Not raced yet'}</em><span>On a hoverboard, ride into the arch where the first bridge meets the loop. Beat him for 25 $CHOG (once a day, 5 after).</span></li>
-        ${q.map((x) => `<li><b>${esc(x.title)}</b>${st(x)}<span>Find ${esc(x.giver)} on ${where[x.id] ?? 'the islands'}. ${x.reward} $CHOG.</span></li>`).join('')}
-        <li><b>Daily hello</b><em class="${p.hello ? 'ok' : ''}">${p.hello ? 'Done today' : 'Come back tomorrow'}</em><span>Your Chog says gm the first time you're out each day. 15 $CHOG.</span></li>
+        <li><b>Star hunt</b><em class="${found === total ? 'ok' : 'on'}">${found} of ${total}</em><span>Twelve stars hidden round the islands; look for their columns of light${p.perks?.sense ? ', and your Chog senses the ones near you on the map' : ''}. ${10 + (p.perks?.star ?? 0)} $CHOG each, 50 more for all twelve, and a Chog lights up in the sky.</span></li>
+        <li><b>Race Patrol</b><em>${race.best ? `Best ${fmt(race.best)}` : 'Not raced yet'}</em><span>On a hoverboard, ride into the arch where the first bridge meets the loop. Beat him for 25 $CHOG (once a day, 5 after).${p.perks?.head ? ` With your Chog's quick start he waits ${p.perks.head} s at Go.` : ''}</span></li>
+        ${q.map((x) => `<li><b>${esc(x.title)}</b>${st(x)}<span>Find ${esc(x.giver)} on ${where[x.id] ?? 'the islands'}. ${x.reward + (p.perks?.quest ?? 0)} $CHOG.</span></li>`).join('')}
+        <li><b>Daily hello</b><em class="${p.hello ? 'ok' : ''}">${p.hello ? 'Done today' : 'Come back tomorrow'}</em><span>Your Chog says gm the first time you're out each day. ${15 + (p.perks?.hello ?? 0)} $CHOG.</span></li>
       </ul>
       <h4>Spend it</h4>
       <ul>
-        <li>A wish at the plaza's <b>fountain</b>: 5 $CHOG and a small surprise.</li>
+        <li>A wish at the plaza's <b>fountain</b>: 5 $CHOG and a small surprise${p.perks?.wish ? ' (the first each day is free with your lucky charm)' : ''}.</li>
         <li>A <b>song request</b> for the singer: 10 $CHOG, her song from the top.</li>
       </ul>
       <p class="pl-fine">Testnet $CHOG lives in the game only, kept on this device. It never touches a chain.</p>`;
@@ -167,6 +169,7 @@ export function createGuide({ travel, session, purse, stars, quests }) {
     const t = m.traits ?? {};
     const p = perksFor(t, m.id);
     const rate = purse?.today?.rate ?? 1;
+    const isle = islandPerksFor(t);
     const shown = ['Tier', 'Head', 'Eyes', 'Body', 'Mouth', 'Accessory', 'Aura', 'Background', 'Skin'].filter((k) => t[k] && t[k] !== 'None');
     return `
       <p>${m.guest ? `The traits of <b>${esc(m.name)}</b>, who you're visiting as. Signed in, it's your own Chog's.` : `<b>${esc(m.name)}</b>'s traits, and what they give it.`}</p>
@@ -174,8 +177,11 @@ export function createGuide({ travel, session, purse, stars, quests }) {
       <h4>Edges at the tables</h4>
       <ul class="pl-edges">${p.list.map((e) => `<li><b>${esc(e.name)}</b> <small>${esc(e.trait)}</small><span>${esc(e.text)}</span></li>`).join('')}</ul>
       <h4>Round the islands</h4>
+      <ul class="pl-edges">
+        <li><b>Rarity</b> <small>${esc(t.Tier ?? 'Common')}</small><span>testnet $CHOG at ${rate}x (1x to 1.5x by tier, 2x for a 1:1)</span></li>
+        ${isle.list.map((e) => `<li><b>${esc(e.name)}</b> <small>${esc(e.trait)}</small><span>${esc(e.text)}</span></li>`).join('')}
+      </ul>
       <ul>
-        <li>Testnet $CHOG at <b>${rate}x</b>${rate > 1 ? ' for its rarity' : ''} (1x to 1.5x by tier, 2x for a 1:1).</li>
         <li>The cast notice its look, and light up when you share a trait with them.</li>
         <li>Its chat personality comes from its traits.</li>
       </ul>`;

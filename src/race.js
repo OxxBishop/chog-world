@@ -10,7 +10,8 @@ import { surfaceAt } from './travel.js';
  * paces himself to you, so it's close, and only a flat-out run beats him at the line. Over the line:
  * a flash, the result, and his salute; then he rides on with his patrol.
  *
- * createRace({ scene, camera, travel, npcs, dip, onWin }) -> { update(dt, env), active }
+ * createRace({ scene, camera, travel, npcs, dip, onWin, perks }) -> { update(dt, env), active }
+ * perks() is your Chog's island perks (src/islandperks.js): a Head trait has Patrol wait a moment at Go.
  * npcs() is src/npcs.js (patrol() gives his rider, src/rider.js); dip(fn) runs fn under a fade;
  * onWin({ time, gap }) after you beat him (the testnet $CHOG reward, src/purse.js).
  */
@@ -104,7 +105,7 @@ function arch(start) {
   } };
 }
 
-export function createRace({ scene, camera, travel, npcs, dip, onWin = null }) {
+export function createRace({ scene, camera, travel, npcs, dip, onWin = null, perks }) {
   // The gates: 0 is the start and finish (always there); the rest rise for a race.
   const gates = [];
   for (let i = 0; i < GATES; i++) {
@@ -404,6 +405,8 @@ export function createRace({ scene, camera, travel, npcs, dip, onWin = null }) {
       let want = THREE.MathUtils.clamp(Math.max(yours, 6.5) * lane + gap * 0.42 + 0.35, 6.2, 12.8);
       if (theirs > 0.74 && pTime === null) want = Math.min(want, Math.max(yours * lane * 0.93, 6.2));
       if (pTime !== null) want = 7.5;
+      // Quick start (a Head trait): he waits a moment at Go.
+      if (t < (perks?.()?.head ?? 0)) want = 0;
       // (A quick getaway off the line: your board is quick off the mark.)
       rider.speed = rider.speed + THREE.MathUtils.clamp(want - rider.speed, -dt * 4, dt * (t < 2 ? 11 : 6));
       const place = pTime !== null ? 2 : prog >= theirs ? 1 : 2;

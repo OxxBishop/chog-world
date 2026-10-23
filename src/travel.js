@@ -1494,6 +1494,20 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   // things you're fetching lie), by key: [{ x, z, kind: 'quest' | 'item' | 'back' }].
   const pins = new Map();
   function pinIcon(g, kind, r) {
+    if (kind === 'star') {
+      g.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 - Math.PI / 2, rr = i % 2 ? r * 0.48 : r * 1.15;
+        i ? g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      g.closePath();
+      g.fillStyle = '#ffe08a';
+      g.strokeStyle = 'rgba(20, 12, 40, 0.85)';
+      g.lineWidth = Math.max(2, r * 0.26);
+      g.stroke();
+      g.fill();
+      return;
+    }
     if (kind === 'item') {
       g.beginPath();
       g.moveTo(0, -r * 1.25);

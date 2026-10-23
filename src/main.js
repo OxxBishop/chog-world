@@ -29,6 +29,7 @@ import { createStars } from './stars.js';
 import { createPurse } from './purse.js';
 import { createQuests } from './quests.js';
 import { createGuide } from './guide.js';
+import { islandPerksFor } from './islandperks.js';
 import './play.css';
 import './motion.js';
 import { createEntry } from './entry.js';
@@ -543,13 +544,16 @@ async function init() {
   // Racing Patrol round the first neighbourhood's loop (B, src/race.js; the user's pick, 10-23).
   // Testnet $CHOG (B, src/purse.js; the user's pick, 10-23): earned by the star hunt (src/stars.js) and the race,
   // spent at the fountain and the stage. Never on-chain.
+  // What your Chog's traits give it round the islands (src/islandperks.js): signed in, its own; a guest, the
+  // collection Chog it visits as.
+  const islandPerks = () => islandPerksFor(session?.active?.info?.traits ?? travel?.guest?.traits ?? {});
   if (travel) purse = createPurse({ scene, camera, travel, session: () => session, audio });
-  if (travel) stars = createStars({ scene, camera, travel, onFound: () => purse?.earn('star', 10), onAll: () => purse?.earn('stars', 50) });
+  if (travel) stars = createStars({ scene, camera, travel, onFound: () => purse?.earn('star', 10), onAll: () => purse?.earn('stars', 50), sense: () => islandPerks().sense });
   // Small asks from the cast, for testnet $CHOG (B, src/quests.js; the user's pick, 10-23).
   if (travel) quests = createQuests({ scene, camera, travel, purse });
   // The guide: the pixel Chog that explains it all, with Quests and Traits (B, src/guide.js; the user, 10-23).
   if (travel) guide = createGuide({ travel, session: () => session, purse, stars, quests });
-  if (travel) race = createRace({ scene, camera, travel, npcs: () => npcs, dip: (fn) => new Promise((resolve) => fadeThrough(() => (fn(), resolve()))), onWin: () => purse?.earn('race', 25) });
+  if (travel) race = createRace({ scene, camera, travel, npcs: () => npcs, dip: (fn) => new Promise((resolve) => fadeThrough(() => (fn(), resolve()))), onWin: () => purse?.earn('race', 25), perks: islandPerks });
   // Signing in, and the Chogs who live round the world.
   session = initSession({
     get travel() {

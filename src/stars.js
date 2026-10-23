@@ -84,7 +84,7 @@ const SKY = [
 const SKY_AZ = -0.05;
 const SKY_LINES = [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 0];
 
-export function createStars({ scene, camera, travel, onFound = null, onAll = null }) {
+export function createStars({ scene, camera, travel, onFound = null, onAll = null, sense = null }) {
   const saved = read();
   const found = new Set(saved.found ?? []);
   const geo = starGeometry();
@@ -193,6 +193,7 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
   let lookUp = null;
   let shown = false;
 
+  let senseT = 0, sensed = '';
   return {
     get found() {
       return found.size;
@@ -211,6 +212,17 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
         saved.told = true;
         write(saved);
         setTimeout(() => found.size === 0 && note('Twelve <b>stars</b> are hidden round the islands. Find them all.', 5), 5000);
+      }
+      // Star sense (an Eyes trait, src/islandperks.js): the stars near you on the map, twice a second.
+      if ((senseT -= dt) <= 0) {
+        senseT = 0.5;
+        const r = out ? (sense?.() ?? 0) : 0;
+        const near = r ? stars.filter((st) => st.group.visible && !st.gone && Math.hypot(me.x - st.group.position.x, me.z - st.group.position.z) < r) : [];
+        const key = near.map((st) => st.name).join('|');
+        if (key !== sensed) {
+          sensed = key;
+          travel.setPins?.('stars', near.map((st) => ({ x: st.group.position.x, z: st.group.position.z, kind: 'star' })));
+        }
       }
       for (const s of stars) {
         if (!s.group.visible) continue;
