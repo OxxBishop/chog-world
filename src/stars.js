@@ -311,6 +311,15 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
     get found() {
       return found.size;
     },
+    // For the trailer's shots (src/shots.js): this player's stars, found or not, set outright (all twelve
+    // put the Chog in the sky); they take effect on the next update.
+    setFound(names) {
+      store.get().found = [...names];
+      store.get().told = true;
+      store.save();
+      who = null;
+    },
+    names: SPOTS.map(([n]) => n),
     total: SPOTS.length,
     update(dt, env) {
       if (who !== playerKey()) swap();
