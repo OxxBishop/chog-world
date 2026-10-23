@@ -24,7 +24,7 @@ export function placeBubble(el, x, y) {
   el.style.transform = `translate(-50%, -100%) translate(${cx}px, ${y}px)`;
 }
 
-export function createChat({ camera, getSession, placeName }) {
+export function createChat({ camera, getSession, placeName, progress = () => null }) {
   const panel = $('chat');
   const list = panel.querySelector('.chat-list');
   const form = panel.querySelector('form');
@@ -85,12 +85,12 @@ export function createChat({ camera, getSession, placeName }) {
     const typing = add('chog typing', '<span></span><span></span><span></span>');
     try {
       const session = s.demo ? { demo: true } : { address: s.address, message: s.message, signature: s.signature };
-      const out = await talk({ id: s.id, session, text, place: placeName() });
+      const out = await talk({ id: s.id, session, text, place: placeName(), progress: progress() });
       typing.remove();
       if (getSession() !== s) return;
       add('chog', esc(out.reply));
       if (out.newKeeper) add('note', esc(`${s.info.name} is getting to know you.`));
-      if (out.learned?.length) add('note', esc(`${s.info.name} will remember that.`));
+      if (out.learned?.length) add('note', esc(`${s.info.name} will remember: ${out.learned[0]}`));
       s.chog.setMood(out.mood);
       s.chog.talk?.(Math.min(6, 1.2 + out.reply.length / 15));
       say(out.reply);

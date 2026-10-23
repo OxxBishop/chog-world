@@ -48,9 +48,9 @@ async function post(path, body) {
   return j;
 }
 
-export async function talk({ id, session, text, place, hour = localHour() }) {
+export async function talk({ id, session, text, place, hour = localHour(), progress = null }) {
   const s = session?.demo ? { demo: true, demoKey: demoKey() } : { address: session?.address, message: session?.message, signature: session?.signature };
-  return post('/api/chat', { id, session: s, text, place, hour });
+  return post('/api/chat', { id, session: s, text, place, hour, progress });
 }
 
 export async function chogsChat({ a, b, place, hour = localHour() }) {

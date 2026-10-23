@@ -38,6 +38,9 @@ export { SYMBOLS, payout };
 const BETS = [5, 10, 25, 50, 100];
 // The most a roulette spin can carry, all its bets together.
 const TABLE_MAX = 500;
+// Testnet $CHOG from round the islands (src/purse.js) cashed in for chips: one way, never back out.
+const CASH = { chog: 10, chips: 100 };
+const BROKE = 'Out of chips. Cash in testnet $CHOG, or more chips tomorrow.';
 // A lost bet back is never more than this.
 const CASHBACK_MAX = 100;
 
@@ -806,6 +809,7 @@ const ICONS = `<svg class="cz-defs" width="0" height="0" aria-hidden="true">
   <symbol id="czi-rebet" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5A7.8 7.8 0 0 0 5.2 7.6M4.5 3.5v4.4h4.4M4.5 13.5a7.8 7.8 0 0 0 14.3 2.9M19.5 20.5v-4.4h-4.4"/></symbol>
   <symbol id="czi-leave" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M14.5 5.5L8 12l6.5 6.5"/></symbol>
   <symbol id="czi-reels" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M3.5 5h17a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 17.5v-11A1.5 1.5 0 0 1 3.5 5zM4.5 8v8h4V8zm5.5 0v8h4V8zm5.5 0v8h4V8z"/></symbol>
+  <symbol id="czi-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4"/><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M14.8 9.2a3.6 3.6 0 1 0 0 5.6"/></symbol>
   <symbol id="czi-wheel" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8" fill="none" stroke="currentColor" stroke-width="2.4"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 3.2v17.6M3.2 12h17.6M5.8 5.8l12.4 12.4M18.2 5.8L5.8 18.2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
 </svg>`;
 const UI_HTML = `${ICONS}
@@ -821,7 +825,7 @@ const UI_HTML = `${ICONS}
     <div class="cz-tokens" hidden></div>
     <div class="cz-felt" hidden>On the felt <b>0</b></div>
     <div class="cz-bar">
-      <div class="cz-bank"><small>Your chips</small><b>0</b></div>
+      <div class="cz-bank"><small>Your chips</small><b>0</b><button type="button" class="cz-cash" hidden><svg aria-hidden="true"><use href="#czi-coin"/></svg><em>0</em>&nbsp;$CHOG<span>Cash in</span></button></div>
       <div class="cz-rack" role="radiogroup" aria-label="Chip in hand">${BETS.map((v) => `<button type="button" class="cz-chip v${v}" role="radio" aria-checked="false" data-v="${v}" aria-label="${v}"><b>${v}</b></button>`).join('')}</div>
       <div class="cz-act">
         <button type="button" class="cz-key cz-undo" title="Undo" aria-label="Take the last chip back"><svg aria-hidden="true"><use href="#czi-undo"/></svg></button>
@@ -840,10 +844,10 @@ const UI_HTML = `${ICONS}
  * The games, their controls and camera moves. room: the casino's island.rooms entry; rig and camera:
  * the camera rig; dom: the canvas (taps on the machines, the reels and the felt); session(): A's
  * session (for your Chog: its id, name, art and traits); entering(): the walk in is playing; sky: the
- * world's lights (the room lights itself). Call update(dt, env) every frame; show(inside) says
+ * world's lights (the room lights itself); purse(): the testnet $CHOG purse, to cash in for chips. Call update(dt, env) every frame; show(inside) says
  * whether you're in the room, and the controls show while you are.
  */
-export function createCasino({ room: r, rig, camera, dom, session, entering = () => false, sky = null }) {
+export function createCasino({ room: r, rig, camera, dom, session, entering = () => false, sky = null, purse = () => null }) {
   const c = r.room.casino;
   const machine = c.machines[1];
   const look = c.look;
@@ -860,6 +864,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     leave: q$('.cz-leave'), leaveText: q$('.cz-leave span'), say: q$('.cz-say'), tokens: q$('.cz-tokens'), felt: q$('.cz-felt'),
     feltN: q$('.cz-felt b'), bankLabel: q$('.cz-bank small'), bankN: q$('.cz-bank b'), chips: [...ui.querySelectorAll('.cz-chip')],
     undo: q$('.cz-undo'), clear: q$('.cz-clear'), rebet: q$('.cz-rebet'), spin: q$('.cz-spin'), sum: q$('.cz-sum'),
+    cash: q$('.cz-cash'), cashN: q$('.cz-cash em'),
   };
   const banner = document.createElement('div');
   banner.className = `cz-banner look-${look.name}`;
@@ -1131,7 +1136,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     if (kind === 'spin' || kind === 'wild') {
       if (kind === 'wild' && ch.wild <= 0) return;
       if (state.chips < bet) {
-        message = state.chips < BETS[0] ? 'Out of chips. More testnet chips tomorrow.' : 'Not enough chips for that bet.';
+        message = state.chips < BETS[0] ? BROKE : 'Not enough chips for that bet.';
         return render();
       }
       state.chips -= bet;
@@ -1281,7 +1286,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     clearFelt();
     const now = staked();
     if (now + chip > TABLE_MAX) message = `The table takes up to ${TABLE_MAX} a spin.`;
-    else if (now + chip > state.chips) message = state.chips < BETS[0] ? 'Out of chips. More testnet chips tomorrow.' : 'Not enough chips for that.';
+    else if (now + chip > state.chips) message = state.chips < BETS[0] ? BROKE : 'Not enough chips for that.';
     else {
       bets.set(key, (bets.get(key) ?? 0) + chip);
       placed.push({ key, amount: chip });
@@ -1943,6 +1948,24 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
   });
   ui.querySelectorAll('.cz-go').forEach((b) => b.addEventListener('click', () => goPlay(b.dataset.game)));
   q$('.cz-signin')?.addEventListener('click', () => document.getElementById('btn-signin')?.click());
+  el.cash.addEventListener('click', () => cashIn());
+
+  // 10 testnet $CHOG in for 100 chips, at any point in the room or at a game.
+  function cashIn() {
+    const p = purse();
+    if (!who || !state || !p) return;
+    if (!p.spend(CASH.chog)) {
+      message = `${CASH.chog} testnet $CHOG buys ${CASH.chips} chips. You have ${fmt(p.balance)}: earn more round the islands.`;
+      return render();
+    }
+    state.chips += CASH.chips;
+    // (Bought, not won: this visit's card counts it in from the start.)
+    if (visit) visit.start += CASH.chips;
+    saveStore(all);
+    sfx('chips');
+    message = `${CASH.chog} testnet $CHOG cashed in. +${CASH.chips} chips.`;
+    render();
+  }
 
   function render() {
     if (!who) return;
@@ -1972,6 +1995,16 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     }
     el.bankLabel.textContent = mode === 'slots' ? `Bet ${bet} a spin` : 'Your chips';
     el.bankN.textContent = fmt(shownChips);
+    // Your testnet $CHOG, and the button to cash it in (it calls when you're out of chips and can).
+    const p = purse();
+    el.cash.hidden = !p;
+    if (p) {
+      const bal = p.balance;
+      el.cashN.textContent = fmt(bal);
+      el.cash.classList.toggle('poor', bal < CASH.chog);
+      el.cash.classList.toggle('call', bal >= CASH.chog && state.chips < BETS[0]);
+      el.cash.setAttribute('aria-label', `You have ${bal} testnet $CHOG. Cash in ${CASH.chog} for ${CASH.chips} chips`);
+    }
     el.leaveText.textContent = mode ? 'Step back' : 'Leave';
     el.leave.setAttribute('aria-label', mode ? 'Step back from the game' : 'Leave the casino');
     // Undo and Clear for the chips on the felt; Rebet puts the last spin's bets down again on a bare felt.
@@ -1987,7 +2020,7 @@ export function createCasino({ room: r, rig, camera, dom, session, entering = ()
     el.felt.hidden = !on;
     el.feltN.textContent = on >= TABLE_MAX ? `${fmt(on)} · table max` : fmt(on);
     // What just happened, or how to play.
-    const hint = !message ? (mode ? (hinted[mode] ? '' : HINT[mode]) : 'Testnet chips, topped up every day.') : '';
+    const hint = !message ? (mode ? (hinted[mode] ? '' : HINT[mode]) : `Testnet chips, topped up every day. Cash in ${CASH.chog} $CHOG for ${CASH.chips} more.`) : '';
     const text = message || hint;
     // The visit's card, back in the room after playing (it stands in for the room's hint).
     const sum = sumOpen && !mode ? sumHtml() : '';

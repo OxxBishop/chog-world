@@ -177,6 +177,7 @@ export function createGuide({ travel, session, purse, stars, quests }) {
       <ul>
         <li>A wish at the plaza's <b>fountain</b>: 5 $CHOG and a small surprise${p.perks?.wish ? ' (the first each day is free with your lucky charm)' : ''}.</li>
         <li>A <b>song request</b> for the singer: 10 $CHOG, her song from the top.</li>
+        <li>Chips at the <b>casino</b>: cash in 10 $CHOG for 100 testnet chips, by your chips at the tables.</li>
       </ul>
       <p class="pl-fine">Testnet $CHOG lives in the game only, kept on this device. It never touches a chain.</p>`;
   }

@@ -10,10 +10,10 @@ import { hudRow } from './hudrow.js';
  * Earn: each star found (and all twelve), beating Patrol (the first win of the day pays most), and a hello
  * from your Chog the first time you're out each day. Rarer Chogs earn a little more (1x to 1.5x by tier,
  * 2x for a 1:1), under a daily cap, so every holder gets plenty.
- * Spend: a wish at the plaza's fountain (a coin in the water and a small surprise), and a song request for
- * the singer (her song from the top).
+ * Spend: a wish at the plaza's fountain (a coin in the water and a small surprise), a song request for
+ * the singer (her song from the top), and the casino's testnet chips (src/casino.js cashes 10 in for 100).
  *
- * createPurse({ scene, camera, travel, session, audio }) -> { earn(kind, amount, why), update(dt), balance }
+ * createPurse({ scene, camera, travel, session, audio }) -> { earn(kind, amount, why), spend(amount), update(dt), balance }
  */
 
 const KEY = 'chogworld.purse.v1';
@@ -237,12 +237,14 @@ export function createPurse({ scene, camera, travel, session, audio }) {
   const tmp = new THREE.Vector3();
   return {
     earn,
+    // For the casino's cash in (src/casino.js): false if the balance is short.
+    spend,
     get balance() {
       return purse().bal;
     },
     // For the guide (src/guide.js): today's earnings against the cap, the Chog's rate, and the hello.
     get today() {
-      return { got: purse().got, cap: CAP, rate: rate(), hello: purse().hello === today(), perks: islandPerksFor(who().traits) };
+      return { got: purse().got, cap: CAP, rate: rate(), hello: purse().hello === today(), wins: purse().races, perks: islandPerksFor(who().traits) };
     },
     update(dt, { busy = false } = {}) {
       const out = travel.active && travel.chog;
