@@ -5,6 +5,7 @@
  * to the demo Chog with a random per-browser key and gets memories that expire after a day.
  */
 import { createPublicClient, http, verifyMessage, parseAbi, getAddress } from 'viem';
+import { parseSiweMessage } from 'viem/siwe';
 
 const MONAD_TESTNET = {
   id: 10143,
@@ -34,6 +35,16 @@ export async function ownerOf(id) {
   }
 }
 
+// The sites a sign-in may name: the live one, its Vercel previews, and a local dev server. SIGNIN_HOSTS (comma
+// separated) adds others, such as a domain of its own.
+const CHAIN_ID = 10143;
+const HOSTS = ['chog-world.vercel.app', ...String(process.env.SIGNIN_HOSTS ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)];
+function siteOk(domain) {
+  const host = String(domain ?? '').toLowerCase();
+  const name = host.replace(/:\d+$/, '');
+  return HOSTS.includes(host) || HOSTS.includes(name) || /^chog-world[a-z0-9-]*\.vercel\.app$/.test(name) || name === 'localhost' || name === '127.0.0.1';
+}
+
 /**
  * Resolves to { keeper, demo } where keeper is the lowercase wallet (or "demo:<key>").
  * Throws AuthError when the proof doesn't hold.
@@ -54,9 +65,20 @@ export async function whoIsTalking({ id, session }) {
   } catch {
     throw new AuthError('Bad wallet address.', 400);
   }
-  const named = /^Wallet: (0x[0-9a-fA-F]{40})$/m.exec(message)?.[1];
-  const issued = Date.parse(/^Issued: (.+)$/m.exec(message)?.[1] ?? '');
-  if (!message.startsWith('Sign in to Chog World') || !named || named.toLowerCase() !== wallet.toLowerCase()) throw new AuthError('That is not a Chog World sign-in.');
+  // The standard sign-in (src/chain.js signIn): this site, Monad testnet, our statement. (The old message
+  // of our own is still taken, for a sign-in from before the change.)
+  let named, issued;
+  if (/wants you to sign in with your Ethereum account/.test(message)) {
+    const m = parseSiweMessage(message);
+    if (m.chainId !== CHAIN_ID || !String(m.statement ?? '').startsWith('Sign in to Chog World') || !siteOk(m.domain)) throw new AuthError('That is not a Chog World sign-in.');
+    named = m.address;
+    issued = m.issuedAt instanceof Date ? m.issuedAt.getTime() : NaN;
+  } else {
+    if (!message.startsWith('Sign in to Chog World')) throw new AuthError('That is not a Chog World sign-in.');
+    named = /^Wallet: (0x[0-9a-fA-F]{40})$/m.exec(message)?.[1];
+    issued = Date.parse(/^Issued: (.+)$/m.exec(message)?.[1] ?? '');
+  }
+  if (!named || named.toLowerCase() !== wallet.toLowerCase()) throw new AuthError('That is not a Chog World sign-in.');
   if (!(issued > Date.now() - MAX_AGE_MS && issued < Date.now() + 5 * 60 * 1000)) throw new AuthError('Your sign-in has expired. Sign in again.');
   let ok = false;
   try {

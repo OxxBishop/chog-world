@@ -7,7 +7,7 @@ Claude Haiku 5.5.
 
 ### `POST /api/chat`: talk to your Chog
 ```json
-{ "id": 594, "session": { "address": "0x…", "message": "Sign in to Chog World…", "signature": "0x…" },
+{ "id": 594, "session": { "address": "0x…", "message": "chog-world.vercel.app wants you to sign in…", "signature": "0x…" },
   "text": "hi!", "place": "the plaza", "hour": 18.5 }
 ```
 - **Guests:** use `"session": { "demo": true, "demoKey": "<12+ chars>" }`. They can only talk to the demo Chog (#43), and their memories expire after a day.
@@ -30,7 +30,7 @@ From the app, use `src/brain.js`: `talk({ id, session, text, place })` and `chog
 
 ## Safety and cost
 
-- **Sign-in:** the app's sign-in signature is verified on every call. The message must be a recent "Sign in to Chog World" naming the signer, and the wallet must own the Chog on Monad testnet at that moment.
+- **Sign-in:** the app's sign-in signature is verified on every call. The message is a standard Sign-In with Ethereum (EIP-4361) message: it must be recent, name the signer, Monad testnet and this site (chog-world.vercel.app, its previews, or a host in `SIGNIN_HOSTS`), and the wallet must own the Chog on Monad testnet at that moment.
 - **Rate limits:**
   - 15 messages a minute per keeper
   - 400 a day per keeper (60 for guests)
