@@ -433,9 +433,40 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
     if (voice) speaking++;
   }
   const lineLen = (line, lo = 4.2, hi = 7.5) => THREE.MathUtils.clamp(2.2 + line.length * 0.075, lo, hi);
+  // What they say about your Chog's traits (the user's pick, 10-23: "the cast reacts to your traits"): a
+  // trait you share with them first, else something about your look. Most likely the first time each one
+  // meets you, now and then after.
+  function traitLine(n) {
+    const mine = lastMe?.userData.api?.traits;
+    if (!mine || Math.random() > (n.metYou ? 0.3 : 0.75)) return null;
+    n.metYou = true;
+    const theirs = n.c.traits ?? {};
+    for (const k of ['Head', 'Body', 'Eyes', 'Accessory']) {
+      const v = mine[k];
+      if (v && v !== 'Base' && v === theirs[k]) return pick1([`We match! Same ${v.toLowerCase()}.`, `Twins! I love the ${v.toLowerCase()}.`, `Same ${v.toLowerCase()} as me. Great taste.`]);
+    }
+    const has = (k, re) => re.test(String(mine[k] ?? ''));
+    const out = [];
+    if (mine.Base === '1:1') out.push('A one of one! There is nobody else like you.');
+    if (mine.Tier === 'Legendary') out.push('A Legendary, here? Everyone, look!');
+    else if (mine.Tier === 'Epic') out.push('Epic look. Truly.');
+    else if (mine.Tier === 'Rare') out.push('A rare one! Lucky me.');
+    if (has('Head', /crown/i)) out.push(who(n) === 'King Pom' ? 'A crown? There can only be one of us.' : 'Love the crown!');
+    else if (has('Head', /cap|hat|beanie/i)) out.push(`Nice ${String(mine.Head).toLowerCase()}.`);
+    if (has('Eyes', /glass|shade|visor|goggle/i)) out.push('Nice shades.');
+    if (has('Body', /hoodie/i)) out.push('That hoodie looks so cosy.');
+    else if (has('Body', /jacket|suit|coat/i)) out.push(`Sharp ${String(mine.Body).toLowerCase()}.`);
+    else if (has('Body', /jersey/i)) out.push('Love the jersey. Game day?');
+    if (mine.Aura) out.push(`Your ${String(mine.Aura).toLowerCase()} aura is glowing today.`);
+    if (mine.Form === 'Skull') out.push('Spooky. In a good way.');
+    if (mine.Accessory && mine.Accessory !== 'None') out.push(`That ${String(mine.Accessory).toLowerCase()} suits you.`);
+    return out.length ? pick1(out) : null;
+  }
+  const pick1 = (a) => a[Math.floor(Math.random() * a.length)];
+  const who = (n) => n.who.name;
   function react(n) {
     const { c, who } = n;
-    const line = pick(n, who.lines);
+    const line = traitLine(n) ?? pick(n, who.lines);
     const len = lineLen(line);
     // Your Chog answers once the line is done, and this one keeps facing you while it does.
     const api = lastMe?.userData.api;
@@ -450,7 +481,9 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
   function meN(api) {
     if (mine.c !== api) {
       mine.c = api;
-      mine.who.name = api.name ?? 'You';
+      // (Walking as one of the cast, its own name, not its token number.)
+      const id = Number(String(api.name ?? '').match(/^Chog #(\d+)$/)?.[1]);
+      mine.who.name = CAST[id]?.name ?? api.name ?? 'You';
       if (mine.bubble) mine.bubble.firstChild.textContent = mine.who.name;
     }
     return mine;
