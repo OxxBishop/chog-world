@@ -310,7 +310,7 @@ export function createStars({ scene, camera, travel, onFound = null, onAll = nul
         first = false;
         saved.told = true;
         write(saved);
-        setTimeout(() => found.size === 0 && note('Twelve <b>stars</b> are hidden round the islands. Find them all.', 5), 5000);
+        // (The guide tells of the hunt now: src/guide.js.)
       }
       // Star sense (an Eyes trait, src/islandperks.js): the stars near you on the map, twice a second.
       if ((senseT -= dt) <= 0) {

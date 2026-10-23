@@ -66,7 +66,7 @@ const TURN = 11;
 const RADIUS = 0.9;
 const STEP_UP = 1.25;
 // Steeper than this (rise over run) is a cliff: you walk along it, not up it. A bridge's stair is about 0.4.
-const MAX_SLOPE = 1.1;
+const MAX_SLOPE = 1.9;
 // A portal pad's top over the ground, and how far out from its middle its edge's step reaches.
 const PAD_TOP = 0.27 * SCALE;
 const PAD_OUT = 1.75 * SCALE + 0.35;
@@ -1885,17 +1885,32 @@ export function createTravel({ scene, camera, renderer, rig, island, world }) {
   async function beginOwn(s) {
     const home = homeDoor(s.room);
     if (!home) return;
-    // It walks out of its own door (the user, 10-23: the cut straight outside felt skipped), the camera
-    // behind it, and you have it from there.
-    await world.dip(() => {
-      takeChog(s.chog, true);
-      const at = home.domeDoor.clone().addScaledVector(home.out, -0.4);
-      place(at, Math.atan2(home.out.x, home.out.z));
-      state.lastDoor = null;
-      state.busy = 'arrive';
-      state.auto = home.out.clone();
-    });
-    await new Promise((r) => setTimeout(r, 2400));
+    // From where it stands after its hello it walks on to its dome's door and out, the view coming round
+    // behind it as it goes (the user, 10-23: a dip and a cut to the door read as a skip).
+    const at = s.chog.root.getWorldPosition(new THREE.Vector3());
+    const from = camera.position.clone();
+    const look = camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(10).add(camera.position);
+    takeChog(s.chog, true);
+    const g = groundAt(at.x, at.z, at.y + 1);
+    const way = home.domeDoor.clone().sub(at).setY(0);
+    const far = way.length();
+    way.normalize();
+    place(new THREE.Vector3(at.x, g ? g.y : at.y, at.z), Math.atan2(way.x, way.z));
+    state.lastDoor = null;
+    state.busy = 'arrive';
+    state.camYaw = Math.atan2(way.x, way.z) + Math.PI;
+    state.fly = { t: 0, dur: 1.8, from, look };
+    state.auto = way.clone();
+    // To the door (or as far as it gets in a few seconds), then a few steps on out.
+    const t0 = performance.now();
+    while (performance.now() - t0 < Math.min(7000, far * 600 + 1500)) {
+      await new Promise((r) => setTimeout(r, 100));
+      const d = home.domeDoor.clone().sub(state.pos).setY(0);
+      if (d.dot(home.out) < 0.3 || d.length() < 0.8) break;
+      state.auto = d.normalize();
+    }
+    state.auto = home.out.clone();
+    await new Promise((r) => setTimeout(r, 1500));
     state.auto = null;
     if (state.busy === 'arrive') state.busy = null;
     world.welcome?.({ own: true });

@@ -231,7 +231,11 @@ function floorUnder(group, p, skip) {
   const ray = new THREE.Raycaster(group.localToWorld(p.clone().setY(p.y + 4)), new THREE.Vector3(0, -1, 0), 0, 12);
   const meshes = [];
   group.traverseVisible((o) => o.isMesh && !o.isInstancedMesh && meshes.push(o));
+  // (Only solid things: a glow, the glass or a light's haze under the door left it standing on air. The
+  // user, 10-23.)
   const hits = ray.intersectObjects(meshes, false).filter((h) => {
+    const m = h.object.material;
+    if (!m || (Array.isArray(m) ? m.every((x) => x.transparent || x.opacity < 0.9) : m.transparent || m.opacity < 0.9 || m.depthWrite === false)) return false;
     for (let o = h.object; o; o = o.parent) if (o === skip) return false;
     return true;
   });

@@ -134,7 +134,7 @@ export function createPurse({ scene, camera, travel, session, audio }) {
     if (!all.told) {
       all.told = true;
       write(all);
-      setTimeout(() => note(`${why ? `${why} ` : ''}<b>Testnet $CHOG</b> is earned and spent round the islands, never on-chain.`, 5), 2600);
+      // (The guide says what testnet $CHOG is now: src/guide.js.)
     }
     return amount;
   }
