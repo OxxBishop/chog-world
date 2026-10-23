@@ -85,3 +85,14 @@ Show the user the spots first, then build them. Each Chog needs a home spot, a l
 - **The cast reacts to your traits:** "love the crown!"; Chogs who share a trait wave or group up at the bar.
 - **A Chogdex:** a collection book of traits you've met in the world, and a Hall of Chogs in the plaza for rare traits.
 - **Movement and personality from traits:** gait (src/gait.js), idles, and chat personality per trait.
+
+## 10. Give $CHOG a role in the world (testnet only, never mainnet; the user picks first)
+- **Earn:** the star hunt, the race, a daily hello from your Chog, quests from the cast.
+- **Spend on things you can see:**
+  - dome decor and garden plants;
+  - hoverboard skins;
+  - postcard frames and stamps;
+  - a drink for a Chog at the bar (it opens new chat);
+  - a tip for the singer (she plays a request);
+  - a wish at the fountain (a small surprise).
+- **Status:** your balance on your chip, and a top-Chogs board on the dome ticker.
