@@ -1189,7 +1189,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   // In zero g (B's src/cosmo.js): its feet aren't kept on any ground and it casts no shadow on it.
   let floating = false;
   // The mood badge pops up over the head when the Chog reacts to something said.
-  const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
+  // (Its depth too where it's solid, as the art badge's: the clouds and the domes' glass go by depth.)
+  const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: true, alphaTest: 0.5 }));
   badge.scale.setScalar(0.62);
   badge.position.y = CHOG_HEIGHT + 0.45;
   badge.renderOrder = 6;
@@ -1200,8 +1201,10 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   let art = null, artReady = false;
   if (nameplate && images.length) {
     // Drawn over everything, as a name tag is (the user, 10-23: cut through by leaves and the domes' glass
-    // it looked odd), and so faded out with distance (update).
-    art = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false, opacity: 0 }));
+    // it looked odd), and so faded out with distance (update). It still leaves its depth where it's solid
+    // (alpha test): the clouds and the domes' glass are drawn after the scene by depth, and without it they
+    // covered it as if it were the sky behind (the user, 10-23).
+    art = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: true, alphaTest: 0.001, opacity: 0 }));
     art.scale.setScalar(0.46);
     art.position.y = CHOG_HEIGHT + 0.3;
     art.renderOrder = 5;
@@ -1374,6 +1377,10 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         const far = camera ? THREE.MathUtils.smoothstep(_artAt.setFromMatrixPosition(art.matrixWorld).distanceTo(_artCam.setFromMatrixPosition(camera.matrixWorld)), 30, 50) : 0;
         const want = artReady && moodLeft <= 0 ? (1 - fx.uGrey.value) * (1 - far) : 0;
         art.material.opacity += (want - art.material.opacity) * Math.min(1, dt * 6);
+        // (Its solid part only, at any opacity: the halo and the rings are past half; and no depth once it's
+        // mostly faded, so a ghost of it never holds the clouds back.)
+        art.material.alphaTest = Math.max(0.001, 0.5 * art.material.opacity);
+        art.material.depthWrite = art.material.opacity > 0.3;
         art.position.y = CHOG_HEIGHT + 0.3 + Math.sin(t * 1.6) * 0.04;
       }
       if (moodLeft > 0) {
@@ -1384,6 +1391,7 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
         badge.scale.setScalar(0.62 * (pop + Math.sin(Math.min(1, moodT * 6) * Math.PI) * 0.15));
         badge.position.y = CHOG_HEIGHT + 0.45 + Math.sin(moodT * 3) * 0.05;
         badge.material.opacity = Math.min(1, moodLeft * 2);
+        badge.material.alphaTest = Math.max(0.001, 0.5 * badge.material.opacity);
         if (moodLeft <= 0) {
           badge.visible = false;
           chog.play(resumeAct);
