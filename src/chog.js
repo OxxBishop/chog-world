@@ -157,9 +157,11 @@ function chogShader(material, geometry, fx, face, faceOn) {
       );
     shader.fragmentShader =
       'uniform float uGrey;\nuniform float uFade;\nuniform vec2 uCut;\nuniform vec2 uYRange;\nuniform vec4 uHair;\nuniform vec4 uSkinT;\nvarying float vChogY;\nvarying float vBindY;\nvarying vec3 vChogP;\nuniform sampler2D uFace;\nuniform float uFaceOn;\nuniform float uEye;\nuniform float uMouth;\nvarying vec3 vFaceP;\nvarying float vFaceW;\n' +
-      // How much a colour of the face sheet is skin (its peach and its blush, red well over blue), not the
-      // eyes' whites (blue near red). The lashes and pupils count too, but they stay dark whatever the tone.
-      'float skinOf(vec3 c) { return 1.0 - smoothstep(0.62, 0.72, c.b / max(c.r, 1e-3)); }\n' +
+      // How much a colour is the face's peach, the part that takes a Skin's tone: green well up on red (the
+      // blush and nose are pink, green far under red: 0.2 to 0.3 of it, the peach 0.55 to 0.75) and blue
+      // not near red (the eyes' whites, from 0.8). Both cuts sit in the gaps the textures leave, so their
+      // speckle never lands half in, half out (the user, 10-23: the blush must stay pink on every Chog).
+      'float peachOf(vec3 c) { float r = max(c.r, 1e-3); return (1.0 - smoothstep(0.76, 0.86, c.b / r)) * smoothstep(0.34, 0.48, c.g / r); }\n' +
       shader.fragmentShader.replace(
         '#include <map_fragment>',
         `#include <map_fragment>
@@ -173,16 +175,21 @@ function chogShader(material, geometry, fx, face, faceOn) {
   if (uHair.w > 0.0 || uSkinT.w > 0.0) {
     vec3 c = diffuseColor.rgb;
     const vec3 PURPLE = vec3(0.15, 0.0, 0.34);
-    float a = clamp(min((0.52 - c.r) / 0.37, c.b / 0.28), 0.0, 1.0);
-    vec3 rest = max(c - a * PURPLE, 0.0);
+    // (Its speckle runs to a red of 0.22 and a blue down to 0.22: every bit of it counts as all purple, and
+    // what's left of a texel that's all purple is nothing, so none of the old purple shows through in
+    // blotches: the user, 10-23.)
+    float a = clamp(min((0.52 - c.r) / 0.3, c.b / 0.22), 0.0, 1.0);
+    vec3 rest = max(c - a * PURPLE, 0.0) * (1.0 - smoothstep(0.8, 1.0, a));
     // A rainbow, for Multi Colored: round the spikes and down the body, paler on the face.
     float hh = fract(vBindY * 0.9 + vChogP.x * 0.6 + vChogP.z * 0.4);
     vec3 rainbow = clamp(abs(mod(hh * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
     if (uSkinT.w > 0.0) skinRatio = (uSkinT.w > 1.5 ? rainbow * 0.45 + 0.5 : uSkinT.rgb) * (0.5 / 0.9) / vec3(0.5, 0.33, 0.25);
-    rest *= skinRatio;
+    // (Pink only well inside the face: where it meets the spikes, what's left can read as pink and drew
+    // a pink line round the face.)
+    rest *= mix(skinRatio, vec3(1.0), (1.0 - peachOf(rest)) * (1.0 - smoothstep(0.05, 0.25, a)));
     vec3 body = PURPLE;
-    // (The purple's light and shade as painted, damped: full, it showed the texture's speckle in the colour.)
-    float shade = mix(1.0, clamp(0.5 + 0.5 * c.b / 0.34, 0.8, 1.15), smoothstep(0.8, 1.0, a));
+    // (The purple's light and shade as painted, a little of it: more showed the texture's speckle as blotches.)
+    float shade = mix(1.0, clamp(0.75 + 0.25 * c.b / 0.34, 0.88, 1.08), smoothstep(0.8, 1.0, a));
     if (uHair.w > 0.5) body = (uHair.w > 1.5 ? rainbow * 0.75 + 0.1 : uHair.rgb) * 0.62;
     diffuseColor.rgb = rest + a * shade * body;
   }
@@ -203,10 +210,10 @@ function chogShader(material, geometry, fx, face, faceOn) {
     vec4 fm = texture2D(uFace, vec2((uMouth + clamp(fp.x, 0.0, 1.0)) / 6.0, clamp(fp.y, 0.0, 1.0) * 0.5));
     float inside = step(0.0, fp.x) * step(fp.x, 1.0) * step(0.0, fp.y) * step(fp.y, 1.0);
     float k = uFaceOn * inside * smoothstep(0.35, 0.6, vFaceW) * smoothstep(0.08, 0.3, vFaceP.z);
-    // The sheet's own skin round the eyes and mouth takes the skin tone as the face under it does (the user,
-    // 10-23: it showed as patches by the eyes); the eyes' whites stay white.
-    diffuseColor.rgb = mix(diffuseColor.rgb, fe.rgb * mix(vec3(1.0), skinRatio, skinOf(fe.rgb)) * diffuse, fe.a * k);
-    diffuseColor.rgb = mix(diffuseColor.rgb, fm.rgb * mix(vec3(1.0), skinRatio, skinOf(fm.rgb)) * diffuse, fm.a * k);
+    // The sheet's own peach round the eyes and mouth takes the skin tone as the face under it does (the user,
+    // 10-23: it showed as patches by the eyes); the eyes' whites and the pink stay as drawn.
+    diffuseColor.rgb = mix(diffuseColor.rgb, fe.rgb * mix(vec3(1.0), skinRatio, peachOf(fe.rgb)) * diffuse, fe.a * k);
+    diffuseColor.rgb = mix(diffuseColor.rgb, fm.rgb * mix(vec3(1.0), skinRatio, peachOf(fm.rgb)) * diffuse, fm.a * k);
   }
   {
     float h = (vChogY - uYRange.x) / max(uYRange.y - uYRange.x, 1e-4);
@@ -217,7 +224,7 @@ function chogShader(material, geometry, fx, face, faceOn) {
   }`,
       ).replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(0.55, 0.95, 1.0) * cutEdge * 3.0;');
   };
-  material.customProgramCacheKey = () => 'chog-model-8';
+  material.customProgramCacheKey = () => 'chog-model-11';
 }
 
 /*
