@@ -845,6 +845,22 @@ body.in-casino .places-toggle, body.in-casino #places, body.in-casino .nav-hint 
   background: linear-gradient(180deg, #fff6d4 0%, #ffd36b 48%, #e6a93a 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 2px 0 rgba(92, 52, 8, 0.75)) drop-shadow(0 3px 8px rgba(0, 0, 0, 0.45));
 }
+/* Testnet $CHOG under your chips, and Cash in (10 for 100 chips). */
+.cz-ui .cz-cash {
+  display: inline-flex; align-items: center; height: 30px; margin-top: 9px; padding: 0 3px 0 8px; border-radius: 999px;
+  background: rgba(20, 13, 38, 0.86); box-shadow: 0 0 0 1.5px rgba(255, 211, 107, 0.7), 0 4px 10px rgba(0, 0, 0, 0.35);
+  font: 700 12.5px var(--body); white-space: nowrap; transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+.cz-ui .cz-cash[hidden] { display: none; }
+.cz-cash svg { width: 15px; height: 15px; margin-right: 5px; color: var(--cz-gold); }
+.cz-cash em { font-style: normal; color: var(--cz-gold); font-variant-numeric: tabular-nums; }
+.cz-cash span { margin-left: 8px; padding: 5px 10px; border-radius: 999px; background: var(--cz-gold); color: var(--cz-ink); font-size: 12px; letter-spacing: 0.02em; }
+.cz-ui .cz-cash:hover { transform: translateY(-1px); box-shadow: 0 0 0 1.5px #ffe7a8, 0 0 14px rgba(255, 211, 107, 0.35), 0 4px 10px rgba(0, 0, 0, 0.35); }
+.cz-ui .cz-cash:active { transform: translateY(1px) scale(0.97); }
+.cz-ui .cz-cash:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.cz-ui .cz-cash.poor span { background: rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.75); }
+.cz-ui .cz-cash.call { animation: cz-cash-call 1.3s ease-in-out infinite; }
+@keyframes cz-cash-call { 50% { box-shadow: 0 0 0 2px #fff3c4, 0 0 18px 3px rgba(255, 211, 107, 0.55), 0 4px 10px rgba(0, 0, 0, 0.35); } }
 .cz-rack {
   display: flex; align-items: flex-end; gap: 12px; padding: 14px 18px 12px; border-radius: 26px;
   background: linear-gradient(#2a1e3f, #170f28);
@@ -948,6 +964,7 @@ body.in-casino .places-toggle, body.in-casino #places, body.in-casino .nav-hint 
   .cz-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "bank act" "rack rack"; gap: 12px 10px; align-items: end; }
   .cz-bank { grid-area: bank; justify-items: start; min-width: 0; padding: 0 0 6px 4px; }
   .cz-bank b { font-size: 32px; }
+  .cz-ui .cz-cash { margin-top: 7px; }
   .cz-act { grid-area: act; gap: 8px; }
   .cz-ui .cz-spin { width: 82px; height: 82px; margin: 0 6px 6px 4px; font-size: 19px; }
   .cz-ui .cz-key { width: 42px; height: 42px; margin-bottom: 2px; }
@@ -986,7 +1003,7 @@ body.in-casino .places-toggle, body.in-casino #places, body.in-casino .nav-hint 
   .cz-ui .cz-key { width: 40px; height: 40px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cz-badge.fire i, .cz-say.pop, .cz-ui .cz-token, .cz-tip { animation: none; }
+  .cz-badge.fire i, .cz-say.pop, .cz-ui .cz-token, .cz-tip, .cz-ui .cz-cash.call { animation: none; }
   .cz-badge.fire i::after { animation: none; opacity: 1; }
   .cz-spin.busy::after { animation: none; }
 }

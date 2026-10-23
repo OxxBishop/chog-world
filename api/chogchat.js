@@ -47,8 +47,8 @@ export default async function handler(req, res) {
     const when = timeOfDay(Number(body.hour));
     const prompt = [
       `Write a short scene: two Chogs bump into each other at ${place}${when ? ` (${when})` : ''}. They chat like old friends or new acquaintances, depending on their memories. They love gossiping about their keepers (affectionately) and about life in Chog World.`,
-      `CHOG A\n${personaOf(a)}\nWhat A knows about its keeper: ${known(ka)}\nA's recent life: ${wa.slice(-6).map((n) => n.note).join('; ') || 'nothing notable'}`,
-      `CHOG B\n${personaOf(b)}\nWhat B knows about its keeper: ${known(kb)}\nB's recent life: ${wb.slice(-6).map((n) => n.note).join('; ') || 'nothing notable'}`,
+      `CHOG A\n${personaOf(a, { perks: false })}\nWhat A knows about its keeper: ${known(ka)}\nA's recent life: ${wa.slice(-6).map((n) => n.note).join('; ') || 'nothing notable'}`,
+      `CHOG B\n${personaOf(b, { perks: false })}\nWhat B knows about its keeper: ${known(kb)}\nB's recent life: ${wb.slice(-6).map((n) => n.note).join('; ') || 'nothing notable'}`,
       'Rules: 4 to 6 lines, alternating, starting with A. Each line at most 20 words, in that Chog\'s own voice and quirks. Funny, warm, specific. Never mention being an AI. No financial advice. Never reveal anything private (wallets, keys); keeper gossip stays playful and vague (likes, habits, catchphrases).',
     ].join('\n\n');
 

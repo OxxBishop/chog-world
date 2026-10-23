@@ -33,6 +33,8 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const short = (a) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 const chain = () => import('./chain.js');
+// The nearest portal's place (src/travel.js placeName), in the words the brain's world uses (api/_lib/persona.js).
+const AREA = { 'Chog Hub': 'on the Chog Hub plaza', 'Neighbourhood 1': 'on the tree island (Neighbourhood 1)', 'Neighbourhood 2': 'on the middle island (Neighbourhood 2)', 'Neighbourhood 3': 'on the beacon island (Neighbourhood 3)' };
 
 export function initSession(world) {
   const panel = $('signin');
@@ -44,9 +46,10 @@ export function initSession(world) {
     const here = world.currentRoom();
     if (here && here === session?.room) return 'at home in its dome';
     if (here) return `in the ${here.name}`;
-    return 'out on the islands of Chog World';
+    const near = world.travel?.active ? AREA[world.travel.placeName()] : null;
+    return near ? `out walking with your keeper ${near}` : 'out on the islands of Chog World';
   };
-  const chat = createChat({ camera: world.camera, getSession: () => session, placeName });
+  const chat = createChat({ camera: world.camera, getSession: () => session, placeName, progress: () => world.progress?.() });
   // Your Chog comes along to the bar and chats with the regulars there.
   const bar = createBarChat({ world, getMine: () => (session?.chog ? session : null), sendHome: (s) => sendHome(s) });
   const ray = new THREE.Raycaster();

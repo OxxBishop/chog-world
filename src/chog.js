@@ -157,35 +157,34 @@ function chogShader(material, geometry, fx, face, faceOn) {
       );
     shader.fragmentShader =
       'uniform float uGrey;\nuniform float uFade;\nuniform vec2 uCut;\nuniform vec2 uYRange;\nuniform vec4 uHair;\nuniform vec4 uSkinT;\nvarying float vChogY;\nvarying float vBindY;\nvarying vec3 vChogP;\nuniform sampler2D uFace;\nuniform float uFaceOn;\nuniform float uEye;\nuniform float uMouth;\nvarying vec3 vFaceP;\nvarying float vFaceW;\n' +
+      // How much a colour of the face sheet is skin (its peach and its blush, red well over blue), not the
+      // eyes' whites (blue near red). The lashes and pupils count too, but they stay dark whatever the tone.
+      'float skinOf(vec3 c) { return 1.0 - smoothstep(0.62, 0.72, c.b / max(c.r, 1e-3)); }\n' +
       shader.fragmentShader.replace(
         '#include <map_fragment>',
         `#include <map_fragment>
-  // The plain body in its Skin trait's colours, as its art has them: the purple spikes above the neck
-  // (the purple suit below keeps its colour), and the peach and pink of the face and hands. Shading kept.
+  // The plain body in its Skin trait's colours, as its art has them (the user, 10-23: "it's gotta match the
+  // art"): all its purple, spikes and body, in the Skin's colour, and the peach and pink of the face and hands
+  // in its skin tone. Each texel is taken apart rather than cut by hue: a = how much of it is the texture's
+  // purple (its red low, its blue high; the peach, the pink and the dark eyes each miss one), the rest is
+  // what's left. So the texels where the purple meets the face blend the new colour in as the purple did,
+  // with no specks of it on the face. Shading kept; the art's purple is about 1.6 times the texture's.
+  vec3 skinRatio = vec3(1.0);
   if (uHair.w > 0.0 || uSkinT.w > 0.0) {
     vec3 c = diffuseColor.rgb;
-    float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b)), dl = mx - mn;
-    float sat = mx > 1e-4 ? dl / mx : 0.0;
-    float hue = 0.0;
-    if (dl > 1e-4) {
-      if (mx == c.r) hue = mod((c.g - c.b) / dl, 6.0);
-      else if (mx == c.g) hue = (c.b - c.r) / dl + 2.0;
-      else hue = (c.r - c.g) / dl + 4.0;
-      hue /= 6.0;
-    }
-    float head = smoothstep(0.93, 1.0, vBindY);
-    float purple = smoothstep(0.6, 0.65, hue) * (1.0 - smoothstep(0.88, 0.92, hue)) * smoothstep(0.18, 0.32, sat);
-    float hairK = step(0.5, uHair.w) * head * purple;
-    vec3 hairC = uHair.rgb;
-    if (uHair.w > 1.5) {
-      float hh = fract(vBindY * 0.9 + vChogP.x * 0.6 + vChogP.z * 0.4);
-      hairC = clamp(abs(mod(hh * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0) * 0.75 + 0.1;
-    }
-    float skinHue = max(1.0 - smoothstep(0.09, 0.15, hue), smoothstep(0.88, 0.93, hue));
-    float skinK = uSkinT.w * skinHue * smoothstep(0.05, 0.12, sat) * (1.0 - smoothstep(0.62, 0.75, sat)) * smoothstep(0.3, 0.45, mx);
-    c = mix(c, hairC * clamp(mx / 0.79, 0.0, 1.3), hairK);
-    c = mix(c, uSkinT.rgb * clamp(mx / 0.9, 0.0, 1.15), skinK);
-    diffuseColor.rgb = c;
+    const vec3 PURPLE = vec3(0.15, 0.0, 0.34);
+    float a = clamp(min((0.52 - c.r) / 0.37, c.b / 0.28), 0.0, 1.0);
+    vec3 rest = max(c - a * PURPLE, 0.0);
+    // A rainbow, for Multi Colored: round the spikes and down the body, paler on the face.
+    float hh = fract(vBindY * 0.9 + vChogP.x * 0.6 + vChogP.z * 0.4);
+    vec3 rainbow = clamp(abs(mod(hh * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    if (uSkinT.w > 0.0) skinRatio = (uSkinT.w > 1.5 ? rainbow * 0.45 + 0.5 : uSkinT.rgb) * (0.5 / 0.9) / vec3(0.5, 0.33, 0.25);
+    rest *= skinRatio;
+    vec3 body = PURPLE;
+    // (The purple's light and shade as painted, damped: full, it showed the texture's speckle in the colour.)
+    float shade = mix(1.0, clamp(0.5 + 0.5 * c.b / 0.34, 0.8, 1.15), smoothstep(0.8, 1.0, a));
+    if (uHair.w > 0.5) body = (uHair.w > 1.5 ? rainbow * 0.75 + 0.1 : uHair.rgb) * 0.62;
+    diffuseColor.rgb = rest + a * shade * body;
   }
   // Beaming (a portal): a cut that rises from the feet (uCut.y 1) or falls from the head (-1), with a
   // glowing edge (added as light below).
@@ -204,8 +203,10 @@ function chogShader(material, geometry, fx, face, faceOn) {
     vec4 fm = texture2D(uFace, vec2((uMouth + clamp(fp.x, 0.0, 1.0)) / 6.0, clamp(fp.y, 0.0, 1.0) * 0.5));
     float inside = step(0.0, fp.x) * step(fp.x, 1.0) * step(0.0, fp.y) * step(fp.y, 1.0);
     float k = uFaceOn * inside * smoothstep(0.35, 0.6, vFaceW) * smoothstep(0.08, 0.3, vFaceP.z);
-    diffuseColor.rgb = mix(diffuseColor.rgb, fe.rgb * diffuse, fe.a * k);
-    diffuseColor.rgb = mix(diffuseColor.rgb, fm.rgb * diffuse, fm.a * k);
+    // The sheet's own skin round the eyes and mouth takes the skin tone as the face under it does (the user,
+    // 10-23: it showed as patches by the eyes); the eyes' whites stay white.
+    diffuseColor.rgb = mix(diffuseColor.rgb, fe.rgb * mix(vec3(1.0), skinRatio, skinOf(fe.rgb)) * diffuse, fe.a * k);
+    diffuseColor.rgb = mix(diffuseColor.rgb, fm.rgb * mix(vec3(1.0), skinRatio, skinOf(fm.rgb)) * diffuse, fm.a * k);
   }
   {
     float h = (vChogY - uYRange.x) / max(uYRange.y - uYRange.x, 1e-4);
@@ -216,7 +217,7 @@ function chogShader(material, geometry, fx, face, faceOn) {
   }`,
       ).replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(0.55, 0.95, 1.0) * cutEdge * 3.0;');
   };
-  material.customProgramCacheKey = () => 'chog-model-4';
+  material.customProgramCacheKey = () => 'chog-model-8';
 }
 
 /*
@@ -826,6 +827,7 @@ function standee(images, name) {
 
 // Its own art as a round badge in a gold ring (the first of its copies that loads), once per Chog.
 const artBadges = new Map();
+const _artAt = new THREE.Vector3(), _artCam = new THREE.Vector3();
 function artBadgeTexture(images) {
   const key = images[0];
   if (!key) return Promise.resolve(null);
@@ -1018,7 +1020,8 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
     const c = new THREE.Color(skinLook.hair);
     fx.uHair.value.set(c.r, c.g, c.b, 1);
   }
-  if (skinLook?.skin) {
+  if (skinLook?.skin === 'rainbow') fx.uSkinT.value.set(1, 1, 1, 2);
+  else if (skinLook?.skin) {
     const c = new THREE.Color(skinLook.skin);
     fx.uSkinT.value.set(c.r, c.g, c.b, 1);
   }
@@ -1189,7 +1192,9 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
   // this says which Chog it is). Out of the way while a mood badge shows; it fades as the Chog greys.
   let art = null, artReady = false;
   if (nameplate && images.length) {
-    art = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, opacity: 0 }));
+    // Drawn over everything, as a name tag is (the user, 10-23: cut through by leaves and the domes' glass
+    // it looked odd), and so faded out with distance (update).
+    art = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false, opacity: 0 }));
     art.scale.setScalar(0.46);
     art.position.y = CHOG_HEIGHT + 0.3;
     art.renderOrder = 5;
@@ -1358,7 +1363,9 @@ export async function makeChog({ traits = {}, image = null, images = image ? [im
       stateT += dt;
       if (aura) aura.material.uniforms.uTime.value = t;
       if (art) {
-        const want = artReady && moodLeft <= 0 ? 1 - fx.uGrey.value : 0;
+        // Close by it shows; from across an island it's gone, so it never floats over the world far off.
+        const far = camera ? THREE.MathUtils.smoothstep(_artAt.setFromMatrixPosition(art.matrixWorld).distanceTo(_artCam.setFromMatrixPosition(camera.matrixWorld)), 30, 50) : 0;
+        const want = artReady && moodLeft <= 0 ? (1 - fx.uGrey.value) * (1 - far) : 0;
         art.material.opacity += (want - art.material.opacity) * Math.min(1, dt * 6);
         art.position.y = CHOG_HEIGHT + 0.3 + Math.sin(t * 1.6) * 0.04;
       }

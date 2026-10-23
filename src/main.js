@@ -568,6 +568,12 @@ async function init() {
     entering: () => !!entry?.active,
     enterRoom: (r) => enterRoom(r),
     currentRoom: () => (entry?.active ? entry.room : island.rooms.find((r) => r.pod === rig.room) ?? null),
+    // For the Chog brain (api/chat): what you've done today, so your Chog knows (the user, 10-23).
+    progress: () => {
+      const t = purse?.today, q = quests?.status?.() ?? [];
+      const on = q.find((x) => x.state === 'active');
+      return { stars: stars?.found, chog: purse?.balance, got: t?.got, quest: on ? { title: on.title, got: on.got, need: on.need } : null, done: q.filter((x) => x.state === 'done').map((x) => x.title), raced: (t?.wins ?? 0) > 0 };
+    },
     leaveToOverview: () =>
       fadeThrough(() => {
         leaveRoomUI();
@@ -717,7 +723,7 @@ async function init() {
     back?.();
     shooting = false;
   });
-  casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active, sky });
+  casino = createCasino({ room: island.rooms.find((r) => r.id === 'casino'), rig, camera, dom: renderer.domElement, session: () => session, entering: () => !!entry?.active, sky, purse: () => purse });
   // The session warms its Chogs' shaders as it starts: the loader waits for those too.
   await Promise.race([Promise.all([session.warmed, space.ready, ...warming]), new Promise((r) => setTimeout(r, 15000))]);
   load.finish({ keep: withIntro });
