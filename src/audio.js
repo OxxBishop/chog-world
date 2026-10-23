@@ -21,7 +21,11 @@ import * as THREE from 'three';
  */
 const BASE = import.meta.env?.BASE_URL ?? '/';
 const XFADE = 6; // seconds of overlap at each loop
-const LEVEL = { theme: 0.32, singer: 0.9 };
+const LEVEL = { theme: 0.32, singer: 0.9, lounge: 0.38, loading: 0.34 };
+// Music for places, when its file is in public/audio (ElevenLabs takes; known at build time, so nothing is
+// asked for that isn't there): casino.mp3 in the Starlite Lounge, loading.mp3 under the loading and connect
+// screens (from your first tap or key: no browser plays sound before one).
+const HAS = new Set(Object.keys(import.meta.glob('../public/audio/{casino,loading}.mp3')).map((f) => f.split('/').pop().replace('.mp3', '')));
 
 const read = (k) => {
   try {
@@ -328,6 +332,14 @@ export function createAudio({ button = null } = {}) {
     sg.gain.value = LEVEL.singer;
     sg.connect(panner);
     singer = loopTrack(ctx, `${BASE}audio/singer.mp3`, sg);
+    for (const name of ['casino', 'loading']) {
+      if (!HAS.has(name)) continue;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      g.connect(master);
+      places[name] = { g, track: loopTrack(ctx, `${BASE}audio/${name}.mp3`, g), k: 0 };
+      places[name].track.prime();
+    }
     for (const t of [day, night, singer]) t.prime();
     // Effects: straight to the master (heard indoors or out, never muffled).
     sfxBus = ctx.createGain();
@@ -342,6 +354,7 @@ export function createAudio({ button = null } = {}) {
         .catch(() => {});
     }
   };
+  const places = {};
   let sfxBus = null;
   const takes = {};
   const sfx = (name) => {
@@ -380,7 +393,7 @@ export function createAudio({ button = null } = {}) {
       return muted;
     },
     get state() {
-      return { ctx: ctx?.state ?? 'locked', nightK, day: day?.state, night: night?.state, singer: singer?.state };
+      return { ctx: ctx?.state ?? 'locked', nightK, day: day?.state, night: night?.state, singer: singer?.state, places: Object.fromEntries(Object.entries(places).map(([n, p]) => [n, [p.track.state, +p.k.toFixed(2)]])) };
     },
     // An effect by name (see SFX); the same as dispatching a 'chog-sfx' event.
     sfx,
@@ -392,7 +405,7 @@ export function createAudio({ button = null } = {}) {
     duck(k) {
       ducked = k;
     },
-    update(dt, { camera, night: n = 0, indoors = false, stage = null, quiet = false }) {
+    update(dt, { camera, night: n = 0, indoors = false, stage = null, quiet = false, casino = false, loading = false }) {
       if (!ctx || ctx.state !== 'running') return;
       const now = ctx.currentTime;
       // Day into night over the dusk, not at a switch.
@@ -436,7 +449,18 @@ export function createAudio({ button = null } = {}) {
         } else panner.setPosition(stage.x, stage.y + 1.5, stage.z);
         near = 1 - THREE.MathUtils.smoothstep(d, 10, 45);
       } else singer.on = false;
-      music.gain.setTargetAtTime(LEVEL.theme * (1 - near * 0.75) * ducked * heard, now, 0.3);
+      // A place's own music (the lounge's, the loading screen's) takes over from the theme.
+      let over = 0;
+      for (const [name, pl] of Object.entries(places)) {
+        const want = name === 'casino' ? casino && !quiet : loading;
+        pl.k += ((want ? 1 : 0) - pl.k) * Math.min(1, dt * 1.2);
+        pl.track.on = pl.k > 0.01;
+        pl.track.gain.gain.value = 1;
+        pl.g.gain.setTargetAtTime(LEVEL[name === 'casino' ? 'lounge' : 'loading'] * pl.k * ducked, now, 0.2);
+        pl.track.tick();
+        if (name === 'casino') over = pl.k;
+      }
+      music.gain.setTargetAtTime(LEVEL.theme * (1 - near * 0.75) * ducked * heard * (1 - over), now, 0.3);
       // Indoors, the outside is muffled and quieter.
       inK += ((indoors ? 1 : 0) - inK) * Math.min(1, dt * 3);
       muffle.frequency.setTargetAtTime(20000 * Math.pow(900 / 20000, inK), now, 0.1);
