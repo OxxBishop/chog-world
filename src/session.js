@@ -71,11 +71,21 @@ export function initSession(world) {
   };
   const step = (text, sub = '') => view(`<div class="signin-step"><span class="spinner" aria-hidden="true"></span><p>${esc(text)}</p>${sub ? `<p class="muted">${esc(sub)}</p>` : ''}</div>`);
   const problem = (err) => {
-    const msg = err?.shortMessage ?? err?.message ?? String(err);
+    // The wallet library wraps a wallet's own error as "An unknown RPC error occurred.": the reason is in
+    // its details (the user, 10-23: that was all the screen said). The whole error goes to the console.
+    console.error('Chog World sign-in:', err);
+    const top = err?.shortMessage ?? err?.message ?? String(err);
+    const inner = [err?.details, err?.cause?.message, err?.cause?.details].find((s) => typeof s === 'string' && s && !top.includes(s)) ?? '';
+    const msg = `${top} ${inner}`;
+    if (/connection request reset|request expired|proposal expired/i.test(msg)) return 'The WalletConnect window closed before a wallet connected. Try again, and scan the code with your wallet app.';
+    if (/allowlist|origin not allowed|not allowed origin/i.test(msg)) return 'WalletConnect turned this site away (its domain is not on the project\'s list). Use a browser wallet or the demo for now.';
+    if (/project ?id|invalid key|unauthori[sz]ed|\b3000\b/i.test(msg)) return 'WalletConnect refused the site\'s project id. Use a browser wallet or the demo for now.';
+    if (/walletconnect could not start|relay/i.test(msg)) return 'WalletConnect could not reach its servers. Check your connection and try again.';
+    if (/install @reown\/appkit|walletconnectmodal/i.test(msg)) return 'The WalletConnect window could not open. Try again, or use a browser wallet.';
     if (/reject|denied|cancel/i.test(msg)) return 'You cancelled in your wallet.';
     if (/insufficient|funds|gas/i.test(msg)) return 'Not enough testnet MON for gas. Get some from the faucet, then try again.';
     if (/ClaimLimit/i.test(msg)) return 'This wallet has claimed its three Chogs already.';
-    return msg.split('\n')[0].slice(0, 160);
+    return (inner && /unknown rpc error|internal error/i.test(top) ? inner : top).split('\n')[0].slice(0, 160);
   };
 
   // ---------- the first screen ----------

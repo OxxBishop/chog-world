@@ -59,7 +59,8 @@ export function findWallets(waitMs = 350) {
 // ---------- WalletConnect ----------
 // The project id from dashboard.reown.com, set in Vercel as VITE_WALLETCONNECT_PROJECT_ID (it is public:
 // it names the app to the relay, it unlocks nothing). Without it there's no WalletConnect option.
-const WC_PROJECT = import.meta.env?.VITE_WALLETCONNECT_PROJECT_ID ?? '';
+// (Trimmed of spaces and quotes, in case they came along when it was pasted in.)
+const WC_PROJECT = String(import.meta.env?.VITE_WALLETCONNECT_PROJECT_ID ?? '').trim().replace(/^['"]+|['"]+$/g, '');
 const PHONE = typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
 const PHONE_ICON = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#c9b6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="10" height="19" rx="2.5"/><path d="M9 18.5h2"/><path d="M18 8.5a5 5 0 0 1 0 7M20.5 6a8.5 8.5 0 0 1 0 12"/></svg>')}`;
 let wcProvider = null;
@@ -72,17 +73,23 @@ function walletConnect() {
   if (wcProvider) return wcProvider;
   let real = null;
   const waiting = [];
+  // Started once; if it fails it starts afresh on the next try (it kept the failure until a reload), and
+  // if it hasn't reached WalletConnect's servers in 30 s it says so rather than wait for ever.
   const load = () =>
     (real ??= import('@walletconnect/ethereum-provider').then(async ({ EthereumProvider }) => {
-      const p = await EthereumProvider.init({
+      const init = EthereumProvider.init({
         projectId: WC_PROJECT,
         optionalChains: [MONAD_TESTNET.id],
         rpcMap: { [MONAD_TESTNET.id]: MONAD_TESTNET.rpcUrls.default.http[0] },
         showQrModal: true,
         metadata: { name: 'Chog World', description: 'Your Chog comes alive on Monad testnet.', url: location.origin, icons: [`${location.origin}/art/43.webp`] },
       });
+      const p = await Promise.race([init, new Promise((_, no) => setTimeout(() => no(new Error('WalletConnect could not start: no answer from its relay in 30 s')), 30000))]);
       for (const [ev, fn] of waiting.splice(0)) p.on(ev, fn);
       return p;
+    }).catch((err) => {
+      real = null;
+      throw err;
     }));
   wcProvider = {
     async request(args) {
