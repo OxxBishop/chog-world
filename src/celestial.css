@@ -120,7 +120,7 @@ body .tv-pick-grid img { border-radius: 50%; box-shadow: 0 0 0 2px var(--cel-gol
 
 /* Speech over heads (your Chog, the bar, the cast): dark glass, a gold hairline, the name in Cinzel. */
 body .chog-bubble { background: var(--cel-panel); color: #fff; border: 0; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--cel-line); font: 500 14.5px/1.4 var(--cel-label); letter-spacing: 0.01em; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-body .chog-bubble::after { background: var(--cel-panel); border: 0; box-shadow: inset -1px -1px 0 var(--cel-line); }
+body .chog-bubble::after { width: 12px; height: 12px; margin-left: -6px; bottom: -5px; background: var(--cel-panel); border: 0; box-shadow: inset -1px -1px 0 var(--cel-line); transform: rotate(45deg); clip-path: polygon(100% 0, 100% 100%, 0 100%); }
 body .bar-bubble .who { font: 600 12px/1.2 var(--cel-display); letter-spacing: 0.05em; color: var(--cel-gold); text-transform: none; }
 
 /* Captions (waking, the goodbye): Cinzel, gold rules either side. */
