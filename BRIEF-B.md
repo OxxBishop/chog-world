@@ -96,3 +96,4 @@ Show the user the spots first, then build them. Each Chog needs a home spot, a l
   - a tip for the singer (she plays a request);
   - a wish at the fountain (a small surprise).
 - **Status:** your balance on your chip, and a top-Chogs board on the dome ticker.
+- **Rarity:** rarer traits earn more, but gently: a multiplier of 1x to 1.5x by trait rarity (or 2x for 1/1s), with a daily cap, so common holders still get plenty. Rarity's bigger payoff is status: a gold name, a glow, a spot in the Hall of Chogs.
