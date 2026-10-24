@@ -296,6 +296,8 @@ export function domeTicker(pod, space) {
   top.position.y = BAND / 2;
   bottom.position.y = -BAND / 2;
   const group = new THREE.Group();
+  // (Found by name for the trailer's shots, src/shots.js.)
+  group.name = 'dome-ticker';
   group.position.set(cx, (y0 + y1) / 2, cz);
   group.add(band, top, bottom);
   group.traverse((o) => o.isMesh && (o.userData.keep = true));

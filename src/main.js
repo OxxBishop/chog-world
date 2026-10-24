@@ -798,6 +798,8 @@ function shotWorld() {
     get stars() {
       return stars;
     },
+    // The sky (the night shots aim its shooting stars and frame its moon, 10-24).
+    sky,
     enterRoom: (id) => enterRoom(room(id)),
     inRoom: (id) => rig.room === room(id)?.pod,
     // Models still loading or shaders still warming, which a shot waits for before it starts.

@@ -52,6 +52,8 @@ uniform sampler2D uNoise;
 uniform vec3 uCloudLit;
 uniform vec3 uCloudShade;
 uniform float uCloudH;
+uniform float uMeteors;
+uniform vec4 uMeteorArea;
 varying vec3 vDir;
 
 float tn(vec2 p) { return texture2D(uNoise, p).r; }
@@ -132,6 +134,39 @@ void main() {
       float tw = 0.65 + 0.35 * sin(uTime * (1.4 + big * 2.0) + s * 50.0);
       vec3 tint = mix(vec3(0.82, 0.86, 1.0), vec3(1.0, 0.9, 0.82), fract(s * 377.3));
       col += tint * (core + glow) * (0.7 + big * 0.8) * smoothstep(0.02, 0.25, h) * tw * uNight;
+    }
+  }
+
+  // Shooting stars (the user, 10-24: "the stars falling"): now and then one streaks down the night sky,
+  // a bright head and a fading tail, gone in under a second. Two lanes, each with a uMeteors chance every
+  // 3.5 s; uMeteorArea is where they may start (azimuth centre and spread, lowest and highest elevation).
+  if (h > 0.03 && uNight > 0.3 && uMeteors > 0.0) {
+    for (int i = 0; i < 2; i++) {
+      float fi = float(i);
+      float slotT = uTime / 3.5 + fi * 0.5;
+      float slot = floor(slotT);
+      if (hash3(vec3(slot, fi, 1.3)) > uMeteors) continue;
+      float dur = 0.55 + hash3(vec3(slot, fi, 2.9)) * 0.6;
+      float k = fract(slotT) * 3.5 / dur;
+      if (k > 1.0) continue;
+      float az = uMeteorArea.x + (hash3(vec3(slot, fi, 4.1)) - 0.5) * uMeteorArea.y;
+      float el = mix(uMeteorArea.z, uMeteorArea.w, hash3(vec3(slot, fi, 5.7)));
+      vec3 s0 = vec3(cos(az) * cos(el), sin(el), sin(az) * cos(el));
+      float c0 = dot(d, s0);
+      if (c0 < 0.9) continue;
+      // Falling, mostly down the sky and a little to one side, in the sky's plane where it starts.
+      vec3 east = normalize(vec3(-sin(az), 0.0, cos(az)));
+      vec3 dir = normalize(cross(s0, east) + east * (hash3(vec3(slot, fi, 7.3)) * 1.8 - 0.9));
+      vec3 p = d / c0 - s0;
+      float u = dot(p, dir), v = dot(p, cross(s0, dir));
+      float head = 0.24 * k;
+      float tail = 0.1 * sin(3.1416 * min(1.0, k * 1.5)) + 0.004;
+      float along = (u - head + tail) / tail;
+      float fade = sin(3.1416 * k) * uNight * smoothstep(0.03, 0.2, h);
+      float mw = 0.0016 * (0.5 + 0.5 * clamp(along, 0.0, 1.0));
+      if (along > 0.0 && along < 1.0) col += mix(vec3(0.7, 0.78, 1.0), vec3(1.0, 0.96, 0.88), along) * smoothstep(mw, 0.0, abs(v)) * along * along * fade * 2.4;
+      float hd2 = (u - head) * (u - head) + v * v;
+      col += vec3(1.0, 0.97, 0.92) * exp(-hd2 / (mw * mw * 5.0)) * fade * 1.6;
     }
   }
 
@@ -296,6 +331,10 @@ export class Sky {
       uCloudLit: { value: new THREE.Color() },
       uCloudShade: { value: new THREE.Color() },
       uCloudH: { value: 900 },
+      // Shooting stars at night: the chance of one in each lane every 3.5 s, and where in the sky they may
+      // start (azimuth centre, spread, lowest and highest elevation; a demo shot can aim them).
+      uMeteors: { value: 0.3 },
+      uMeteorArea: { value: new THREE.Vector4(0, Math.PI * 2, 0.3, 1.0) },
     };
     this.mesh = new THREE.Mesh(
       new THREE.SphereGeometry(500, 48, 24),
