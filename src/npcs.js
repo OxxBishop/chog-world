@@ -367,6 +367,8 @@ const WAVE_FOR = 2.6;
  */
 export async function buildNpcs({ scene, plaza, standees = false, prewarm, quality = 'high', bridges = null }) {
   const actors = [];
+  // The singer and her crowd once they're loaded, for the trailer's shots (src/shots.js).
+  let stage = null;
   const sets = [];
   // The light of the moment (night, the canvas), for the stage's bulbs.
   let lastEnv = null;
@@ -767,6 +769,7 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       // cast's own fan, is in the middle of the front row.)
       const who = [...NPC_SLOTS.crowd.named, ...plainOnes];
       const crowd = await Promise.all(who.map((w) => npc(w.glb, w.id ?? null, w.tint ?? null)));
+      stage = { singer, crowd };
       const spots = [0.5, -0.5, 0.95, -0.95, 1.4, -1.4, 1.8].slice(0, crowd.length);
       crowd.forEach((c, i) => {
         const a = facing + spots[i];
@@ -1084,6 +1087,10 @@ export async function buildNpcs({ scene, plaza, standees = false, prewarm, quali
       if (on) away.add(id);
       else away.delete(id);
       applyAway();
+    },
+    // The singer and her crowd (null until they've loaded), for the trailer's shots.
+    get stage() {
+      return stage;
     },
     /** Every Chog about town that's showing (their roots), for walking round them. */
     roots() {

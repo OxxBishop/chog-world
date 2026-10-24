@@ -5,6 +5,7 @@ import { makeChog } from './chog.js';
 import { chogInfo } from './chogdata.js';
 import { surfaceAt } from './travel.js';
 import { BOARD } from './hoverboard.js';
+import { BRIDGES } from './layout.js';
 
 /*
  * The demo video's shots (B13). ?demo=<shot> plays one with the interface hidden; video/shots.md
@@ -482,15 +483,15 @@ Object.assign(SHOTS, {
 const atHour = (name, hour, more = {}) => ({ ...SHOTS[name], hour, ...more });
 // The time-lapse's clock, from k (0 to 1 through the shot): dawn held a while, the day sped through,
 // the gold and the sunset slower, then on into night.
-const DAY = [[0, 5.45], [0.24, 6.7], [0.46, 15.2], [0.74, 18.7], [1, 21.4]];
-const dayAt = (k) => {
-  for (let i = 1; i < DAY.length; i++) {
-    const [k1, h1] = DAY[i];
-    const [k0, h0] = DAY[i - 1];
-    if (k <= k1) return h0 + (h1 - h0) * smooth((k - k0) / (k1 - k0));
+const curveOf = (pts) => (k) => {
+  for (let i = 1; i < pts.length; i++) {
+    const [k1, h1] = pts[i];
+    const [k0, h0] = pts[i - 1];
+    if (k <= k1) return h0 + (h1 - h0) * smooth(clamp01((k - k0) / (k1 - k0)));
   }
-  return DAY[DAY.length - 1][1];
+  return pts[pts.length - 1][1];
 };
+const dayAt = curveOf([[0, 5.45], [0.24, 6.7], [0.46, 15.2], [0.74, 18.7], [1, 21.4]]);
 Object.assign(SHOTS, {
   'd-lapse': { hour: dayAt, keys: drift(8, [160, 235, 480], [126, 225, 463], [44, 0, 18], [38, 0, 15]), update: (w) => lens(w, 45) },
   'd-dawn': atHour('t-domes', 6.3),
@@ -512,6 +513,173 @@ Object.assign(SHOTS, {
       w.stars.setFound(w.stars.names);
     },
     update: (w) => lens(w, 50),
+  },
+});
+
+// ---------- Night on Chog World (the user, 10-24: the trailer's own moments, not a tour of the islands) ----------
+// The sky through a day, the sun followed up and down, then the stars, shooting stars and the aurora;
+// Cosmo swimming against the moon; Patrol over a bridge at night; a Chog warming at Toasty's fire; the
+// singer's crowd jumping; the Hub's ticker, and the view warps out to the planet.
+const SKY_DAY = curveOf([[0, 5.5], [0.18, 7.2], [0.42, 16.8], [0.62, 19.3], [1, 23.0]]);
+Object.assign(SHOTS, {
+  'c-sky': {
+    hour: SKY_DAY,
+    length: 13,
+    setup() {
+      // Out over the clouds off the first neighbourhood's rim (where the sunset shot looks from).
+      const a = (205 * Math.PI) / 180;
+      this._c = new THREE.Vector3(-11.2 + Math.cos(a) * 75, 15, 227.7 + Math.sin(a) * 75);
+    },
+    update(w, t) {
+      if (!this._c) return;
+      lens(w, 50);
+      const k = clamp01(t / 13);
+      // Facing the sunrise, swinging round after the sun to its setting, then lifting to the night sky.
+      const az = THREE.MathUtils.lerp(-0.45, -2.66, smooth(clamp01((k - 0.12) / 0.5)));
+      const day = Math.sin(Math.PI * clamp01((k - 0.16) / 0.34));
+      const pitch = 0.07 + 0.24 * day * day + 0.4 * smooth(clamp01((k - 0.64) / 0.3));
+      _q.set(Math.cos(az) * Math.cos(pitch), Math.sin(pitch), Math.sin(az) * Math.cos(pitch));
+      w.camera.position.copy(this._c);
+      w.camera.lookAt(_p.copy(this._c).add(_q));
+      // Shooting stars where the camera looks.
+      w.sky.uniforms.uMeteors.value = 0.9;
+      w.sky.uniforms.uMeteorArea.value.set(az, 0.9, pitch - 0.08, pitch + 0.3);
+    },
+  },
+  'c-cosmo': {
+    hour: 19.7,
+    length: 7,
+    update(w, t) {
+      lens(w, 34);
+      const cosmo = castChog(w, 68);
+      const c = w.island.cosmo.centre;
+      if (cosmo) {
+        cosmo.getWorldPosition(_p);
+        _p.y += 0.6;
+      } else _p.set(c.x, c.y + 5, c.z);
+      this._at = this._at ? this._at.lerp(_p, 0.05) : _p.clone();
+      // On the far side of him from the moon, turned a little so it sits off his shoulder, looking up.
+      const m = w.sky.uniforms.uMoonDir.value;
+      const yaw = Math.atan2(m.z, m.x) + 0.2 + t * 0.015;
+      const el = Math.atan2(m.y, Math.hypot(m.x, m.z)) - 0.1;
+      const dir = new THREE.Vector3(Math.cos(yaw) * Math.cos(el), Math.sin(el), Math.sin(yaw) * Math.cos(el));
+      _q.copy(this._at).addScaledVector(dir, -7);
+      const dx = _q.x - c.x, dz = _q.z - c.z, d = Math.hypot(dx, dz);
+      if (d > 14) _q.set(c.x + (dx / d) * 14, _q.y, c.z + (dz / d) * 14);
+      _q.y = Math.min(c.y + 11, Math.max(c.y + 1.2, _q.y));
+      this._cam = this._cam ? this._cam.lerp(_q, 0.05) : _q.clone();
+      w.camera.position.copy(this._cam);
+      // At him, leaning toward the moon.
+      w.camera.lookAt(_p.copy(this._at).sub(this._cam).normalize().multiplyScalar(0.75).addScaledVector(dir, 0.25).add(this._cam));
+    },
+  },
+  'c-patrol': {
+    hour: 21.4,
+    length: 7,
+    async setup(w) {
+      const patrol = await w.npcs.patrol();
+      if (!patrol) return;
+      // Where his ride first crosses the first neighbourhood's bridge; he starts a little short of its middle.
+      const br = BRIDGES[0];
+      const mx = (br.ax + br.bx) / 2, mz = (br.az + br.bz) / 2;
+      let best = 0, bd = Infinity;
+      for (let d = 0; d < patrol.length; d += 1.5) {
+        patrol.at(d);
+        const p = patrol.group.position, dd = (p.x - mx) ** 2 + (p.z - mz) ** 2;
+        if (dd < bd) (bd = dd), (best = d);
+      }
+      patrol.at(Math.max(0, best - 22));
+      this._pt = { patrol, last: 0, cam: null };
+    },
+    update(w, t) {
+      const r = this._pt;
+      if (!r) return;
+      lens(w, 40);
+      const dt = Math.max(0, t - r.last);
+      r.last = t;
+      const g = r.patrol.group, yaw = g.rotation.y;
+      const fwd = _q.set(Math.sin(yaw), 0, Math.cos(yaw));
+      const side = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+      // Low beside him and a little ahead, looking back across the chopper as the bridge's hoops go by.
+      const want = g.position.clone().addScaledVector(side, 3.1).addScaledVector(fwd, 2.4 - t * 0.12);
+      want.y += 1.25;
+      r.cam = r.cam ? r.cam.lerp(want, Math.min(1, dt * 6)) : want;
+      w.camera.position.copy(r.cam);
+      w.camera.lookAt(_p.copy(g.position).addScaledVector(fwd, -0.5).setY(g.position.y + 1.0));
+    },
+  },
+  'c-toasty': {
+    hour: 22.0,
+    length: 7,
+    async setup() {
+      const c = await makeChog({ model: 'models/npcs/plain.glb', name: 'Warm', traits: {} });
+      c.play('idle');
+      this._fire = { c, spot: null, last: 0 };
+    },
+    update(w, t) {
+      const f = this._fire;
+      if (!f) return;
+      const dt = Math.max(0, t - f.last);
+      f.last = t;
+      if (!f.spot) {
+        const toasty = castChog(w, 52);
+        if (!toasty?.parent) return;
+        f.spot = toasty.parent;
+        // Beside him round the fire, facing it.
+        const a = -1.55 + 0.95;
+        f.c.root.position.set(Math.cos(a) * 2.1, 0, Math.sin(a) * 2.1);
+        f.c.root.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a));
+        f.c.root.scale.copy(toasty.scale);
+        f.spot.add(f.c.root);
+      }
+      f.c.update(dt, w.camera);
+      lens(w, 38);
+      // Across the fire from the pair, low, pushing in slowly.
+      const mid = -1.55 + 0.47, r = 4.8 - t * 0.14;
+      w.camera.position.copy(f.spot.localToWorld(_q.set(Math.cos(mid + Math.PI) * r, 1.2, Math.sin(mid + Math.PI) * r)));
+      w.camera.lookAt(f.spot.localToWorld(_p.set(Math.cos(mid) * 1.4, 0.7, Math.sin(mid) * 1.4)));
+    },
+  },
+  'c-circle': {
+    hour: 21.0,
+    length: 7,
+    update(w, t) {
+      const st = w.npcs.stage;
+      if (!st) return;
+      // The crowd jumping, each joining in a beat after the last; the singer mid song.
+      st.crowd.forEach((c, i) => t > i * 0.13 && c.play('cheer'));
+      st.singer.play('sing');
+      lens(w, 40);
+      const sq = st.singer.root.parent, f = st.singer.root.rotation.y;
+      // From outside the ring, past its end, looking across it: the crowd jumping on both sides of the
+      // singer, the camera circling in a little.
+      const a = f + 2.15 - t * 0.03, R = 8.2 - t * 0.12;
+      w.camera.position.copy(sq.localToWorld(_q.set(Math.sin(a) * R, 2.3, Math.cos(a) * R)));
+      w.camera.lookAt(sq.localToWorld(_p.set(Math.sin(f) * 1.2, 0.8, Math.cos(f) * 1.2)));
+    },
+  },
+  'c-ticker': {
+    hour: 21.3,
+    length: 13,
+    update(w, t) {
+      // The warp out (the event below) takes the camera from here.
+      if (t >= 3.6) return;
+      if (!this._tk) {
+        const g = w.scene.getObjectByName('dome-ticker');
+        if (!g) return;
+        const box = new THREE.Box3().setFromObject(g);
+        this._tk = { c: box.getCenter(new THREE.Vector3()), r: (box.max.x - box.min.x) / 2 };
+      }
+      lens(w, 36);
+      const { c, r } = this._tk;
+      // Out front of the Hub (where its night shot looks from), low and wide: the dome with its ticker
+      // over the lobby's arch, pushing in and rising toward it.
+      const a = Math.atan2(66 - c.z, 18 - c.x) + 0.12 - t * 0.03;
+      const d = r + 24 - t * 2.5;
+      w.camera.position.set(c.x + Math.cos(a) * d, c.y - 5 + t * 0.8, c.z + Math.sin(a) * d);
+      w.camera.lookAt(_p.set(c.x + Math.cos(a) * r * 0.3, c.y + 1, c.z + Math.sin(a) * r * 0.3));
+    },
+    events: [[3.6, (w) => w.space.enter({ duration: 7 })]],
   },
 });
 
