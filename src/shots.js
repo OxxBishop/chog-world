@@ -590,37 +590,43 @@ Object.assign(SHOTS, {
       }
       // (A little slower than his round, so he stays out over the deck for the whole shot.)
       patrol.speed = 4.5;
-      // The deck's height along his way (the bridge arches up steeply), to keep the camera over it.
-      const start = Math.max(0, best - 14), prof = [];
-      for (let d = start; d < start + 45; d += 0.5) {
+      // His way over the bridge, smoothed over a few metres: the camera glides along it rather than
+      // following his bob up each step and every twitch of his steering (the user, 10-24: it wobbled).
+      const start = Math.max(0, best - 14), raw = [];
+      for (let d = start; d < start + 50; d += 0.5) {
         patrol.at(d);
-        prof.push(patrol.group.position.y);
+        raw.push(patrol.group.position.clone());
       }
       patrol.at(start);
-      // The bridge's line, to keep the camera over its deck on the side away from the nearer edge.
+      const K = 8;
+      const pts = raw.map((_, i) => {
+        const v = new THREE.Vector3();
+        let n = 0;
+        for (let j = Math.max(0, i - K); j <= Math.min(raw.length - 1, i + K); j++, n++) v.add(raw[j]);
+        return v.divideScalar(n);
+      });
+      const path = (d, out) => {
+        const f = Math.max(0, Math.min(pts.length - 1.001, (d - start) / 0.5)), i = Math.floor(f);
+        return out.copy(pts[i]).lerp(pts[i + 1], f - i);
+      };
+      // The camera's side: over the deck, away from the nearer edge.
       const ux = br.bx - br.ax, uz = br.bz - br.az, ul = Math.hypot(ux, uz);
-      this._pt = { patrol, last: 0, cam: null, m: new THREE.Vector3(mx, 0, mz), n: new THREE.Vector3(-uz / ul, 0, ux / ul), deck: (d) => prof[Math.max(0, Math.min(prof.length - 1, Math.round((d - start) / 0.5)))] };
+      const n = new THREE.Vector3(-uz / ul, 0, ux / ul);
+      const off = (pts[28].x - mx) * n.x + (pts[28].z - mz) * n.z;
+      this._pt = { patrol, path, side: n.multiplyScalar(off > 0 ? -1 : 1) };
     },
     update(w, t) {
       const r = this._pt;
       if (!r) return;
       lens(w, 36);
-      const dt = Math.max(0, t - r.last);
-      r.last = t;
-      const g = r.patrol.group, yaw = g.rotation.y;
-      const fwd = _q.set(Math.sin(yaw), 0, Math.cos(yaw));
-      const off = (g.position.x - r.m.x) * r.n.x + (g.position.z - r.m.z) * r.n.z;
-      const side = r.n.clone().multiplyScalar(off > 0 ? -1 : 1);
       // Beside him over the deck and a little ahead, looking back across him on the chopper as the
-      // bridge's hoops go by.
-      // (By his body, wherever the chopper rides it.)
-      const body = r.patrol.chog.root.getWorldPosition(new THREE.Vector3());
-      const ahead = 7.5 - t * 0.3;
-      const want = body.clone().addScaledVector(side, 3.4).addScaledVector(fwd, ahead);
-      want.y = Math.max(body.y + 2, r.deck(r.patrol.along + ahead) + 2.4);
-      r.cam = r.cam ? r.cam.lerp(want, Math.min(1, dt * 6)) : want;
-      w.camera.position.copy(r.cam);
-      w.camera.lookAt(_p.copy(body).addScaledVector(fwd, -0.5).setY(body.y + 1.8));
+      // bridge's hoops go by; he gains on the camera a little.
+      const d = r.patrol.along, ahead = 7.5 - t * 0.3;
+      r.path(d + ahead, _q).addScaledVector(r.side, 3.4);
+      _q.y += 3.3;
+      w.camera.position.copy(_q);
+      r.path(d - 0.5, _p).y += 2.85;
+      w.camera.lookAt(_p);
     },
   },
   'c-toasty': {
