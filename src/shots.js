@@ -590,15 +590,21 @@ Object.assign(SHOTS, {
       }
       // (A little slower than his round, so he stays out over the deck for the whole shot.)
       patrol.speed = 4.5;
-      patrol.at(Math.max(0, best - 14));
+      // The deck's height along his way (the bridge arches up steeply), to keep the camera over it.
+      const start = Math.max(0, best - 14), prof = [];
+      for (let d = start; d < start + 45; d += 0.5) {
+        patrol.at(d);
+        prof.push(patrol.group.position.y);
+      }
+      patrol.at(start);
       // The bridge's line, to keep the camera over its deck on the side away from the nearer edge.
       const ux = br.bx - br.ax, uz = br.bz - br.az, ul = Math.hypot(ux, uz);
-      this._pt = { patrol, last: 0, cam: null, m: new THREE.Vector3(mx, 0, mz), n: new THREE.Vector3(-uz / ul, 0, ux / ul) };
+      this._pt = { patrol, last: 0, cam: null, m: new THREE.Vector3(mx, 0, mz), n: new THREE.Vector3(-uz / ul, 0, ux / ul), deck: (d) => prof[Math.max(0, Math.min(prof.length - 1, Math.round((d - start) / 0.5)))] };
     },
     update(w, t) {
       const r = this._pt;
       if (!r) return;
-      lens(w, 40);
+      lens(w, 36);
       const dt = Math.max(0, t - r.last);
       r.last = t;
       const g = r.patrol.group, yaw = g.rotation.y;
@@ -609,11 +615,12 @@ Object.assign(SHOTS, {
       // bridge's hoops go by.
       // (By his body, wherever the chopper rides it.)
       const body = r.patrol.chog.root.getWorldPosition(new THREE.Vector3());
-      const want = body.clone().addScaledVector(side, 4.6).addScaledVector(fwd, 4.2 - t * 0.15);
-      want.y += 1.1;
+      const ahead = 7.5 - t * 0.3;
+      const want = body.clone().addScaledVector(side, 3.4).addScaledVector(fwd, ahead);
+      want.y = Math.max(body.y + 2, r.deck(r.patrol.along + ahead) + 2.4);
       r.cam = r.cam ? r.cam.lerp(want, Math.min(1, dt * 6)) : want;
       w.camera.position.copy(r.cam);
-      w.camera.lookAt(_p.copy(body).addScaledVector(fwd, -0.3).setY(body.y + 0.4));
+      w.camera.lookAt(_p.copy(body).addScaledVector(fwd, -0.5).setY(body.y + 1.8));
     },
   },
   'c-toasty': {
