@@ -588,7 +588,9 @@ Object.assign(SHOTS, {
         const p = patrol.group.position, dd = (p.x - mx) ** 2 + (p.z - mz) ** 2;
         if (dd < bd) (bd = dd), (best = d);
       }
-      patrol.at(Math.max(0, best - 22));
+      // (A little slower than his round, so he stays out over the deck for the whole shot.)
+      patrol.speed = 4.5;
+      patrol.at(Math.max(0, best - 14));
       // The bridge's line, to keep the camera over its deck on the side away from the nearer edge.
       const ux = br.bx - br.ax, uz = br.bz - br.az, ul = Math.hypot(ux, uz);
       this._pt = { patrol, last: 0, cam: null, m: new THREE.Vector3(mx, 0, mz), n: new THREE.Vector3(-uz / ul, 0, ux / ul) };
@@ -605,11 +607,13 @@ Object.assign(SHOTS, {
       const side = r.n.clone().multiplyScalar(off > 0 ? -1 : 1);
       // Beside him over the deck and a little ahead, looking back across him on the chopper as the
       // bridge's hoops go by.
-      const want = g.position.clone().addScaledVector(side, 4.6).addScaledVector(fwd, 4.2 - t * 0.15);
-      want.y += 2.4;
+      // (By his body, wherever the chopper rides it.)
+      const body = r.patrol.chog.root.getWorldPosition(new THREE.Vector3());
+      const want = body.clone().addScaledVector(side, 4.6).addScaledVector(fwd, 4.2 - t * 0.15);
+      want.y += 1.1;
       r.cam = r.cam ? r.cam.lerp(want, Math.min(1, dt * 6)) : want;
       w.camera.position.copy(r.cam);
-      w.camera.lookAt(_p.copy(g.position).addScaledVector(fwd, -0.3).setY(g.position.y + 1.5));
+      w.camera.lookAt(_p.copy(body).addScaledVector(fwd, -0.3).setY(body.y + 0.4));
     },
   },
   'c-toasty': {
