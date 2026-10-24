@@ -589,7 +589,9 @@ Object.assign(SHOTS, {
         if (dd < bd) (bd = dd), (best = d);
       }
       patrol.at(Math.max(0, best - 22));
-      this._pt = { patrol, last: 0, cam: null };
+      // The bridge's line, to keep the camera over its deck on the side away from the nearer edge.
+      const ux = br.bx - br.ax, uz = br.bz - br.az, ul = Math.hypot(ux, uz);
+      this._pt = { patrol, last: 0, cam: null, m: new THREE.Vector3(mx, 0, mz), n: new THREE.Vector3(-uz / ul, 0, ux / ul) };
     },
     update(w, t) {
       const r = this._pt;
@@ -599,13 +601,15 @@ Object.assign(SHOTS, {
       r.last = t;
       const g = r.patrol.group, yaw = g.rotation.y;
       const fwd = _q.set(Math.sin(yaw), 0, Math.cos(yaw));
-      const side = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-      // Low beside him and a little ahead, looking back across the chopper as the bridge's hoops go by.
-      const want = g.position.clone().addScaledVector(side, 3.1).addScaledVector(fwd, 2.4 - t * 0.12);
-      want.y += 1.25;
+      const off = (g.position.x - r.m.x) * r.n.x + (g.position.z - r.m.z) * r.n.z;
+      const side = r.n.clone().multiplyScalar(off > 0 ? -1 : 1);
+      // Beside him over the deck and a little ahead, looking back across him on the chopper as the
+      // bridge's hoops go by.
+      const want = g.position.clone().addScaledVector(side, 4.6).addScaledVector(fwd, 4.2 - t * 0.15);
+      want.y += 2.4;
       r.cam = r.cam ? r.cam.lerp(want, Math.min(1, dt * 6)) : want;
       w.camera.position.copy(r.cam);
-      w.camera.lookAt(_p.copy(g.position).addScaledVector(fwd, -0.5).setY(g.position.y + 1.0));
+      w.camera.lookAt(_p.copy(g.position).addScaledVector(fwd, -0.3).setY(g.position.y + 1.5));
     },
   },
   'c-toasty': {
@@ -634,10 +638,11 @@ Object.assign(SHOTS, {
       }
       f.c.update(dt, w.camera);
       lens(w, 38);
-      // Across the fire from the pair, low, pushing in slowly.
-      const mid = -1.55 + 0.47, r = 4.8 - t * 0.14;
-      w.camera.position.copy(f.spot.localToWorld(_q.set(Math.cos(mid + Math.PI) * r, 1.2, Math.sin(mid + Math.PI) * r)));
-      w.camera.lookAt(f.spot.localToWorld(_p.set(Math.cos(mid) * 1.4, 0.7, Math.sin(mid) * 1.4)));
+      // Across the fire from the pair and above it, looking down past the flames at their faces in its
+      // light, pushing in slowly.
+      const mid = -1.55 + 0.47, a = mid + Math.PI + 0.35, r = 4.4 - t * 0.09;
+      w.camera.position.copy(f.spot.localToWorld(_q.set(Math.cos(a) * r, 2.4, Math.sin(a) * r)));
+      w.camera.lookAt(f.spot.localToWorld(_p.set(Math.cos(mid) * 1.6, 0.85, Math.sin(mid) * 1.6)));
     },
   },
   'c-circle': {
